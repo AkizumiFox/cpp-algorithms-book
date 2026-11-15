@@ -1,0 +1,1068 @@
+\chapter{貪心}
+\label{ch:greedy}
+
+有一類題目，答案可以一步一步決定：每一步挑當下看起來最好的那一個，挑了就
+不再更改，最後得到的剛好就是最佳解。 這種做法叫\textbf{貪心}（greedy）。
+程式通常很短，常常只是一次排序加上一個迴圈。 難的地方在別處：看起來合理的
+挑法往往有好幾種，其中大多數是錯的，而錯的那幾種通常也能通過題目給的範例。
+
+這一章先講兩件事：什麼時候可以考慮貪心，以及怎麼確認一個貪心是對的（交換
+論證）或是錯的（找反例）。 接著用三題例題練三種常見的形狀：兩群東西排序後
+配對、從一堆區間裡挑出最多個互不重疊的、把區間的端點排好之後由左往右掃描。
+
+用到的語法在《C++ 程式設計：給學過 C 的人》（以下簡稱銜接書）都講過：
+\texttt{sort} 與比較函式、lambda、\texttt{next\_permutation} 在第~9~章，
+\texttt{pair} 與結構化綁定在第~8~章，解題程式的骨架和從資料範圍估計時間在
+第~10~章 10.1 節。
+
+\section{選了就不回頭}
+\label{sec:greedy-idea}
+
+先看一個小問題。 書包最多能裝 $W$ 公斤，桌上有 $n$ 本書，第 $i$ 本重
+$w_i$ 公斤，最多能帶幾本？
+
+直覺的做法是從最輕的開始放，放到下一本放不下為止。 例如 $W = 10$，五本書
+重 $4, 2, 7, 3, 5$。 排好是 $2, 3, 4, 5, 7$，放進 $2$、$3$、$4$ 共 $9$
+公斤，再放 $5$ 就超過了，所以帶 $3$ 本。
+
+這個做法有貪心的兩個特徵：
+
+\begin{itemize}
+\item 有一個固定的順序（由輕到重），照這個順序一個一個決定。
+\item 每一步只看眼前：這本放得下就放，放了就不拿出來，也不回頭考慮別的組合。
+\end{itemize}
+
+要保證找到最佳解，最直接的方法是枚舉所有的子集合。 $n$ 本書有 $2^n$ 種帶
+法，$n = 40$ 就超過一兆種。 貪心只要排序加一次掃描，是 $O(n \log n)$。 速
+度差這麼多，代價是要回答一個問題：只看眼前，為什麼不會錯過更好的組合？
+
+\subsection{什麼時候想到貪心}
+
+下面幾種情況出現時，可以先試試貪心：
+
+\begin{itemize}
+\item 題目問「最多幾個」「最少幾次」「總和最小是多少」，而 $n$ 到
+$2 \times 10^5$，照銜接書 10.1 節的表只容得下 $O(n \log n)$，枚舉所有可
+能一定來不及。
+\item 解可以看成一連串的選擇。 排成某種順序之後，每一次選擇好像只跟「目前做
+到哪裡」有關，例如目前裝了多重、目前的時間到了哪裡。
+\item 手算幾個小例子，發現最佳解總是很規律：最輕的那幾本、最早結束的那一個、
+大的配大的。
+\end{itemize}
+
+這些只是線索。 想到一個挑法之後，要同時做兩件事：想辦法說明它為什麼對，也試
+著找它出錯的例子。 哪一邊先有結果，就知道該不該用它。
+
+\subsection{交換論證}
+
+說明貪心正確，最常用的方法叫\textbf{交換論證}（exchange argument）。 做法
+是隨便拿一個最佳解來，如果它和貪心選的不一樣，就把它的一部分換成貪心選的，
+說明換完之後仍然合法，而且沒有變差。 一直換下去，最佳解就變成了貪心的解，
+所以貪心的解也是最佳的。
+
+用書包的例子走一次。 設最佳的帶法帶了 $k$ 本書，把所有的書由輕到重排好，
+最輕的 $k$ 本叫做 $L$。
+
+\begin{enumerate}
+\item 如果最佳的帶法不是 $L$，那就有一本 $L$ 裡的書 $a$ 沒有被帶，也有一本
+不在 $L$ 裡的書 $b$ 被帶了。 $b$ 不在最輕的 $k$ 本裡，所以 $w_a \le w_b$。
+\item 把 $b$ 拿出來，換成 $a$。 本數還是 $k$，總重量的變化是
+$w_a - w_b \le 0$，原本放得下，換完也放得下。
+\item 每換一次，這個帶法和 $L$ 相同的書就多一本，最多換 $k$ 次就變成 $L$。
+所以 $L$ 整組放得下。
+\end{enumerate}
+
+貪心從最輕的開始放，$L$ 的 $k$ 本一定都放得進去，所以至少帶 $k$ 本；$k$
+已經是最多，貪心帶的就剛好是 $k$ 本。
+
+交換論證可以照固定的格式寫：
+
+\begin{itemize}
+\item 寫出要比較的兩個東西：貪心的選擇，和任意一個最佳解。
+\item 找一個兩者不一樣的地方，把最佳解的那一部分換成貪心的選擇，說明題目的
+限制仍然滿足，而且答案沒有變差。
+\item 說明換的動作會停下來，例如每換一次，兩者相同的部分就多一點。
+\end{itemize}
+
+第二步是重點，也是最容易寫得含糊的地方。 「換成比較輕的，應該比較好」不算
+說明。 要寫出換完之後哪個量變了、變了多少，以及為什麼不會違反題目的限制。
+
+\subsection{先找反例}
+
+證明一直寫不出來的時候，這個貪心常常就是錯的。 這時可以反過來，找一組讓它
+出錯的小輸入，叫做\textbf{反例}（counterexample）。 一組反例就足以說明一
+條規則不能用。
+
+例子：郵局只有 $1$ 元、$5$ 元、$6$ 元三種郵票，要剛好貼滿 $n$ 元，最少要
+幾張？ 貪心的想法是每次先貼面額最大、而且還貼得下的那一種。 $n = 12$ 時貼兩
+張 $6$ 元，是對的。 $n = 10$ 時先貼一張 $6$ 元，剩下 $4$ 元只能貼四張 $1$
+元，共 $5$ 張；可是兩張 $5$ 元就夠了。
+
+反例不一定猜得到。 比較可靠的方法是寫一個保證正確、但是很慢的\textbf{暴力
+解}，在小範圍裡和貪心逐一比對，讓電腦去找：
+
+\begin{example}[label=ex:stamps]{cpp}{(stamps.cpp) 讓電腦找貪心的反例}
+#include <iostream>
+using namespace std;
+
+// 面額 6、5、1 元，每次先貼面額最大、還貼得下的郵票
+int greedyCount(int amount) {
+    int count = 0;
+    for (int value : {6, 5, 1}) {
+        count += amount / value;
+        amount %= value;
+    }
+    return count;
+}
+
+// 枚舉 6 元和 5 元各用幾張，剩下的用 1 元補
+int bestCount(int amount) {
+    int best = amount;                    // 全部用 1 元
+    for (int six = 0; six * 6 <= amount; six++) {
+        for (int five = 0; six * 6 + five * 5 <= amount; five++) {
+            int ones = amount - six * 6 - five * 5;
+            best = min(best, six + five + ones);
+        }
+    }
+    return best;
+}
+
+int main() {
+    for (int amount = 1; amount <= 20; amount++) {
+        int g = greedyCount(amount), b = bestCount(amount);
+        if (g != b) {
+            cout << amount << ' ' << g << ' ' << b << '\n';
+        }
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{}{
+10 5 2 \\
+15 5 3 \\
+16 6 3 \\
+20 5 4 \\
+}
+
+每一行是「金額、貪心的張數、最少的張數」。 $20$ 元以內有四個金額出錯，最
+小的是 $10$ 元。 \texttt{bestCount} 用雙層迴圈枚舉 $6$ 元和 $5$ 元各用幾
+張，金額一大就很慢，但拿來檢查小範圍剛好。
+
+這個寫法之後會一直用到：有了一個貪心的想法，先寫暴力解，在幾千組隨機的小輸
+入上和貪心比對。 都一樣，再花時間想證明；出現一組不一樣，就省下了寫證明和交
+出錯誤程式的時間。 比對全部相同不等於證明，但已經擋掉了大部分錯誤的想法。
+
+順帶一提，面額 $1, 5, 10, 50$ 的硬幣用同樣的貪心找零是對的，換成
+$1, 5, 6$ 就錯了。 同一條規則對不對，取決於題目的數字有什麼性質，沒辦法從
+「看起來合理」判斷。 一般的面額要用第~9~章的動態規劃。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{只用範例測資檢查貪心}：範例是為了說明題意而設計的，很多錯的貪
+心都會通過。 郵票的題目如果範例是 $12$ 元，錯的貪心也會印出正確的 $2$。 交
+出去之前，至少用暴力解在小範圍比對一次。
+\item \textbf{拿幾個例子當證明}：「試了五組都對」不能說明它永遠對。 反過來，
+一組反例就足以推翻一條規則。
+\item \textbf{暴力解自己也錯}：比對時兩邊不一樣，先手算那組輸入，確定是哪一
+邊錯。 暴力解要寫得越直接越好，例如老老實實枚舉所有可能。 在暴力解裡又用了
+一次同樣的貪心想法，兩邊會一起錯，比對就沒有意義了。
+\end{itemize}
+
+\section{排序後配對}
+\label{sec:greedy-matching}
+
+兩群東西要一對一配對時，常見的貪心是兩邊都排序，再依名次對齊：最小的配最
+小的，第二小的配第二小的。 這一節的例題就是這個形狀。 重點有兩個：寫出它為
+什麼對，以及認出一個看起來也很合理、其實會出錯的做法。
+
+\subsection{例題：全勝所需的最少加練次數}
+\label{sec:ex-training}
+
+\textbf{題意}（\akiref{fewest-drills-for-a-clean-sweep}{全勝所需的最少加練次數}）
+
+\begin{itemize}
+\item 我方有 $n$ 位社員，對方有 $m$ 位選手（$m \le n$），每人有一個戰力值。
+\item 對方每位選手都要和我方一位社員比一場，每位社員最多比一場。 戰力嚴格大
+於對手才算贏，平手算輸。
+\item 比賽前可以加練，每加練一次，一位社員的戰力加 $1$。 誰上場、誰打誰都可
+以自己安排。
+\item 求讓 $m$ 場全贏的最少加練次數。 $m \le n \le 2 \times 10^5$，戰力在
+$0$ 到 $10^9$ 之間。
+\end{itemize}
+
+例如社員的戰力是 $4, 9, 1, 6$，對手是 $7, 3, 8$。 派 $4, 6, 9$ 上場，
+$4$ 打 $3$、$6$ 打 $7$、$9$ 打 $8$，只有 $6$ 要加練 $2$ 次變成 $8$，答案
+是 $2$。 如果讓 $9$ 打 $7$，$6$ 就得打 $8$，要加練 $3$ 次。
+
+\textbf{想法}
+
+先把一場比賽的成本寫清楚：戰力 $a$ 的社員要贏戰力 $b$ 的對手，得變成至少
+$b + 1$，所以要加練 $\max(0, b + 1 - a)$ 次。 總次數是每一場的成本加起來，
+問題變成怎麼挑人、怎麼配對，讓總和最小。
+
+最直接的做法是枚舉：挑哪 $m$ 個人上場、上場的人怎麼排。 只看 $m = n$ 的情
+況就有 $n!$ 種排法，$n = 10$ 已經三百多萬種，$n$ 到 $2 \times 10^5$ 完全不
+可能。 不過這個枚舉仍然有用：$n \le 8$ 時用 \texttt{next\_permutation} 枚
+舉所有排列，就是對拍用的暴力解。
+
+手算幾個例子，可以看出兩個規律。
+
+\textbf{觀察一：上場的是最強的 $m$ 位。} 假設在某個安排裡，戰力 $a$ 的社員
+上場，戰力 $a' \ge a$ 的社員卻坐在場邊。 讓場邊的人換上去打同一位對手，成本
+從 $\max(0, b + 1 - a)$ 變成 $\max(0, b + 1 - a')$，不會變多，其他場也不
+受影響。 一直換下去，上場的就是最強的 $m$ 位。
+
+\textbf{觀察二：依名次配對。} 把上場的 $m$ 位和對手都由弱到強排好，第 $i$
+弱的社員打第 $i$ 弱的對手。 用交換論證說明。 假設某個安排裡有一組
+\textbf{交叉}：社員 $x \le y$，對手 $p \le q$，卻是 $x$ 打 $q$、$y$ 打
+$p$。 把兩人的對手互換，讓 $x$ 打 $p$、$y$ 打 $q$，要說明成本不會變多。
+
+四種組合各自「還差多少」是
+\[
+A = q + 1 - x,\qquad D = p + 1 - y,\qquad B = p + 1 - x,\qquad C = q + 1 - y.
+\]
+交叉時用到 $A$ 和 $D$，互換後用到 $B$ 和 $C$。 因為 $x \le y$、
+$p \le q$，$A$ 是四個裡最大的，$D$ 是最小的，而且 $B + C = A + D$（兩邊都
+是 $p + q + 2 - x - y$）。 成本是每個數先取 $\max(0, \cdot)$ 再相加，分三
+種情況：
+
+\begin{itemize}
+\item $D \ge 0$：四個數都不小於 $0$，互換前後的成本都是 $A + D = B + C$，
+一樣多。
+\item $A \le 0$：四個數都不大於 $0$，前後都是 $0$。
+\item $D < 0 < A$：交叉時的成本是 $A$。 互換之後，如果 $B$、$C$ 都是正的，
+成本是 $B + C = A + D < A$；只有一個是正的，那一個不超過 $A$；都不是正的，
+成本是 $0$。 三種都不超過 $A$。
+\end{itemize}
+
+所以把一組交叉換開，總成本不會增加。 只要還不是依名次配對，就一定找得到一
+組交叉；每換開一組，交叉的組數就會減少，最後一定變成依名次配對。 和觀察一
+合起來：挑最強的 $m$ 位，依名次配對，就是最少的加練次數。
+
+\textbf{程式}
+
+\begin{example}[label=ex:training]{cpp}{(training.cpp) 全勝所需的最少加練次數}
+#include <algorithm>
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n, m;
+    cin >> n >> m;
+    vector<long long> a(n), b(m);
+    for (long long &x : a) {
+        cin >> x;
+    }
+    for (long long &x : b) {
+        cin >> x;
+    }
+    sort(a.begin(), a.end());
+    sort(b.begin(), b.end());
+    long long total = 0;
+    for (int i = 0; i < m; i++) {
+        // 上場的是最強的 m 位：a[n - m] 到 a[n - 1]
+        long long need = b[i] + 1 - a[n - m + i];   // 要比對手多 1
+        if (need > 0) {
+            total += need;
+        }
+    }
+    cout << total << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+4 3 \\
+4 9 1 6 \\
+7 3 8 \\
+}{
+2 \\
+}
+
+\begin{itemize}
+\item 兩個陣列都由小到大排序後，最強的 $m$ 位社員是 \texttt{a[n - m]} 到
+\texttt{a[n - 1]}，其中第 $i$ 弱的是 \texttt{a[n - m + i]}，對上第 $i$ 弱
+的對手 \texttt{b[i]}。
+\item \texttt{need} 不是正的，表示本來就會贏，不用加練。 這兩行也可以寫成
+\texttt{total += max(0LL, need);}。 寫成 \texttt{max(0, need)} 會編譯失敗，
+因為 \texttt{0} 是 \texttt{int}、\texttt{need} 是 \texttt{long long}，
+\texttt{max} 的兩個引數必須同型別（銜接書第~8~章的函式模板）。
+\item 戰力存成 \texttt{long long}，\texttt{b[i] + 1 - a[...]} 就直接用
+\texttt{long long} 算。 總和最大大約是 $2 \times 10^5 \times 10^9 =
+2 \times 10^{14}$，一定要用 \texttt{long long}。
+\end{itemize}
+
+寫完之後，用前面說的暴力解（枚舉排列，前 $m$ 個人依序打 $m$ 位對手）在
+$n \le 8$ 的隨機資料上比對，可以再多一層確認。
+
+\textbf{複雜度}
+
+兩次排序是 $O(n \log n + m \log m)$，配對一次迴圈 $O(m)$。 $n = 2 \times
+10^5$ 時排序大約 $4 \times 10^6$ 次比較，最大的測資在本書測試的環境下約
+$0.03$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{先湊最多勝場，再補練}：一個很自然的想法是先不加練，盡量多贏幾
+場，剩下贏不了的對手再找人加練。 例如對手由弱到強，每位都派「贏得了他的人裡
+最弱的那位」，派不出人的對手留到最後，由剩下的社員加練去打。 輸入
+\begin{code}{text}{這種做法會錯的輸入}
+3 2
+3 0 0
+2 1
+\end{code}
+它先用唯一贏得了的 $3$ 打掉 $1$，剩下 $0$ 要打 $2$，加練 $3$ 次，程式印出
+\texttt{3}。 正確答案是 $2$：讓 $3$ 打 $2$，一位 $0$ 加練 $2$ 次去打 $1$。
+「勝場最多」和「加練最少」是兩個不同的目標，前一個的最佳安排，不一定是後一
+個的最佳安排。
+\item \textbf{派最弱的 $m$ 位上場}：把 \texttt{a[n - m + i]} 寫成
+\texttt{a[i]}，範例的輸入會派 $1, 4, 6$ 上場，印出 \texttt{10}。 排序之後
+最弱的在前面，要從後面數 $m$ 個。
+\item \textbf{平手當成贏}：成本寫成 \texttt{b[i] - a[n - m + i]}，少了
+$+1$，範例的輸入印出 \texttt{1}。 $6$ 打 $7$ 只加練到 $7$，是平手，不算贏。
+\item \textbf{總和用 \texttt{int}}：\texttt{total} 改成 \texttt{int}，輸入
+$n = m = 2 \times 10^5$，社員全是 $0$、對手全是 $10^9$，正確答案是
+$200000200000$。 在本書測試的環境下程式印出 \texttt{553094464}，加了
+\texttt{-Wall -Wextra} 也沒有任何警告。
+\end{itemize}
+
+\section{區間排程}
+\label{sec:interval-scheduling}
+
+很多題目的資料是一段一段的時間：借教室、排值班、安排表演。 一段時間用
+\textbf{區間}表示。 這一節用半開區間 $[s, e)$：從時刻 $s$ 開始，到了 $e$
+那一刻已經離開，所以 $[2, 4)$ 和 $[4, 6)$ 剛好接在一起，不算重疊。 兩個區
+間 $[a, b)$ 和 $[c, d)$ \textbf{重疊}，若且唯若 $a < d$ 而且 $c < b$，也就
+是兩段都在對方結束之前就開始了。
+
+最常見的問題是：給一堆區間，最多能挑出幾個兩兩不重疊的？ 這叫\textbf{區間排
+程}（interval scheduling）。 能想到的挑法有好幾種，聽起來都有道理。 這一節
+的例題要你把其中三種都做出來，正好拿來比較。
+
+\subsection{例題：三種挑選規則的比較}
+\label{sec:ex-three-rules}
+
+\textbf{題意}（\akiref{comparing-three-selection-rules}{三種挑選規則的比較}）
+
+\begin{itemize}
+\item 社團辦公室收到 $n$ 筆借用申請，第 $i$ 筆要用 $[s_i, e_i)$。
+\item 三種規則都是先把申請排成某個次序，再依序檢查：和已經選到的每一筆都不重
+疊就選，否則跳過。
+\item 規則 1：開始早的在前；開始相同時結束早的在前；再相同就編號小的在前。
+\item 規則 2：長度 $e - s$ 短的在前；長度相同時開始早的在前；再相同就編號小
+的在前。
+\item 規則 3：結束早的在前；結束相同時開始\textbf{晚}的在前；再相同就編號小
+的在前。
+\item 輸出三種規則各選到幾筆。 $n \le 2000$，時刻在 $0$ 到 $10^9$ 之間。
+\end{itemize}
+
+例如四筆申請 $[0, 20)$、$[1, 5)$、$[4, 7)$、$[6, 11)$。 規則 1 先選
+$[0, 20)$，後面每一筆都和它重疊，只選到 $1$ 筆。 規則 2 先選最短的
+$[4, 7)$，它和 $[1, 5)$、$[6, 11)$ 都重疊，也只選到 $1$ 筆。 規則 3 選
+$[1, 5)$ 和 $[6, 11)$，選到 $2$ 筆。
+
+\textbf{想法}
+
+三條規則的模擬照題目寫就好，要想的只有「和已經選到的每一筆都不重疊」怎麼檢
+查。 最直接的是把選到的申請存在一個 \texttt{vector} 裡，每來一筆就和它們全
+部比一次。 最壞的情況是每一筆都被選到，第 $i$ 筆要比 $i - 1$ 次，總共
+$n(n - 1)/2 \approx 2 \times 10^6$ 次，$n \le 2000$ 綽綽有餘。 三條規則共
+用同一個檢查函式，只差在排序的方式。
+
+規則 1 和規則 3 其實不用和全部比。 以規則 3 為例，申請依結束時間排序，已經
+選到的每一筆都比目前這筆早結束（或同時），其中最後選到的那一筆結束得最晚；
+目前這筆只要不早於它的結束時間開始，就和所有選到的都不重疊。 規則 2 就不能
+這樣省：依長度排序時，選到的申請散在時間軸上各處，最後選的那一筆不一定靠
+近目前這一筆（見本節的常見錯誤）。 $n$ 只有 $2000$，統一和全部比對，最不
+容易寫錯。
+
+程式寫得出來，但這題真正要學的是：哪一條規則能保證選到最多？
+
+\textbf{規則 1 會錯。} 反例：$[0, 10)$、$[1, 2)$、$[3, 4)$。 規則 1 先選
+$[0, 10)$，另外兩筆都被擋掉，選到 $1$ 筆；不選它，可以選 $[1, 2)$ 和
+$[3, 4)$ 兩筆。 早開始的申請可能很長，一筆就佔掉一大段時間。
+
+\textbf{規則 2 也會錯。} 反例：$[0, 4)$、$[3, 6)$、$[5, 9)$。 最短的
+$[3, 6)$ 剛好跨在另外兩筆的交界上，選了它就同時擋掉兩筆，只選到 $1$ 筆；最
+多其實可以選 $[0, 4)$ 和 $[5, 9)$ 兩筆。 短的申請佔的時間少，但位置不好時
+照樣擋路。
+
+\textbf{規則 3 是對的。} 用交換論證。 設最多能選 $k$ 筆，任取一個選到 $k$
+筆的選法，依結束時間排好是 $o_1, o_2, \ldots, o_k$。 規則 3 選的第一筆
+$g_1$ 是所有申請裡結束最早的，所以 $g_1$ 的結束時間不晚於 $o_1$ 的結束時
+間。 把 $o_1$ 換成 $g_1$：$o_2, \ldots, o_k$ 都在 $o_1$ 結束之後才開始，當
+然也在 $g_1$ 結束之後才開始，不會和 $g_1$ 重疊。 換完還是 $k$ 筆、兩兩不重
+疊，而且第一筆和規則 3 一樣。
+
+接下來，規則 3 跳過所有和 $g_1$ 重疊的申請，在「開始時間不早於 $g_1$ 結束」
+的申請裡選結束最早的，當作第二筆。 換過的選法剩下的 $o_2, \ldots, o_k$ 也
+都在這些申請裡，同樣的理由可以把 $o_2$ 換成規則 3 的第二筆。 一直換下去，
+$k$ 筆都換成規則 3 選的，所以規則 3 至少選到 $k$ 筆，也就是最多。
+
+把三條規則放在一起看，差別在於選了一筆之後「留給後面多少時間」。 規則 3 每
+次都讓剩下的時間從最早的地方開始，前兩條規則都沒有這個保證。
+
+\begin{bridgerecap}[多個欄位的比較函式]
+\texttt{sort} 的第三個引數是比較函式，收兩個元素 \texttt{x}、\texttt{y}，
+當 \texttt{x} 應該排在 \texttt{y} 前面時回傳 \texttt{true}（銜接書第~9~章）。
+比好幾個欄位時，第一個欄位不同就比第一個欄位，相同才往下比。 比較函式必須
+是嚴格的「小於」：兩個元素相等時要回傳 \texttt{false}，所以不能用
+\texttt{<=}。 \texttt{sort} 不保證相等的元素維持原來的順序；要讓結果只有一
+種，就要比到每兩個元素都分得出先後，例如最後比編號。
+\end{bridgerecap}
+
+\textbf{程式}
+
+\begin{example}[label=ex:three-rules]{cpp}{(three\_rules.cpp) 三種挑選規則的比較}
+#include <algorithm>
+#include <iostream>
+#include <vector>
+using namespace std;
+
+struct Req {
+    long long s, e;   // 時段 [s, e)
+    int id;
+};
+
+bool overlap(const Req &x, const Req &y) {
+    return x.s < y.e && y.s < x.e;
+}
+
+bool byStart(const Req &x, const Req &y) {      // 規則 1
+    if (x.s != y.s) {
+        return x.s < y.s;
+    }
+    if (x.e != y.e) {
+        return x.e < y.e;
+    }
+    return x.id < y.id;
+}
+
+bool byLength(const Req &x, const Req &y) {     // 規則 2
+    long long lx = x.e - x.s, ly = y.e - y.s;
+    if (lx != ly) {
+        return lx < ly;
+    }
+    if (x.s != y.s) {
+        return x.s < y.s;
+    }
+    return x.id < y.id;
+}
+
+bool byEnd(const Req &x, const Req &y) {        // 規則 3
+    if (x.e != y.e) {
+        return x.e < y.e;
+    }
+    if (x.s != y.s) {
+        return x.s > y.s;                       // 開始晚的在前
+    }
+    return x.id < y.id;
+}
+
+// v 已經照某個規則排好：依序檢查，和已選的每一筆都不重疊才選
+int pickInOrder(const vector<Req> &v) {
+    vector<Req> chosen;
+    for (const Req &r : v) {
+        bool ok = true;
+        for (const Req &c : chosen) {
+            if (overlap(r, c)) {
+                ok = false;
+                break;
+            }
+        }
+        if (ok) {
+            chosen.push_back(r);
+        }
+    }
+    return chosen.size();
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n;
+    cin >> n;
+    vector<Req> v(n);
+    for (int i = 0; i < n; i++) {
+        cin >> v[i].s >> v[i].e;
+        v[i].id = i;
+    }
+    sort(v.begin(), v.end(), byStart);
+    int r1 = pickInOrder(v);
+    sort(v.begin(), v.end(), byLength);
+    int r2 = pickInOrder(v);
+    sort(v.begin(), v.end(), byEnd);
+    int r3 = pickInOrder(v);
+    cout << r1 << ' ' << r2 << ' ' << r3 << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+4 \\
+0 20 \\
+1 5 \\
+4 7 \\
+6 11 \\
+}{
+1 1 2 \\
+}
+
+\begin{itemize}
+\item \texttt{overlap} 直接照重疊的定義寫。 用 \texttt{<} 而不是
+\texttt{<=}，端點相接就不算重疊。
+\item 三個比較函式最後都比 \texttt{id}，任兩筆申請都分得出先後，排序的結果
+只有一種。 所以同一個 \texttt{v} 可以連續重排三次，前一次的順序不會影響後
+一次。
+\item \texttt{pickInOrder} 收的是 \texttt{const} 參考，只讀不改，也不複製。
+它回傳 \texttt{chosen.size()}，型別是 \texttt{size\_t}，回傳時轉成
+\texttt{int}；筆數最多 $2000$，不會有問題。
+\end{itemize}
+
+\textbf{複雜度}
+
+三次排序各 $O(n \log n)$，三次 \texttt{pickInOrder} 各最多 $n(n-1)/2$ 次
+\texttt{overlap}，總共 $O(n^2)$。 $n = 2000$ 時大約 $6 \times 10^6$ 次比
+較，最大的測資在本書測試的環境下不到 $0.01$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{規則 2 只和最後選到的那一筆比}：把規則 1、3 的省略用在規則 2。
+輸入
+\begin{code}{text}{規則 2 只比最後一筆會錯的輸入}
+3
+0 2
+5 8
+1 5
+\end{code}
+正確的輸出是 \texttt{2 2 2}，這樣寫會印出 \texttt{2 3 2}。 規則 2 依序看
+$[0, 2)$、$[5, 8)$、$[1, 5)$：前兩筆都選；$[1, 5)$ 和最後選的 $[5, 8)$ 只
+是相接，於是被選了，可是它和更早選的 $[0, 2)$ 重疊。
+\item \textbf{相接當成重疊}：\texttt{overlap} 寫成 \texttt{x.s <= y.e \&\&
+y.s <= x.e}。 輸入 $[2, 4)$、$[0, 7)$、$[4, 6)$、$[3, 5)$、$[6, 9)$
+（第一行是 \texttt{5}）時，正確的輸出是 \texttt{1 3 3}，這樣寫會印出
+\texttt{1 2 2}：規則 3 選了 $[2, 4)$ 之後，$[4, 6)$ 被當成重疊而跳過。
+讀題時先確認區間是半開還是兩端都算，再決定用 \texttt{<} 還是 \texttt{<=}。
+\item \textbf{同分的次序沒照題目}：規則 1 只比開始時間，同開始的照輸入順序
+（例如用 \texttt{stable\_sort}）。 輸入 $[0, 5)$、$[0, 1)$、$[1, 2)$ 時，
+規則 1 應該先看 $[0, 1)$，選到 $2$ 筆；照輸入順序會先選到很長的 $[0, 5)$，
+只選到 $1$ 筆，程式印出 \texttt{1 2 2}。 規則 3 的同分次序不影響筆數（交換
+論證裡沒有用到它），規則 1、2 的會，題目怎麼規定就怎麼寫。
+\end{itemize}
+
+\section{區間覆蓋與端點掃描}
+\label{sec:cover-sweep}
+
+上一節從區間裡挑出互不重疊的。 這一節看另外兩種常見的區間題：用最少的區間
+把一整段蓋滿，以及把區間拆成端點，排序後由左往右掃一遍。 兩種都是「排好
+順序、依序處理、處理過的不再回頭」，和前兩節是同一種寫法。
+
+\subsection{區間覆蓋}
+
+問題：從時刻 $x$ 到 $y$ 一直都要有人值班。 有 $n$ 位志工，第 $i$ 位能待的
+時段是 $[s_i, t_i)$。 最少要找幾位，才能把 $[x, y)$ 整段蓋滿，中間沒有空
+檔？ 下一位只要在前一位離開的那一刻或更早到，就接得上。
+
+貪心的做法：記住目前已經顧到哪個時刻 \texttt{reach}，一開始是 $x$。 在所有
+「開始時刻 $\le$ \texttt{reach}」的志工裡，選離開最晚的那一位，把
+\texttt{reach} 推到他離開的時刻，重複到 \texttt{reach} $\ge y$。 如果接得上
+的志工裡沒有人能把 \texttt{reach} 往後推，就是蓋不滿。
+
+這次用另一種方式說明它是對的：證明貪心一路領先。 設貪心選了 $k$ 位之後顧到
+$R_k$。 任取一種接班的方式，它用了 $k$ 位之後顧到 $r_k$。 要說明對每個 $k$
+都有 $r_k \le R_k$。
+
+\begin{itemize}
+\item $k = 1$：兩邊的第一位都必須在 $x$ 或更早到。 貪心在這些人裡選離開最晚
+的，所以 $r_1 \le R_1$。
+\item 假設 $r_k \le R_k$。 另一種方式的第 $k + 1$ 位必須在 $r_k$ 或更早到，
+所以也在 $R_k$ 或更早到，是貪心第 $k + 1$ 步會看到的人。 貪心在這些人裡選離
+開最晚的，所以 $r_{k+1} \le R_{k+1}$。
+\end{itemize}
+
+如果某種方式用 $k$ 位就蓋滿了，$y \le r_k \le R_k$，貪心用 $k$ 位也蓋滿了，
+所以貪心用的人數最少。 跟交換論證比起來，這種寫法不改動最佳解，只一步一步
+比較兩邊各走到哪裡，適合「每一步都在推進某個量」的題目。
+
+\begin{example}[label=ex:cover]{cpp}{(cover.cpp) 用最少的志工蓋滿一段時間}
+#include <algorithm>
+#include <iostream>
+#include <utility>
+#include <vector>
+using namespace std;
+
+int main() {
+    int n;
+    long long x, y;
+    cin >> n >> x >> y;
+    vector<pair<long long, long long>> iv(n);   // [s, t)
+    for (auto &[s, t] : iv) {
+        cin >> s >> t;
+    }
+    sort(iv.begin(), iv.end());                 // 依開始時刻排序
+    long long reach = x;                        // 目前顧到哪裡
+    int count = 0, i = 0;
+    while (reach < y) {
+        long long far = reach;
+        while (i < n && iv[i].first <= reach) { // 接得上的都看一遍
+            far = max(far, iv[i].second);
+            i++;
+        }
+        if (far == reach) {                     // 沒有人能往後推
+            count = -1;
+            break;
+        }
+        reach = far;                            // 選離開最晚的那一位
+        count++;
+    }
+    cout << count << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+7 0 10 \\
+0 3 \\
+1 5 \\
+2 4 \\
+4 8 \\
+5 6 \\
+7 10 \\
+6 9 \\
+}{
+4 \\
+}
+
+範例要蓋滿 $[0, 10)$。 一開始接得上的只有 $[0, 3)$，顧到 $3$；接著
+$[1, 5)$、$[2, 4)$ 接得上，選 $[1, 5)$ 顧到 $5$；再來 $[4, 8)$、$[5, 6)$
+裡選 $[4, 8)$ 顧到 $8$；最後 $[6, 9)$、$[7, 10)$ 裡選 $[7, 10)$，共 $4$ 位。
+
+\begin{itemize}
+\item \texttt{for (auto \&[s, t] : iv)} 是結構化綁定加參考（銜接書第~8~章），
+\texttt{s}、\texttt{t} 直接是 \texttt{iv} 裡每個 \texttt{pair} 的兩個成
+員，讀進來就存好了。
+\item \texttt{i} 只往前走、從不歸零。 已經看過的志工開始時刻都 $\le$ 目前的
+\texttt{reach}，以後的 \texttt{reach} 只會更大，他們不會再有用，最好的那位
+已經記在 \texttt{far} 裡。 所以內層迴圈加起來最多跑 $n$ 次，整支程式是排序
+的 $O(n \log n)$。
+\item \texttt{far == reach} 表示接得上的人都沒辦法往後推，這時一定要停下來。
+\end{itemize}
+
+\subsection{例題：全程出席的會議時段}
+\label{sec:ex-meeting}
+
+\textbf{題意}（\akiref{a-meeting-slot-nobody-leaves}{全程出席的會議時段}）
+
+\begin{itemize}
+\item 社團要開一場連續 $D$ 分鐘的線上討論會。 從第 $x$ 分鐘開始的話，會佔用
+第 $x, x + 1, \ldots, x + D - 1$ 分鐘。
+\item 有 $n$ 個小組，第 $i$ 組有 $m_i$ 人，在第 $s_i$ 到第 $t_i$ 分鐘（兩端
+都算）有空。 討論會的每一分鐘都有空，這一組才會全組參加；只要有一分鐘沒空，
+整組都不來。
+\item 求參加人數最多是多少，以及達到最多人數的最早的 $x$。 沒有任何一組能
+來時輸出 \texttt{0 0}。
+\item $n \le 2 \times 10^5$，$D$ 和時刻都到 $10^9$，$m_i \le 10^5$。
+\end{itemize}
+
+這題的時間是一分鐘一格，兩端都算，和上一小節的半開區間不同，下面的式子都照
+這個規定寫。
+
+例如 $D = 3$，四組是（$5$ 人，第 $1$～$5$ 分鐘）、（$2$ 人，第 $4$～$9$ 分
+鐘）、（$4$ 人，第 $2$～$6$ 分鐘）、（$3$ 人，第 $6$～$7$ 分鐘）。 從第 $2$
+分鐘開始，第一組和第三組都能來，共 $9$ 人；第 $3$ 分鐘開始也是 $9$ 人，但要
+輸出比較早的 $2$。
+
+\textbf{想法}
+
+最直接的做法是枚舉 $x$，每個 $x$ 檢查每一組來不來。 $x$ 可能到 $10^9$，不
+能每一分鐘都試。 只試每組的 $s_i$ 當作候選，有 $n$ 個候選、每個檢查 $n$ 組，
+是 $O(n^2)$，$n = 2 \times 10^5$ 時是 $4 \times 10^{10}$，來不及。
+
+\textbf{第一步：換成「可以從哪裡開始」。} 第 $i$ 組會來，等於討論會的第一分
+鐘和最後一分鐘都在他們的空檔裡：$s_i \le x$ 而且 $x + D - 1 \le t_i$。 也就
+是說，$x$ 落在區間 $[s_i,\ t_i - D + 1]$ 裡（兩端都算）。 如果
+$t_i - D + 1 < s_i$，空檔不到 $D$ 分鐘，這一組怎樣都來不了，直接丟掉。
+
+換過之後，問題變成：數線上有一些區間，每個區間有一個人數，找一個整數點 $x$，
+讓蓋住它的區間人數加起來最大。 注意不能直接拿原本的空閒時間 $[s_i, t_i]$
+來算重疊：上面的例子裡，第 $4$ 分鐘前三組都有空，合計 $11$ 人，可是從第 $4$
+分鐘開始的討論會要開到第 $6$ 分鐘，第一組第 $6$ 分鐘已經沒空了。
+
+\textbf{第二步：拆成端點，排序後掃描。} 每個區間 $[s_i,\ t_i - D + 1]$ 拆成
+兩個\textbf{事件}：在時刻 $s_i$ 人數加 $m_i$；在時刻 $t_i - D + 2$（第一個不
+能開始的時刻）人數減 $m_i$。 把所有事件依時刻排序，由左往右把變化量累加起來，
+累加到某個事件時的總和，就是「從這個時刻開始開會，會來幾個人」，一直維持到
+下一個事件之前。 最大值一定出現在某個事件的時刻上，所以只要看這 $2n$ 個點。
+
+同一個時刻同時有加有減時，要\textbf{先減後加}。 在時刻 $T$ 減掉的組，最晚只
+能從 $T - 1$ 開始，在 $T$ 已經不能來了；先加後減的話，會有一瞬間把兩邊的人
+都算進去。 \texttt{pair} 的預設比較先比 \texttt{first}，相同再比
+\texttt{second}，負數排在正數前面，剛好就是先減後加。
+
+題目要最早的 $x$。 由左往右掃描，總和\textbf{嚴格大於}目前的最大值時才更新，
+記下的就是第一次達到最大值的時刻。
+
+用上面的例子跑一次。 第四組 $7 - 3 + 1 = 5 < 6$，丟掉；其他三組的可開始區
+間是 $[1, 3]$、$[4, 7]$、$[2, 4]$。 事件排好之後：
+
+\begin{center}
+\begin{tabular}{cccccc}
+\toprule
+時刻 & 1 & 2 & 4 & 4 & 5 \\
+變化 & $+5$ & $+4$ & $-5$ & $+2$ & $-4$ \\
+總和 & 5 & 9 & 4 & 6 & 2 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+最後還有時刻 $8$ 的 $-2$，總和回到 $0$。 最大是 $9$，第一次出現在時刻 $2$。
+
+這題放在貪心這一章，是因為寫法和前面一樣：把東西排成一個順序，由左往右處理，
+處理過的不再回頭。 第~5~章的差分是同一個想法：在區間的開頭加、在結尾的下
+一格減。
+
+\textbf{程式}
+
+\begin{example}[label=ex:meeting]{cpp}{(meeting.cpp) 全程出席的會議時段}
+#include <algorithm>
+#include <iostream>
+#include <utility>
+#include <vector>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n;
+    long long d;
+    cin >> n >> d;
+    vector<pair<long long, long long>> ev;   // (時刻, 人數的變化)
+    for (int i = 0; i < n; i++) {
+        long long m, s, t;
+        cin >> m >> s >> t;
+        long long last = t - d + 1;          // 最晚可以從 last 開始
+        if (last < s) {
+            continue;                        // 空檔不到 d 分鐘
+        }
+        ev.push_back({s, m});                // 從 s 起可以開始
+        ev.push_back({last + 1, -m});        // 從 last + 1 起不行了
+    }
+    sort(ev.begin(), ev.end());              // 同時刻負的在前
+    long long cur = 0, best = 0, bestX = 0;
+    for (auto [at, delta] : ev) {
+        cur += delta;
+        if (cur > best) {                    // 嚴格變大才更新
+            best = cur;
+            bestX = at;
+        }
+    }
+    cout << best << ' ' << bestX << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+4 3 \\
+5 1 5 \\
+2 4 9 \\
+4 2 6 \\
+3 6 7 \\
+}{
+9 2 \\
+}
+
+\begin{itemize}
+\item \texttt{best} 和 \texttt{bestX} 一開始都是 $0$。 沒有任何一組能來時，
+迴圈裡不會更新，剛好印出題目要的 \texttt{0 0}。
+\item 人數的總和最多是 $2 \times 10^5 \times 10^5 = 2 \times 10^{10}$，超過
+\texttt{int}，所以變化量和總和都用 \texttt{long long}。
+\item \texttt{t - d + 1} 可能是負數（$d$ 比 $t$ 大很多時），用
+\texttt{long long} 算不會出問題，而且負數一定小於 $s$，這組會被丟掉。
+\end{itemize}
+
+\textbf{複雜度}
+
+$2n$ 個事件排序是 $O(n \log n)$，掃描 $O(n)$。 最大的測資在本書測試的環境
+下約 $0.05$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{沒有把空檔縮短}：直接用 $[s_i, t_i]$ 拆事件，找最多組同時有
+空的時刻。 範例的輸入會印出 \texttt{11 4}，就是上面說的第 $4$ 分鐘。
+\item \textbf{可開始區間少算一格}：最晚的開始時刻寫成 \texttt{t - d}，把兩
+端都算的空檔當成了半開區間，剛好塞得下的組被漏掉。 輸入
+\begin{code}{text}{少算一格會錯的輸入}
+4 4
+3 0 3
+6 10 12
+2 2 9
+2 6 10
+\end{code}
+正確答案是 \texttt{4 6}：從第 $6$ 分鐘開始開到第 $9$ 分鐘，第三組的空檔剛好
+到第 $9$ 分鐘。 少算一格會印出 \texttt{2 2}。
+\item \textbf{用 \texttt{>=} 更新答案}：輸入 \texttt{2 1}、\texttt{3 0 0}、
+\texttt{3 5 5}（三行）時，第 $0$ 分鐘和第 $5$ 分鐘都是 $3$ 人，應該輸出
+\texttt{3 0}。 用 \texttt{>=} 時，後面相等的時刻會蓋掉前面的，印出
+\texttt{3 5}。
+\item \textbf{同一時刻先加後減}：自己寫比較函式，同時刻時把正的排前面。 輸入
+\texttt{2 1}、\texttt{2 0 1}、\texttt{3 2 3} 時，第一組最晚從 $1$ 開始，第
+二組最早從 $2$ 開始，兩組不可能都來，答案是 \texttt{3 2}。 先加後減會在時刻
+$2$ 短暫算出 $5$ 人，印出 \texttt{5 2}。
+\item \textbf{人數用 \texttt{int}}：輸入 $2 \times 10^5$ 組、每組 $10^5$ 人、
+都在第 $0$～$10$ 分鐘有空，$D = 1$，正確答案是 \texttt{20000000000 0}。 把
+人數相關的變數都改成 \texttt{int}，在本書測試的環境下印出
+\texttt{2147465408 0}。
+\end{itemize}
+
+\section{本章常見錯誤}
+\label{sec:greedy-pitfalls}
+
+前面各節的錯誤，歸納起來是四類。 寫貪心的題目時，交出去之前逐項檢查一次。
+
+\begin{center}
+\begin{tabular}{p{0.2\linewidth}p{0.44\linewidth}p{0.24\linewidth}}
+\toprule
+錯誤 & 例子 & 見 \\
+\midrule
+沒有理由就貪 & 郵票先貼大面額；加練題先湊最多勝場 &
+第~\ref{sec:greedy-idea}、\ref{sec:ex-training}~節 \\
+排序的鍵選錯 & 區間排程依開始時間或長度排序 & 第~\ref{sec:ex-three-rules}~節 \\
+相等時的順序 & 規則 1 同開始時的次序；掃描時同一時刻先加後減；用
+\texttt{>=} 更新答案 & 第~\ref{sec:ex-three-rules}、\ref{sec:ex-meeting}~節 \\
+端點的開閉 & 半開區間用了 \texttt{<=}；兩端都算的空檔算成 \texttt{t - d} &
+第~\ref{sec:ex-three-rules}、\ref{sec:ex-meeting}~節 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+另外兩個和貪心無關、但在這一章每一題都出現的錯誤：總和超過 \texttt{int}，
+以及只用範例測資測試。 前者在動手前先估答案最大多少，後者用暴力解在小範圍對
+拍。
+
+\section{本章練習}
+\label{sec:ch7-exercises}
+
+\begin{drills}[label=drills:ch7]
+\item 校外教學要划雙人獨木舟。 每艘最多坐兩人，兩人的體重加起來不能超過
+$W$；每個人的體重都不超過 $W$。 求最少要幾艘。 下面兩個函式都先把體重由小到
+大排序：
+\begin{code}{cpp}{練習 1 的兩種寫法}
+int boatsA(vector<int> w, int cap) {
+    sort(w.begin(), w.end());
+    int i = 0, j = (int)w.size() - 1, boats = 0;
+    while (i <= j) {
+        if (i < j && w[i] + w[j] <= cap) {
+            i++;                    // 最輕的跟最重的同船
+        }
+        j--;                        // 最重的一定上船
+        boats++;
+    }
+    return boats;
+}
+
+int boatsB(vector<int> w, int cap) {
+    sort(w.begin(), w.end());
+    int n = w.size(), i = 0, boats = 0;
+    while (i < n) {
+        if (i + 1 < n && w[i] + w[i + 1] <= cap) {
+            i += 2;                 // 相鄰兩人同船
+        } else {
+            i += 1;
+        }
+        boats++;
+    }
+    return boats;
+}
+\end{code}
+其中一個是對的，另一個會錯。 找出錯的那一個並給一組反例；對的那一個，用交換
+論證說明為什麼對。
+
+\item 下面每一條貪心規則，判斷它是否一定能得到最佳解。 會錯的，給一組反例。
+\begin{enumerate}
+\item 郵票只有 $1$ 元、$7$ 元、$10$ 元，要剛好貼滿 $n$ 元且張數最少，每次先
+貼面額最大、還貼得下的。（找出最小的反例金額。）
+\item 背包最多裝重量 $W$，每件物品有重量和價值，每件最多拿一次，要總價值最大。
+依「價值除以重量」由大到小，放得下就放。
+\item 區間排程（第~\ref{sec:interval-scheduling}~節），依開始時間由晚到早排序，
+和已經選到的都不重疊就選。
+\item 第~\ref{sec:ex-training}~節的加練問題，對手由強到弱，每位都派剩下的社
+員裡最強的那一位去打。
+\end{enumerate}
+
+\item 估計下列程式的執行次數或時間複雜度。
+\begin{enumerate}
+\item 範例~\ref{ex:cover} 的內層 \texttt{while} 迴圈（\texttt{far = max(...)}
+那一行）在整支程式裡最多執行幾次？ 外層迴圈呢？
+\item 範例~\ref{ex:three-rules} 的 $n = 2000$ 時，一次 \texttt{pickInOrder}
+最多呼叫 \texttt{overlap} 幾次？ 什麼樣的輸入會達到這個次數？
+\item 下面的程式片段，\texttt{a} 已經由小到大排好。 最壞情況下
+\texttt{j++} 執行幾次？ 和 (a) 比較，差在哪裡？
+\begin{code}{cpp}{練習 3(c)}
+for (int i = 0; i < n; i++) {
+    int j = i;
+    while (j < n && a[j] <= a[i] + k) {
+        j++;
+    }
+    best = max(best, j - i);
+}
+\end{code}
+\end{enumerate}
+
+\item 有八筆申請：\#1 $[1, 4)$、\#2 $[3, 5)$、\#3 $[0, 6)$、\#4 $[5, 7)$、
+\#5 $[3, 9)$、\#6 $[5, 9)$、\#7 $[6, 10)$、\#8 $[8, 11)$。
+\begin{enumerate}
+\item 寫出規則 3 的檢查順序，以及依序選到哪幾筆。
+\item 範例~\ref{ex:three-rules} 對這組輸入會印出什麼？
+\end{enumerate}
+
+\item 有人把範例~\ref{ex:meeting} 的排序改成只比時刻：
+\begin{code}{cpp}{練習 5}
+sort(ev.begin(), ev.end(),
+     [](const pair<long long, long long> &p,
+        const pair<long long, long long> &q) {
+         return p.first < q.first;
+     });
+\end{code}
+範例的輸入仍然印出 \texttt{9 2}。 這樣改有什麼問題？ 給一組可能會錯的輸入。
+
+\item 有 $n$ 位同學排隊問助教問題，第 $i$ 位要花 $t_i$ 分鐘。 每位同學的等待
+時間是排在他前面的人花的時間總和。 證明依 $t_i$ 由小到大排隊，所有人的等待
+時間總和最小。 提示：比較相鄰兩個人互換前後，總和差多少。
+\end{drills}
+
+\section{實作練習}
+\label{sec:ch7-practice}
+
+下面是 Aki-Judge 上和本章相關的題目，依小節分組。 難度分四階：暖身是直接套用
+本章的寫法；基本要自己想出排序的鍵或證明；實戰的題敘比較長，要先把題目轉換成
+本章的形狀；挑戰會和其他章的技巧合在一起。
+
+\begin{center}
+\begin{tabular}{llc}
+\toprule
+小節 & 題目 & 難度 \\
+\midrule
+排序與交換論證 & \akiref{full-crates-only}{整箱出貨} & 暖身 \\
+ & \akiref{assigning-cleaning-zones}{打掃區域分配} & 暖身 \\
+ & \akiref{rush-jobs-for-the-3d-printer}{3D 列印機的臨時插件} & 基本 \\
+ & \akiref{ordering-multiply-add-and-add-multiply-cards}{乘加卡與加乘卡的出牌順序} & 基本 \\
+ & \akiref{total-waiting-time-at-the-checkup-stations}{健康檢查站的總等待時間} & 基本 \\
+ & \akiref{enhancement-stone-allocation}{強化石的使用次數} & 基本 \\
+ & \akiref{which-report-goes-first}{哪一份可以先寫} & 實戰 \\
+ & \akiref{the-shop-that-keeps-raising-prices}{越買越貴的商店} & 實戰 \\
+ & \akiref{fewest-swaps-to-a-least-complaint-line}{把隊伍調成最少抱怨} & 挑戰 \\
+\midrule
+區間排程 & \akiref{walking-between-fair-booths}{園遊會攤位的移動時間} & 暖身 \\
+ & \akiref{the-talk-you-must-attend}{非聽不可的那一場講座} & 基本 \\
+ & \akiref{highlighting-keywords-in-notes}{筆記上的螢光筆標記} & 基本 \\
+ & \akiref{earliest-time-to-collect-k-stamps}{集滿 K 枚印章的最早時刻} & 基本 \\
+ & \akiref{overnight-duty-shifts}{跨夜的值班時段} & 實戰 \\
+ & \akiref{most-on-target-periods}{切出最多個達標時段} & 實戰 \\
+\midrule
+區間覆蓋與掃描 & \akiref{fewest-recruitment-posts}{招生貼文的最少則數} & 暖身 \\
+ & \akiref{saving-power-on-the-hallway-lights}{走廊感應燈省電開法} & 暖身 \\
+ & \akiref{volunteers-for-the-tagged-shelf-spots}{處理所有待整理書位的志工} & 基本 \\
+ & \akiref{relay-shifts-at-the-announcement-booth}{廣播台的值班接力} & 基本 \\
+ & \akiref{fewest-trips-for-the-health-check-van}{健檢巡迴車的最少出車次數} & 實戰 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+本章的三題例題也在 Aki-Judge 上，讀完各節之後可以先自己寫一次再對照。
+
+\addcontentsline{toc}{section}{練習解答}
+\section*{練習解答}
+
+\begin{enumerate}
+\item \texttt{boatsB} 會錯。 $W = 10$，體重 $1, 2, 8, 9$：\texttt{boatsB}
+讓 $1$ 和 $2$ 同船，$8$、$9$ 各自一艘，共 $3$ 艘；$1$ 配 $9$、$2$ 配 $8$ 只
+要 $2$ 艘。 它把兩個輕的人放在一起，重的人就找不到伴了。
+
+\texttt{boatsA} 是對的。 看目前最重的人 $h$ 和最輕的人 $\ell$。
+\begin{itemize}
+\item $h + \ell > W$：$h$ 和誰都不能同船，任何分法裡他都獨自一艘。
+\texttt{boatsA} 也讓他獨自一艘。
+\item $h + \ell \le W$：任取一個最佳的分法。 如果 $h$ 獨自一艘，把 $\ell$
+移過來，艘數不會變多。 如果 $h$ 和 $z$ 同船、$\ell$ 獨自一艘，把 $\ell$ 和
+$z$ 互換。 如果 $h$ 和 $z$ 同船、$\ell$ 和 $u$ 同船，也把 $\ell$ 和 $z$ 互
+換：新的兩艘是 $h + \ell \le W$，以及 $z + u \le z + h \le W$（$u$ 不比
+$h$ 重）。 換完艘數不變，而且 $h$ 和 $\ell$ 同船，和 \texttt{boatsA} 一樣。
+\end{itemize}
+兩種情況下，\texttt{boatsA} 對 $h$ 的處理都和某個最佳分法一致；剩下的人是同
+樣的問題，同樣的理由一直用下去。
+
+\item
+\begin{enumerate}
+\item 會錯，最小的反例是 $14$ 元：貪心貼 $10 + 1 + 1 + 1 + 1$ 共 $5$ 張，
+兩張 $7$ 元就夠了。 把範例~\ref{ex:stamps} 的面額改成 $10, 7, 1$、範圍改到
+$30$ 跑一次，第一行就是 \texttt{14 5 2}。
+\item 會錯。 $W = 10$，三件物品（重量 $6$、價值 $7$）、（$5$, $5$）、
+（$5$, $5$）。 第一件的價值除以重量最大，先放進去之後只剩 $4$，別的都放不下，
+總價值 $7$；拿兩件重量 $5$ 的是 $10$。 這題要用第~9~章的動態規劃（銜接書
+第~10~章練習 3 的 0/1 背包）。
+\item 對。 把時間軸左右翻轉（每個時刻 $x$ 換成 $-x$），開始最晚的就變成結
+束最早的，這條規則就變成規則 3；翻轉不會改變哪兩筆重疊，所以選到的筆數和規
+則 3 一樣多。
+\item 對。 最強的對手配最強的社員，第二強的配第二強的，一路下去，用到的剛好
+是最強的 $m$ 位社員，而且依名次配對，和範例~\ref{ex:training} 的安排完全相
+同，只是從強的那一端開始配。
+\end{enumerate}
+
+\item
+\begin{enumerate}
+\item \texttt{far = max(...)} 最多執行 $n$ 次。 每執行一次，\texttt{i} 就加
+$1$，而 \texttt{i} 從 $0$ 開始、從不減少、不超過 $n$。 外層迴圈除了最後一
+次以外，每一次都要看到至少一位新的志工才能把 \texttt{reach} 往後推（舊的志
+工都已經算在之前的 \texttt{far} 裡），所以最多 $n + 1$ 次。 排序之後的部分
+是 $O(n)$，整支程式是 $O(n \log n)$。
+\item 最多 $n(n - 1)/2 = 1999000$ 次。 每一筆申請都被選到時，第 $i$ 筆要和
+前面選到的 $i - 1$ 筆全部比過，中途不會 \texttt{break}。 兩兩不重疊的輸入
+就會這樣，例如 $[0, 1)$、$[1, 2)$、\ldots、$[1999, 2000)$。
+\item 所有 \texttt{a[i]} 都相同時，每個 \texttt{i} 的 \texttt{j} 都從
+\texttt{i} 走到 \texttt{n}，共 $n + (n - 1) + \cdots + 1 = n(n + 1)/2$ 次，
+是 $O(n^2)$。 (a) 的 \texttt{i} 不會歸零，這裡的 \texttt{j} 每一輪都從
+\texttt{i} 重新開始。 \texttt{a} 排好之後，\texttt{i} 變大時 \texttt{j} 能
+走到的地方不會變小，所以把 \texttt{int j = i;} 移到迴圈外面、寫成
+\texttt{int j = 0;}，\texttt{j} 只往前走，總共 $O(n)$。 這是第~5~章雙指標的
+寫法。
+\end{enumerate}
+
+\item
+\begin{enumerate}
+\item 依結束時間排序，同結束時開始晚的在前：\#1、\#2、\#3、\#4、\#6、\#5、
+\#7、\#8。 選 \#1 $[1, 4)$；\#2、\#3 都和 \#1 重疊；選 \#4 $[5, 7)$；\#6、
+\#5、\#7 都和 \#4 重疊；選 \#8 $[8, 11)$。 選到 \#1、\#4、\#8 三筆。
+\item \texttt{2 3 3}。 規則 1 先選 $[0, 6)$，接著 $[6, 10)$，$[8, 11)$ 和它
+重疊，共 $2$ 筆。 規則 2 依長度看 \#2、\#4、\#1、\#8、\ldots，選到 \#2
+$[3, 5)$、\#4 $[5, 7)$、\#8 $[8, 11)$ 三筆。
+\end{enumerate}
+
+\item 只比時刻，同一個時刻的加和減誰先誰後就沒有規定，可能先加後減，把不能
+同時來的兩組算在一起。 輸入
+\begin{code}{text}{練習 5 會錯的輸入}
+2 1
+3 2 3
+2 0 1
+\end{code}
+正確答案是 \texttt{3 2}，在本書測試的環境下這樣改會印出 \texttt{5 2}。 把兩
+組的順序對調，又會印出正確的答案：結果取決於輸入順序和 \texttt{sort} 內部
+怎麼做，所以範例剛好過了也不代表對。 用 \texttt{pair} 預設的比較，或在時刻
+相同時比 \texttt{second}，就固定是先減後加。
+
+\item 任取一種排法，假設有相鄰的兩人 $i$、$j$，$i$ 在前，而且 $t_i > t_j$。
+設排在他們前面的人總共花了 $P$ 分鐘。 互換前，$i$ 等 $P$、$j$ 等
+$P + t_i$；互換後，$j$ 等 $P$、$i$ 等 $P + t_j$。 排在他們前面的人不受影
+響；排在後面的人，前面多的仍然是 $t_i + t_j$，也不受影響。 所以總和的變化是
+$(2P + t_j) - (2P + t_i) = t_j - t_i < 0$，互換之後嚴格變小。 只要還有相鄰
+的兩人是長的在前，就能再變小，所以總和最小的排法一定沒有這種情形，也就是
+由小到大排好（時間相同的人誰先都一樣）。 這種只比較相鄰兩個的寫法，是排序
+類貪心最常用的交換論證。
+\end{enumerate}

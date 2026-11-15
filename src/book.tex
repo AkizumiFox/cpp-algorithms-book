@@ -1,0 +1,92 @@
+\documentclass[12pt]{report}
+
+% ---------------------------------------------------------------
+% 字型與中文排版
+% ---------------------------------------------------------------
+% 作者在 macOS 上用 Times New Roman／Songti TC／PingFang TC；
+% 其他系統（例如 Linux）找不到這些字型時，改用 TeX Gyre Termes 與
+% Noto Serif／Sans CJK TC，同一份原始碼兩邊都能編。
+\usepackage{fontspec}
+\usepackage{xeCJK}
+\IfFontExistsTF{Times New Roman}
+    {\setmainfont{Times New Roman}}
+    {\setmainfont{TeX Gyre Termes}}
+\IfFontExistsTF{Songti TC}
+    {\setCJKmainfont{Songti TC}}
+    {\setCJKmainfont{Noto Serif CJK TC}}
+\IfFontExistsTF{PingFang TC}
+    {\setCJKsansfont{PingFang TC}}
+    {\setCJKsansfont{Noto Sans CJK TC}}
+% 等寬字用 Latin Modern Mono。它不是系統字型，只在 TeX Live 樹裡；
+% 用「檔名＋副檔名」讓 XeTeX 透過 kpathsea 找檔案，不寫死 TeX Live
+% 的年份路徑。
+\setmonofont{lmmono10-regular}[
+    Extension = .otf,
+    AutoFakeBold = 2.5,
+]
+
+% ---------------------------------------------------------------
+% 本書排版套件（packages/ 目錄）
+% ---------------------------------------------------------------
+\usepackage{sleek}
+\usepackage{sleek-theorems}
+\usepackage{sleek-code}
+\usepackage{sleek-diagrams}
+\usepackage{sleek-recap}
+\usepackage{sleek-aki}
+% 注意：sleek-listings.sty 不載入——它是舊版 lstlistings/inconsolata 排版套件，
+% 本書實際用的是 sleek-code.sty 的 minted 版 code/example 環境，兩者同時載入會讓
+% minted 抓不到 \setmonofont 設定的等寬字（回退成 Latin Modern Roman），
+% 且會讓程式碼裡的直引號被轉成全形彎引號。
+
+% 章節標題中文化：「第 N 章」
+\usepackage{titlesec}
+\titleformat{\chapter}{\normalfont\huge\bfseries}{第~\thechapter~章}{1em}{}
+\titlespacing*{\chapter}{0pt}{-20pt}{20pt}
+
+% 行內程式碼（\texttt）不能斷行，段落裡出現較長的識別字時容易凸出右邊界；
+% 允許 TeX 多拉開一點字距來排版。
+\setlength{\emergencystretch}{3em}
+
+\title{C++ 演算法解題：從 APCS 實作題開始}
+\author{林子祐}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\romantableofcontents
+
+% ---------------------------------------------------------------
+% 各章內容放在 "chapters/<單元>/chapter.tex"。
+% 尚未動筆的章先註解掉，整本書才編得過。
+% ---------------------------------------------------------------
+
+% 第一部：APCS 實作題核心
+% \input{chapters/01_Preparation/chapter}
+% \input{chapters/02_Sorting/chapter}
+% \input{chapters/03_BinarySearchAnswer/chapter}
+% \input{chapters/04_EnumerationSimulation/chapter}
+% \input{chapters/05_PrefixSumsTwoPointers/chapter}
+% \input{chapters/06_StacksQueuesHeaps/chapter}
+% 前六章還沒寫，先把章號推到 6，第 7 章才會編成「第 7 章」。
+% 前六章取消註解時，刪掉下一行。
+\setcounter{chapter}{6}
+\input{chapters/07_Greedy/chapter}
+% \input{chapters/08_RecursionDivideConquer/chapter}
+% \input{chapters/09_DP1D/chapter}
+% \input{chapters/10_DPGrids/chapter}
+% \input{chapters/11_Graphs/chapter}
+% \input{chapters/12_GridStateBFS/chapter}
+% \input{chapters/13_Trees/chapter}
+% \input{chapters/14_Capstone/chapter}
+
+% 第二部：APCS 高級主題
+% \input{chapters/15_Knapsack/chapter}
+% \input{chapters/16_SubsequenceDP/chapter}
+% \input{chapters/17_IntervalDP/chapter}
+% \input{chapters/18_DAGTopo/chapter}
+% \input{chapters/19_DSUCyclesBipartite/chapter}
+% \input{chapters/20_TreeDP/chapter}
+
+\end{document}
