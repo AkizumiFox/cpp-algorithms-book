@@ -1,4 +1,1443 @@
-% 佔位：本章尚未開始。book.tex 裡先註解掉。
 \chapter{樹}
+\label{ch:trees}
 
-本章尚未開始。
+% 本章的圖共用的樣式（點、強調的點、第二焦點、邊）
+\tikzset{
+    tv/.style={circle, draw=black!60, thick, minimum size=0.72cm, inner sep=0pt, font=\small},
+    tvhl/.style={tv, draw=memStroke, fill=memFill},
+    tvalt/.style={tv, draw=optStroke, fill=optFill},
+    te/.style={thick, draw=black!60},
+    tehl/.style={very thick, draw=memStroke},
+    tlbl/.style={font=\scriptsize, text=black!60},
+}
+
+過年回老家，長輩拿出一本族譜。 最上面是開基祖，每個人底下連著自己的子女，一
+代接一代往下畫。 你想知道三件事：自己是第幾代、整本族譜一共傳了幾代、某位叔公
+這一房（他和他所有的子孫）一共有幾個人。 族譜如果只寫了「每個人的父親是誰」，
+你會怎麼算？ 往下讀之前，先想一想第一件事和第三件事，哪一件要從上往下算，哪
+一件要從下往上算。
+
+自己是第幾代，只要知道父親是第幾代再加一，所以從開基祖往下一代一代算。 一房
+有幾個人，要先知道每個子女那一房有幾個人，再加上自己，所以要從最下面往上算。
+這兩個方向是這一章的骨架：族譜、公司的組織、電腦的資料夾、城市的自來水管網，
+畫出來都是同一種形狀，叫\textbf{樹}（tree）。
+
+這一章先講樹的名詞和兩種存法，再講輸入只給「誰和誰相連」、沒有說誰是上層時，
+怎麼自己定出上下關係。 接著是由上往下算深度、由下往上算高度和子樹的大小，並
+且整理出一個不用遞迴的由下往上順序。 後半講兩個在樹上很常用的結論：一條邊被
+多少對點的路徑經過，以及樹上最遠的兩點（樹直徑）怎麼用兩次走訪找到。 最後簡
+單看一下二元樹的三種走訪順序，並預告第~20~章的樹形動態規劃。
+
+這一章會一直用到前面三章的東西。 第~6~章的例題「層層彙整的報告」已經用佇列
+由下往上算過一棵樹；第~8~章量過遞迴可以多深；第~11~章講過 BFS、DFS，以及遞迴
+太深時怎麼改成迴圈。 這些不再重講，用到時會指回去。 語法上只需要
+\texttt{vector<vector<int>>} 和 \texttt{pair}（銜接書第~8~章）。 沒讀過銜接書的讀
+者，只要會用 \texttt{vector} 存鄰接串列、會寫 BFS，就能讀這一章。
+
+\section{有根樹的名詞與存法}
+\label{sec:tree-terms}
+
+第~11~章的圖可以有環，兩點之間也可能有好幾條路。 \textbf{樹}是沒有環、而且連
+通的無向圖。 $n$ 個點的樹有下面幾個性質，它們其實互相等價，知道其中兩三個就
+能推出其他的：
+
+\begin{itemize}
+\item 剛好有 $n - 1$ 條邊。 一個連通的圖至少要 $n - 1$ 條邊；剛好 $n - 1$ 條時
+不會有環，多一條就一定有環。
+\item 任兩點之間剛好只有一條路徑（不重複經過點）。 有兩條的話，兩條路合起來就
+繞成一個環。
+\item 拿掉任何一條邊，樹就斷成兩塊。 這一點第~\ref{sec:tree-edge}~節會用到。
+\end{itemize}
+
+題目常常寫「$n$ 個點、$n - 1$ 條邊，任兩點都能到達」，或「任兩點之間的路線只
+有一條」，這兩種說法都是在說輸入是一棵樹。
+
+\subsection{有根樹}
+
+族譜、組織圖都有一個明確的頂端。 在樹上指定一個點當作\textbf{根}（root），
+其他點都掛在它下面，就是\textbf{有根樹}（rooted tree）。 下圖是章首的族譜，
+九個人編號 $1$ 到 $9$，開基祖是 $4$ 號：
+
+\begin{center}
+\begin{tikzpicture}[x=1.15cm, y=1.05cm]
+\node[tvhl] (4) at (3,3) {4};
+\node[tv] (2) at (1.4,2) {2};
+\node[tv] (7) at (3,2) {7};
+\node[tv] (9) at (4.6,2) {9};
+\node[tv] (1) at (0.6,1) {1};
+\node[tv] (5) at (2.2,1) {5};
+\node[tv] (3) at (3,1) {3};
+\node[tv] (6) at (1.6,0) {6};
+\node[tv] (8) at (2.8,0) {8};
+\foreach \a/\b in {4/2, 4/7, 4/9, 2/1, 2/5, 7/3, 5/6, 5/8} {\draw[te] (\a) -- (\b);}
+\foreach \y/\d in {3/0, 2/1, 1/2, 0/3} {\node[tlbl, anchor=east] at (-0.6,\y) {深度 \d};}
+\end{tikzpicture}
+\diagcaption{章首的族譜。 根是 $4$；左邊標出每一層的深度。}
+\label{fig:tree-family}
+\end{center}
+
+用這張圖說明名詞：
+
+\begin{itemize}
+\item 一條邊連著的兩個點，上面那個是下面那個的\textbf{父節點}（parent），下面
+的是上面的\textbf{子節點}（child）。 $2$ 的父節點是 $4$，子節點是 $1$、$5$。
+根沒有父節點，其他每個點都剛好有一個。
+\item 沒有子節點的點叫\textbf{葉}（leaf），圖上是 $1$、$3$、$6$、$8$、$9$。
+同一個父節點底下的點互為\textbf{兄弟}（sibling）。
+\item 從某個點一直往上走到根，路上經過的點都是它的\textbf{祖先}（ancestor）；
+反過來，它是那些點的\textbf{後代}（descendant）。 $6$ 的祖先是 $5$、$2$、$4$。
+\item 一個點和它所有的後代，合起來叫做以它為根的\textbf{子樹}（subtree）。 $2$
+的子樹是 $\{2, 1, 5, 6, 8\}$，共 $5$ 個點。 章首問的「叔公這一房」，就是叔公的子
+樹。
+\item 根到一個點的路徑有幾條邊，叫這個點的\textbf{深度}（depth）。 根的深度是
+$0$，$6$ 的深度是 $3$。
+\item 從一個點往下走到最遠的葉要幾條邊，叫這個點的\textbf{高度}（height）。 葉
+的高度是 $0$，$2$ 的高度是 $2$（$2 \to 5 \to 6$）。 根的高度就是整棵樹的高度，
+這裡是 $3$。
+\end{itemize}
+
+深度和高度有些題目從 $1$ 開始數（根是「第 $1$ 代」），有些數的是點而不是邊。
+本書一律從 $0$ 開始數邊，讀題時先確認題目的定義，差一就是答案錯。
+
+把每條邊想成從父節點指向子節點，有根樹就是第~9~章的有向無環圖，由上往下或由
+下往上的計算都是照先後順序算。
+
+\subsection{兩種存法}
+
+有根樹最常見的兩種存法：
+
+\begin{itemize}
+\item \textbf{父節點陣列}：\texttt{parent[v]} 是 $v$ 的父節點，根填 $0$。 一個
+陣列就存下整棵樹，很多題目的輸入直接就是這個陣列。 從一個點往上走到根很容易，
+一直做 \texttt{v = parent[v]} 就好；但想知道一個點的子節點有哪些，得把整個陣列
+翻一遍。
+\item \textbf{子節點串列}：\texttt{children[v]} 是一個 \texttt{vector}，放 $v$
+的所有子節點。 寫法和第~11~章的鄰接串列一樣，只是每條邊只存「父指向子」一個方
+向。 由上往下走訪要用它。
+\end{itemize}
+
+圖~\ref{fig:tree-family} 的父節點陣列是
+
+\begin{center}
+\begin{tabular}{c|ccccccccc}
+\toprule
+$v$ & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 \\
+\midrule
+\texttt{parent[v]} & 2 & 4 & 7 & 0 & 2 & 5 & 4 & 5 & 4 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+從父節點陣列建子節點串列，順便找出根：
+
+\begin{code}{cpp}{由父節點陣列建子節點串列}
+int root = 0;
+for (int v = 1; v <= n; v++) {
+    if (parent[v] == 0) {
+        root = v;                       // 沒有父節點的就是根
+    } else {
+        children[parent[v]].push_back(v);
+    }
+}
+\end{code}
+
+依 $v = 1, 2, \ldots$ 的順序加入，每個串列裡的子節點是由小到大排好的，例如
+\texttt{children[4]} 是 $2, 7, 9$。
+
+注意這張表的根是 $4$，不是 $1$；$1$ 號的父節點 $2$ 反而比它大。 題目沒有明說
+的話，根不一定是 $1$，父節點的編號也不一定比子節點小，第~6~章「層層彙整的報
+告」的常見錯誤就是吃了這個虧。
+
+有些題目反過來，給每個點的子節點名單（先給個數，再列出編號），這時可以直接存成
+\texttt{children}；要找根，就找哪一個點沒有出現在任何人的名單裡。 做法是開一
+個陣列記錄「當過子節點」，最後沒被記錄的那一個就是根。
+
+\begin{apcsnote}
+樹的題目在找根和編號上常有陷阱：根不一定是 $1$、父節點的編號不一定比較小、
+$n$ 可能等於 $1$（沒有任何邊）。 寫完之後，至少用三組自己造的輸入測試：只有一
+個點、一條很長的鏈、根的編號在最後面。
+\end{apcsnote}
+
+\section{給無向邊時怎麼定根}
+\label{sec:tree-rooting}
+
+更常見的輸入是 $n - 1$ 行「$u$ $v$」，只說這兩點之間有一條邊，沒說誰是父節點。
+這時先照第~11~章存成無向的鄰接串列，再自己挑一個根（題目指定的，或任選一個，
+例如 $1$），從根出發走一遍，走的時候把每條邊定成「先走到的那一端是父節點」。
+
+在樹上走訪，不需要第~11~章的 \texttt{seen} 陣列。 從父節點走到 $u$ 之後，$u$
+的鄰居只有兩種：它的父節點，和它的子節點。 如果還有別的鄰居先前已經走過，就表
+示有兩條路通到那個點，樹上不可能。 所以只要「不走回父節點」，就不會重複走到同
+一個點：
+
+\begin{code}{cpp}{從根出發做 BFS，定出父節點和走訪順序}
+vector<int> parent(n + 1, 0);
+vector<int> order = {root};             // 同時是佇列和走訪順序
+for (int i = 0; i < (int)order.size(); i++) {
+    int u = order[i];
+    for (int v : adj[u]) {
+        if (v != parent[u]) {           // 不走回父節點
+            parent[v] = u;
+            order.push_back(v);
+        }
+    }
+}
+\end{code}
+
+這段程式用一個 \texttt{vector} 加上索引 \texttt{i} 當佇列，代替
+\texttt{queue}：\texttt{i} 指著目前要處理的點，新的點接在尾端。 每個點只會被放進去一
+次，迴圈結束時 \texttt{order} 剛好裝著 $n$ 個點，順序就是 BFS 拜訪的順序。 東
+西不從前面拿掉，是因為下一節要再用一次這個順序。
+
+根的 \texttt{parent} 是 $0$，而點從 $1$ 編號，不會有鄰居剛好是 $0$，所以根的
+每個鄰居都會被當成子節點。 如果點從 $0$ 編號，根的父節點要改成 $-1$。
+
+走訪的同時就能由上往下算深度：在 \texttt{parent[v] = u;} 後面加一行
+\texttt{depth[v] = depth[u] + 1;}。 處理 $u$ 時它的深度已經算好，因為 $u$ 是從
+它的父節點那裡放進來的，父節點比它早處理。 同樣的寫法可以算「從根沿路累加」的
+任何量，例如根到每個點的路線總長。
+
+\subsection{遞迴的寫法}
+
+用遞迴寫，就是多傳一個參數記住「從哪裡來」：
+
+\begin{code}{cpp}{遞迴走訪，不走回來的地方}
+void dfs(int u, int from) {
+    parent[u] = from;
+    for (int v : adj[u]) {
+        if (v != from) {
+            depth[v] = depth[u] + 1;
+            dfs(v, u);
+        }
+    }
+}
+// 呼叫：dfs(root, 0);
+\end{code}
+
+它比 BFS 短，但深度和樹的高度一樣。 一條 $2 \times 10^5$ 個點的鏈，從一端出發
+就要疊 $2 \times 10^5$ 層，照第~8~章量過的上限會當掉（第~\ref{sec:ex-roads}~小
+節有實測）。 這一章的例題 $n$ 都到 $2 \times 10^5$，一律用上面的 BFS 順序；需
+要遞迴的「離開」時機時，用第~11~章的改法二。
+
+\subsection{例題：聯絡網找發起人}
+\label{sec:ex-phonetree}
+
+\textbf{題意}（\akiref{who-started-the-phone-tree}{聯絡網找發起人}）
+
+\begin{itemize}
+\item 班上有 $n$ 位同學，緊急聯絡網是一棵有根樹：發起人先打電話給自己負責的
+「下線」，每個人接到電話後再打給自己的下線。 除了發起人，每個人剛好有一位
+「上線」。
+\item 原始名單弄丟了，只剩 $n - 1$ 筆通話紀錄「$u$ $v$」（兩人之間直接通過話，
+不知道誰打給誰），以及每位同學回報的下線人數 $c_i$。
+\item 保證剛好有一種發起人的選法，讓每個人的下線數都等於 $c_i$。 輸出發起人，
+以及每位同學的上線（發起人輸出 $0$）。
+\item $n \le 2 \times 10^5$。
+\end{itemize}
+
+例如下圖左邊是 $8$ 位同學的通話紀錄，每個點旁邊標著回報的 $c_i$。 發起人是
+$6$，定好方向後是右邊的樣子：$6$ 只打給 $3$，$3$ 再打給 $1$、$5$、$8$。
+
+\begin{center}
+\begin{tikzpicture}[x=1.1cm, y=1.0cm]
+\begin{scope}
+\node[font=\small] at (2,3.2) {通話紀錄（沒有方向）};
+\node[tv] (3) at (2,1.5) {3};
+\node[tv] (1) at (0.8,2.4) {1};
+\node[tv] (6) at (3.2,2.4) {6};
+\node[tv] (5) at (1,0.7) {5};
+\node[tv] (8) at (3,0.7) {8};
+\node[tv] (2) at (0.2,-0.3) {2};
+\node[tv] (7) at (1.6,-0.3) {7};
+\node[tv] (4) at (3.4,-0.3) {4};
+\foreach \a/\b in {3/1, 5/3, 6/3, 2/5, 5/7, 8/3, 4/8} {\draw[te] (\a) -- (\b);}
+\foreach \v/\c in {1/0, 5/2} {\node[tlbl, left] at (\v.west) {$c = \c$};}
+\foreach \v/\c in {3/3, 6/1, 8/1} {\node[tlbl, right] at (\v.east) {$c = \c$};}
+\foreach \v/\c in {2/0, 7/0, 4/0} {\node[tlbl, below] at (\v.south) {$c = \c$};}
+\end{scope}
+\begin{scope}[xshift=6cm]
+\node[font=\small] at (2,3.2) {以 6 為根};
+\node[tvhl] (6) at (2,2.4) {6};
+\node[tv] (3) at (2,1.5) {3};
+\node[tv] (1) at (0.8,0.6) {1};
+\node[tv] (5) at (2,0.6) {5};
+\node[tv] (8) at (3.2,0.6) {8};
+\node[tv] (2) at (1.5,-0.3) {2};
+\node[tv] (7) at (2.5,-0.3) {7};
+\node[tv] (4) at (3.2,-0.3) {4};
+\foreach \a/\b in {6/3, 3/1, 3/5, 3/8, 5/2, 5/7, 8/4} {\draw[te] (\a) -- (\b);}
+\end{scope}
+\end{tikzpicture}
+\diagcaption{左：通話紀錄和每人回報的下線數。 右：以發起人 $6$ 為根定出上下關係。}
+\label{fig:tree-phone}
+\end{center}
+
+\textbf{想法}
+
+如果知道發起人，就是上一段的 BFS：從發起人出發，不走回上線，每個人的上線就是
+\texttt{parent}。 問題只剩下：發起人是誰？
+
+最直接的做法是每個人都試一次：假設他是發起人，做一次 BFS 定出方向，再檢查每個
+人的下線數是不是 $c_i$。 一次 $O(n)$，試 $n$ 個人是 $O(n^2)$，$n = 2 \times
+10^5$ 時是 $4 \times 10^{10}$，來不及。 不過它很適合拿來對拍。
+
+一個看起來合理的猜法是「下線最多的人是發起人」，畢竟他在最上面。 圖
+~\ref{fig:tree-phone} 就是反例：$3$ 要打三通電話，是最忙的人，但發起人是只打
+一通的 $6$。 下線多少和在不在最上面沒有關係。
+
+換個方向想：每個人在通話紀錄裡出現幾次（度數），和下線數有什麼關係？ 一個不是
+發起人的人，通過電話的對象是他的上線加上所有下線，所以度數 $= c_i + 1$。 發起
+人沒有上線，度數 $= c_i$。 所以只要找度數剛好等於 $c_i$ 的那個人。 題目保證答
+案存在，真正的發起人一定滿足這個條件，其他人的度數都比 $c_i$ 多一，不會被誤認。
+
+圖~\ref{fig:tree-phone} 的度數和 $c_i$：
+
+\begin{center}
+\begin{tabular}{c|cccccccc}
+\toprule
+同學 & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
+\midrule
+度數 & 1 & 1 & 4 & 1 & 3 & 1 & 1 & 2 \\
+$c_i$ & 0 & 0 & 3 & 0 & 2 & 1 & 0 & 1 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+只有 $6$ 的兩個數相等。
+
+同樣的模型也出現在別的地方：網路設備只留下「哪兩台之間有線」的紀錄，要從某台
+主機回推每台設備的上游；水管網只記錄管子接在哪兩個閥門之間，要從水塔定出每段
+管子的水流方向。
+
+\textbf{程式}
+
+\begin{example}[label=ex:phonetree]{cpp}{(phonetree.cpp) 聯絡網找發起人}
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n;
+    cin >> n;
+    vector<int> c(n + 1);
+    for (int v = 1; v <= n; v++) {
+        cin >> c[v];
+    }
+    vector<vector<int>> adj(n + 1);
+    for (int i = 0; i < n - 1; i++) {
+        int u, v;
+        cin >> u >> v;
+        adj[u].push_back(v);
+        adj[v].push_back(u);
+    }
+
+    int root = 0;
+    for (int v = 1; v <= n; v++) {
+        if ((int)adj[v].size() == c[v]) {   // 沒有上線
+            root = v;
+        }
+    }
+
+    // 從根做 BFS，把每條邊定成「上線 → 下線」
+    vector<int> parent(n + 1, 0);
+    vector<int> order = {root};
+    for (int i = 0; i < (int)order.size(); i++) {
+        int u = order[i];
+        for (int v : adj[u]) {
+            if (v != parent[u]) {           // 不走回上線
+                parent[v] = u;
+                order.push_back(v);
+            }
+        }
+    }
+
+    cout << root << '\n';
+    for (int v = 1; v <= n; v++) {
+        cout << parent[v] << (v == n ? '\n' : ' ');
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+8 \\
+0 0 3 0 2 1 0 1 \\
+3 1 \\
+5 3 \\
+6 3 \\
+2 5 \\
+5 7 \\
+8 3 \\
+4 8 \\
+}{
+6 \\
+3 5 6 8 3 0 5 3 \\
+}
+
+BFS 從 $6$ 出發，每一輪處理 \texttt{order[i]}：
+
+\begin{center}
+\begin{tabular}{cclll}
+\toprule
+\texttt{i} & 處理 & 鄰居 & 新的子節點 & \texttt{order} \\
+\midrule
+ & & & & 6 \\
+0 & 6 & 3 & 3 & 6 3 \\
+1 & 3 & 1、5、6、8 & 1、5、8（6 是上線，跳過）& 6 3 1 5 8 \\
+2 & 1 & 3 & 無 & 6 3 1 5 8 \\
+3 & 5 & 3、2、7 & 2、7 & 6 3 1 5 8 2 7 \\
+4 & 8 & 3、4 & 4 & 6 3 1 5 8 2 7 4 \\
+5～7 & 2、7、4 & 只有上線 & 無 & \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{itemize}
+\item \texttt{adj[v].size()} 就是度數。 它的型別是 \texttt{size\_t}（不帶正負
+號），和 \texttt{int} 直接比較時 \texttt{-Wall -Wextra} 會警告，所以先轉成
+\texttt{int}。
+\item $n = 1$ 時沒有任何通話紀錄，$1$ 號的度數 $0$ 等於 $c_1 = 0$，發起人是
+$1$，BFS 只處理他自己，輸出 \texttt{1} 和 \texttt{0}，不用特別處理。
+\end{itemize}
+
+\textbf{複雜度}
+
+算度數、找發起人 $O(n)$，BFS 每個點處理一次、每條邊從兩端各看一次，也是
+$O(n)$。 最大的測試資料在本書測試的環境下，CPU 時間不到 $0.1$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{下線最多的當發起人}：把找根的迴圈改成找 $c_i$ 最大的人。 範例的
+輸入會印出 \texttt{3} 和 \texttt{3 5 0 8 3 3 5 3}。 如果範例剛好是發起人打最
+多電話，這個錯誤就看不出來。
+\item \textbf{用 \texttt{parent[v] == 0} 判斷還沒走過}：把
+\texttt{if (v != parent[u])} 換成 \texttt{if (parent[v] == 0)}，想用「還沒有父
+節點」代替 \texttt{seen}。 問題在根：它的 \texttt{parent} 本來就是 $0$，處理
+$3$ 的時候，鄰居 $6$ 看起來「還沒走過」，於是被設成 $3$ 的子節點。 範例的輸入
+第二行會印出 \texttt{3 5 6 8 3 3 5 3}，發起人的上線變成 $3$。 要用這種寫法，
+\texttt{parent} 的初始值得用 $-1$，根設成 $0$。
+\item \textbf{直接照輸入的方向當上下線}：以為每筆紀錄的第一個人是上線。 範例裡
+\texttt{3 1} 剛好是對的，\texttt{5 3} 就反了。 紀錄本來就沒有方向，一定要從根
+走一遍。
+\end{itemize}
+
+\section{由下往上：高度、子樹大小與子樹和}
+\label{sec:tree-bottom-up}
+
+深度由上往下算，父節點先算好，子節點加一。 下面三個量剛好相反，要先知道所有子
+節點的值，才算得出自己的：
+
+\begin{itemize}
+\item \textbf{高度}：葉是 $0$；其他點是「子節點高度的最大值加一」。
+\item \textbf{子樹大小}：$v$ 的子樹有幾個點。 $\mathit{sz}(v) = 1 +$ 所有子節
+點的 $\mathit{sz}$ 加起來。
+\item \textbf{子樹和}：每個點有一個值 $a_v$，$v$ 的子樹裡所有點的值加起來。
+$\mathit{sum}(v) = a_v +$ 所有子節點的 $\mathit{sum}$ 加起來。 子樹大小就是每
+個 $a_v$ 都是 $1$ 的子樹和。
+\end{itemize}
+
+第~8~章章首算資料夾的總大小，就是子樹和：每個資料夾的大小是自己的檔案加上每
+個子資料夾的總大小。 那裡用遞迴，函式回傳的那一刻，子資料夾的答案已經算完。
+在樹上，遞迴版本是在 \texttt{dfs(v, u)} 回來之後加一行
+\texttt{sz[u] += sz[v];}。 問題又是深度：鏈狀的樹會讓遞迴疊到 $n$ 層。
+
+\subsection{把 BFS 順序倒過來}
+
+不用遞迴也能得到「子節點一定先算完」的順序。 看上一節的 \texttt{order}：一個點
+是在它的父節點被處理時才放進去的，所以\textbf{在 \texttt{order} 裡，每個點都排
+在它所有子節點的前面}。 倒過來從最後一個看到第一個，每個點就都排在它所有子節
+點的後面。 輪到 $v$ 的時候，它的子節點都已經看過了，而每個子節點在被看到時已經
+把自己的值加給 $v$，所以 $v$ 的值已經是最終的值，可以再把它加給自己的父節點：
+
+\begin{code}{cpp}{倒著看 BFS 順序，由下往上}
+for (int i = n - 1; i >= 1; i--) {      // 跳過根 order[0]
+    int v = order[i], p = parent[v];
+    height[p] = max(height[p], height[v] + 1);
+    sz[p] += sz[v];
+}
+\end{code}
+
+每個點只把自己的值交給父節點一次，不需要子節點串列，也不需要遞迴。
+
+第~6~章的「層層彙整的報告」是另一種得到這個順序的方法：記下每個人還有幾個部屬
+沒交，一開始把沒有部屬的人放進佇列，誰的部屬全交齊了才輪到誰。 兩種方法要保證
+的是同一件事：處理一個點之前，它的子節點都處理完了。 比較一下：
+
+\begin{center}
+\begin{tabular}{p{0.24\linewidth}p{0.33\linewidth}p{0.33\linewidth}}
+\toprule
+ & 第~6~章：數還差幾個 & 本章：倒著看 BFS 順序 \\
+\midrule
+需要的資料 & 只要父節點陣列 & 子節點串列或鄰接串列 \\
+順帶得到 & 只有由下往上的順序 & 由上往下的順序（深度）也有了 \\
+推廣 & 第~18~章的拓撲排序，不限於樹 & 只適用於樹 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+輸入是無向邊時，本來就要做一次 BFS 定根，倒著看同一個 \texttt{order} 最省事。
+輸入只有父節點陣列、又只需要由下往上的量時，第~6~章的做法連子節點串列都不用
+建。
+
+\subsection{把前面的東西放在一起}
+
+下面的程式讀入族譜的父節點陣列和每個人的值，算出每個人的深度、高度、子樹大小
+和子樹和。 值 $a_v$ 可以想成每個人這一戶要訂幾個便當，子樹和就是「這一房一共要
+訂幾個」。
+
+\begin{example}[label=ex:tree-basic]{cpp}{(tree.cpp) 深度、高度、子樹大小與子樹和}
+#include <algorithm>
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    int n;
+    cin >> n;
+    vector<int> parent(n + 1);
+    vector<vector<int>> children(n + 1);
+    int root = 0;
+    for (int v = 1; v <= n; v++) {
+        cin >> parent[v];
+        if (parent[v] == 0) {
+            root = v;                       // 沒有父節點的就是根
+        } else {
+            children[parent[v]].push_back(v);
+        }
+    }
+    vector<long long> sum(n + 1);
+    for (int v = 1; v <= n; v++) {
+        cin >> sum[v];                      // 先放自己的值
+    }
+
+    // 由上往下：order 是佇列也是走訪順序
+    vector<int> order = {root};
+    vector<int> depth(n + 1, 0);
+    for (int i = 0; i < (int)order.size(); i++) {
+        int u = order[i];
+        for (int c : children[u]) {
+            depth[c] = depth[u] + 1;        // 父節點已算好
+            order.push_back(c);
+        }
+    }
+
+    // 由下往上：倒著看 order
+    vector<int> height(n + 1, 0), sz(n + 1, 1);
+    for (int i = n - 1; i >= 1; i--) {      // 跳過根 order[0]
+        int v = order[i], p = parent[v];
+        height[p] = max(height[p], height[v] + 1);
+        sz[p] += sz[v];
+        sum[p] += sum[v];
+    }
+
+    cout << "root " << root << "\norder";
+    for (int v : order) {
+        cout << ' ' << v;
+    }
+    cout << '\n';
+    for (int v = 1; v <= n; v++) {
+        cout << v << ": " << depth[v] << ' ' << height[v] << ' '
+             << sz[v] << ' ' << sum[v] << '\n';
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+9 \\
+2 4 7 0 2 5 4 5 4 \\
+3 2 4 6 1 2 5 3 2 \\
+}{
+root 4 \\
+order 4 2 7 9 1 5 3 6 8 \\
+1: 2 0 1 3 \\
+2: 1 2 5 11 \\
+3: 2 0 1 4 \\
+4: 0 3 9 28 \\
+5: 2 1 3 6 \\
+6: 3 0 1 2 \\
+7: 1 1 2 9 \\
+8: 3 0 1 3 \\
+9: 1 0 1 2 \\
+}
+
+輸出的每一行是「點：深度 高度 子樹大小 子樹和」。 由下往上那個迴圈，每一步之
+後父節點的三個值：
+
+\begin{center}
+\begin{tabular}{cccccc}
+\toprule
+\texttt{i} & $v$ & $p$ & \texttt{height[p]} & \texttt{sz[p]} & \texttt{sum[p]} \\
+\midrule
+8 & 8 & 5 & 1 & 2 & 4 \\
+7 & 6 & 5 & 1 & 3 & 6 \\
+6 & 3 & 7 & 1 & 2 & 9 \\
+5 & 5 & 2 & 2 & 4 & 8 \\
+4 & 1 & 2 & 2 & 5 & 11 \\
+3 & 9 & 4 & 1 & 2 & 8 \\
+2 & 7 & 4 & 2 & 4 & 17 \\
+1 & 2 & 4 & 3 & 9 & 28 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+$5$ 在 \texttt{i} $= 5$ 時把值交給 $2$，那時它的兩個子節點 $8$、$6$（\texttt{i}
+$= 8, 7$）已經交過了。 根 $4$ 最後才收齊三個子節點，\texttt{sz[4]} $= 9$ 正好
+是全部的人數，可以拿來檢查。
+
+\begin{itemize}
+\item \texttt{sum} 用 \texttt{long long}。 題目的值常到 $10^9$，$n$ 個加起來
+就超過 \texttt{int}。
+\item \texttt{sz} 初始值是 $1$（自己），\texttt{height} 是 $0$（先當作葉），由下往上只會把它們變大。
+\item \texttt{order} 的長度不是 $n$，表示輸入不是一棵樹（例如有環、不連通）。 題目
+保證是樹時不用檢查。
+\end{itemize}
+
+\subsection{什麼時候用、什麼時候不能用}
+
+\begin{itemize}
+\item 「每個點的答案只由子節點的答案決定」：子樹大小、子樹和、子樹裡的最大值、
+到最遠的葉有多遠，都倒著看 BFS 順序。 「每個點的答案只由父節點決定」：深度、
+從根累加的距離，順著看。
+\item 一個點的答案同時要用到上面和下面的資訊時，例如「離每個點最遠的點有多遠」，
+一次由下往上不夠，要再配合一次由上往下，或用第~\ref{sec:tree-diameter}~節的直
+徑性質。
+\item 不是樹的圖（有環，或一個點有兩個「上層」）沒有這種順序可以倒過來；第~18~
+章會處理有向無環圖的情況。
+\end{itemize}
+
+\section{每條邊的貢獻}
+\label{sec:tree-edge}
+
+樹的每條邊都有一個特別的性質：拿掉它，樹剛好斷成兩塊。 以任一點為根時，這兩塊
+很好描述：邊的下端是子節點 $c$，一塊是 $c$ 的子樹，有 $\mathit{sz}(c)$ 個點；另
+一塊是其他所有點，有 $n - \mathit{sz}(c)$ 個。 所以算出子樹大小，每條邊兩側各
+有幾個點就都知道了。
+
+\subsection{例題：每條道路的通訊量}
+\label{sec:ex-roads}
+
+\textbf{題意}（\akiref{messages-through-every-road}{每條道路的通訊量}）
+
+\begin{itemize}
+\item 山區有 $n$ 個村莊，由 $n - 1$ 條雙向道路連成一棵樹。
+\item 郵局要在每一對村莊之間各寄一封信，信沿著兩村之間唯一的路線送。
+\item 依輸入順序，對每條道路求出有多少對村莊的路線會經過它。
+\item $2 \le n \le 2 \times 10^5$。
+\end{itemize}
+
+例如下圖的 $7$ 個村莊。 道路 $4$--$2$ 拿掉之後，一邊是 $\{4, 5, 6\}$，另一邊是
+$\{1, 2, 3, 7\}$。 一對村莊的路線會經過這條路，剛好是兩個村莊分在兩邊的時候，
+例如 $5$ 和 $7$ 的路線是 $5 \to 4 \to 2 \to 1 \to 7$。 所以有 $3 \times 4 =
+12$ 對。
+
+\begin{center}
+\begin{tikzpicture}[x=1.15cm, y=1.0cm]
+\node[tv] (1) at (2,3) {1};
+\node[tv] (2) at (1,2) {2};
+\node[tv] (7) at (3,2) {7};
+\node[tv] (3) at (0.2,1) {3};
+\node[tvhl] (4) at (1.8,1) {4};
+\node[tvhl] (5) at (1.2,0) {5};
+\node[tvhl] (6) at (2.4,0) {6};
+\foreach \a/\b in {1/2, 1/7, 2/3, 4/5, 4/6} {\draw[te] (\a) -- (\b);}
+\draw[tehl, dashed] (2) -- (4);
+\node[tlbl, right] at (4.east) {$\mathit{sz} = 3$};
+\node[tlbl, left] at (2.west) {$\mathit{sz} = 5$};
+\node[tlbl, right] at (1.east) {$\mathit{sz} = 7$};
+\end{tikzpicture}
+\diagcaption{以村莊 $1$ 為根。 虛線的道路 $4$--$2$ 下端是 $4$，拿掉後分成 $4$
+的子樹（橘色，$3$ 個點）和其他 $4$ 個點。}
+\label{fig:tree-roads}
+\end{center}
+
+\textbf{想法}
+
+最直接的做法：對每條路，把它拿掉，從一端做一次 BFS 數出那一側有幾個點 $k$，答案
+是 $k(n - k)$。 一次 BFS $O(n)$，$n - 1$ 條路就是 $O(n^2)$，$n = 2 \times 10^5$
+時是 $4 \times 10^{10}$ 步，來不及。 它可以拿來對拍。
+
+每次都重新數，浪費在同一件事做了 $n - 1$ 次。 照這一節開頭的說法，以村莊 $1$ 為
+根，一次 BFS 加上倒著累加，就有每個點的子樹大小。 道路 $(u, v)$ 的兩端，一個是
+另一個的父節點；下端的子節點 $c$ 那一側有 $\mathit{sz}(c)$ 個村莊，答案是
+$\mathit{sz}(c) \times (n - \mathit{sz}(c))$。
+
+剩下的是：輸入的 $u$、$v$ 哪一個是下端？ 看 \texttt{parent}：如果
+\texttt{parent[v]} 是 $u$，下端是 $v$；否則下端是 $u$。 輸入的順序不能信，圖
+~\ref{fig:tree-roads} 的範例裡，道路寫成 \texttt{4 2} 的時候，下端是寫在前面的
+$4$。
+
+這個「拿掉一條邊，看兩側各有幾個」的想法用途很廣。 每條邊被 $\mathit{sz}(c)
+\times (n - \mathit{sz}(c))$ 對點的路線經過，把所有邊的這個數加起來，等於每一對
+點的距離加總（本章練習第~\ref{drill:tree-pairsum}~題）。 一條邊如果有長度
+$w$，乘上 $w$ 再加，就是帶長度的距離總和。
+
+同樣的模型也出現在別的地方：電力公司評估每段線路壞掉時會切斷多少對用戶之間的
+供電；物流公司估計每條路線被多少對倉庫之間的運送用到，決定先拓寬哪一條。
+
+\textbf{程式}
+
+\begin{example}[label=ex:roads]{cpp}{(roads.cpp) 每條道路的通訊量}
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n;
+    cin >> n;
+    vector<int> eu(n - 1), ev(n - 1);
+    vector<vector<int>> adj(n + 1);
+    for (int i = 0; i < n - 1; i++) {
+        cin >> eu[i] >> ev[i];
+        adj[eu[i]].push_back(ev[i]);
+        adj[ev[i]].push_back(eu[i]);
+    }
+
+    // 以村莊 1 為根：BFS 順序與父節點
+    vector<int> parent(n + 1, 0);
+    vector<int> order = {1};
+    for (int i = 0; i < (int)order.size(); i++) {
+        int u = order[i];
+        for (int v : adj[u]) {
+            if (v != parent[u]) {
+                parent[v] = u;
+                order.push_back(v);
+            }
+        }
+    }
+
+    // 倒著累加子樹大小
+    vector<long long> sz(n + 1, 1);
+    for (int i = n - 1; i >= 1; i--) {
+        sz[parent[order[i]]] += sz[order[i]];
+    }
+
+    for (int i = 0; i < n - 1; i++) {
+        // 兩端裡，父節點是另一端的那個是子節點
+        int c = (parent[ev[i]] == eu[i]) ? ev[i] : eu[i];
+        cout << sz[c] * (n - sz[c]) << (i == n - 2 ? '\n' : ' ');
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+7 \\
+2 1 \\
+2 3 \\
+4 2 \\
+4 5 \\
+6 4 \\
+1 7 \\
+}{
+10 6 12 6 6 6 \\
+}
+
+\begin{itemize}
+\item 道路要依輸入順序輸出，所以把兩端存在 \texttt{eu}、\texttt{ev}，等子樹大小
+算完再回頭看。
+\item 判斷下端只看 \texttt{parent[ev[i]] == eu[i]}，不用反過來再檢查一次：兩端
+一定是父子關係，不是 $\mathit{ev}$ 的父節點是 $\mathit{eu}$，就是反過來。
+\item \texttt{sz} 直接開成 \texttt{long long}，乘法就用 \texttt{long long} 算。
+答案最大在一條鏈的正中間：$10^5 \times 10^5 = 10^{10}$，超過 \texttt{int}。
+\end{itemize}
+
+\textbf{複雜度}
+
+一次 BFS、一次倒著累加、一次輸出，都是 $O(n)$。 最大的測試資料在本書測試的環境
+下，CPU 時間不到 $0.1$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{把輸入的第二個點當成子節點}：寫成 \texttt{int c = ev[i];}。 範例
+的輸入會印出 \texttt{0 6 10 6 12 6}：第一條路寫成 \texttt{2 1}，把根 $1$ 當成
+下端，算出 $7 \times 0$。
+\item \textbf{乘法用 \texttt{int}}：\texttt{sz} 開成 \texttt{vector<int>}。 輸
+入 $n = 2 \times 10^5$ 的一條鏈 $1 - 2 - \cdots - n$，第 $10^5$ 條路的答案是
+\texttt{10000000000}，在本書測試的環境下印出 \texttt{1410065408}。 加了
+\texttt{-Wall -Wextra} 也沒有警告。
+\item \textbf{遞迴算子樹大小}：用上一節的 \texttt{dfs(u, from)} 在回來時累加，
+範例和隨機資料都對。 同樣那條 $2 \times 10^5$ 個點的鏈，在本書測試的環境下
+\texttt{Segmentation fault}；實測鏈長 $10^5$ 還能跑完，$1.5 \times 10^5$ 就當掉。
+這題的測試資料裡就有這樣的鏈。
+\end{itemize}
+
+\section{樹直徑}
+\label{sec:tree-diameter}
+
+樹上距離最遠的兩個點，它們之間的距離叫\textbf{樹直徑}（tree diameter）；那條路
+徑本身也常叫直徑。 在圖~\ref{fig:tree-family} 的族譜上把邊當成無向的，$6$ 到
+$3$ 是 $6 - 5 - 2 - 4 - 7 - 3$，$5$ 條邊，沒有更遠的兩點，直徑是 $5$。 直徑不
+一定只有一條，$8$ 到 $3$ 也是 $5$。
+
+問法常常不直接說「直徑」：網路上兩台設備之間最多隔幾段線路、步道上最長的單程路
+線、要準備多長的管子才拉得到任兩個點。 這些都是在問直徑。
+
+\subsection{兩次走訪}
+
+最直接的做法：每個點各做一次 BFS，找出離它最遠的點，取最大的。 $n$ 次 BFS 是
+$O(n^2)$，$n = 2 \times 10^5$ 時來不及。
+
+只要兩次就夠了：
+
+\begin{enumerate}
+\item 從任意一點 $s$ 出發走一遍，找出離 $s$ 最遠的點 $u$。
+\item 從 $u$ 出發再走一遍，離 $u$ 最遠的點 $v$ 和 $u$ 的距離就是直徑，$u$、$v$
+是一條直徑的兩端。
+\end{enumerate}
+
+在族譜上試一次，從 $s = 9$ 出發：最遠的是 $6$ 和 $8$，距離都是 $4$（$9 - 4 - 2
+- 5 - 6$），取 $u = 6$。 再從 $6$ 出發，最遠的是 $3$，距離 $5$，就是直徑。 如
+果第一次取的是 $8$，第二次一樣找到 $3$，距離也是 $5$。
+
+為什麼第一次找到的 $u$ 一定是某條直徑的一端？ 直覺是：$s$ 不管在哪裡，要走到
+最遠，總得沿著樹上「最長的那條幹道」往某一頭走到底；走到底的地方就是幹道的一
+端。 下面的框把它說清楚。
+
+\begin{whybox}[兩次走訪]
+記 $d(p, q)$ 為 $p$、$q$ 的距離。 設 $a$、$b$ 是一條直徑的兩端，$d(a, b) = D$。
+從 $s$ 出發，$u$ 是最遠的點。 要說明：有一個點和 $u$ 的距離是 $D$。 這樣第二
+次從 $u$ 出發找到的最遠距離就是 $D$。
+
+會用到兩個事實：
+
+\begin{enumerate}
+\item[(1)] 兩條路徑 $p \to q$、$q \to r$ 如果只在 $q$ 碰到，接起來就是 $p$ 到
+$r$ 的那條唯一的路徑，所以 $d(p, r) = d(p, q) + d(q, r)$。 這裡用到「樹上兩點
+的路徑只有一條」。
+\item[(2)] 一定有 $d(p, r) \le d(p, q) + d(q, r)$：先到 $q$ 再到 $r$ 是一種走
+法，真正的路徑是把其中走過去又走回來的部分刪掉。 這裡用到「邊長不是負的」，刪
+掉不會變長。
+\end{enumerate}
+
+\begin{center}
+\begin{tikzpicture}[x=1cm, y=0.9cm]
+\node[tv] (a) at (0,1) {$a$};
+\node[tvhl] (x) at (3,1) {$x$};
+\node[tv] (b) at (6,1) {$b$};
+\node[tv] (s) at (2.4,-0.6) {$s$};
+\node[tvalt] (u) at (4.2,2.5) {$u$};
+\draw[te] (a) -- (x) -- (b);
+\draw[te, dashed] (x) -- (s);
+\draw[te, dashed] (x) -- (u);
+\end{tikzpicture}
+\diagcaption{直徑 $a$--$b$ 畫成水平線。 $x$ 是直徑上離 $s$ 最近的點，$u$ 是離
+$s$ 最遠的點。 虛線表示中間可能還有很多點。}
+\label{fig:tree-proof}
+\end{center}
+
+令 $x$ 是 $a$--$b$ 這條路徑上離 $s$ 最近的點（$s$ 本來就在上面時 $x = s$）。
+$s$ 到 $x$ 的路徑只在 $x$ 碰到直徑，由 (1)：
+\[
+d(s, a) = d(s, x) + d(x, a), \qquad d(s, b) = d(s, x) + d(x, b).
+\]
+$u$ 是離 $s$ 最遠的，所以 $d(s, u) \ge d(s, b)$；由 (2)，$d(s, u) \le d(s, x) +
+d(x, u)$。 兩式合起來得到 $d(x, u) \ge d(x, b)$，同樣也有 $d(x, u) \ge d(x,
+a)$。
+
+看 $x$ 到 $u$ 的路徑。 從 $x$ 往 $a$ 和往 $b$ 的路徑，第一條邊不同（它們是直徑
+的兩半）；從同一點出發、第一條邊不同的兩條路徑，在樹上只會在出發點碰到，否則就
+有環。 所以 $x \to u$ 最多和其中一邊共用第一條邊，假設它和 $x \to a$ 不共用（另
+一種情況把 $a$、$b$ 對調）。 那麼 $x \to a$ 和 $x \to u$ 只在 $x$ 碰到，由
+(1)：
+\[
+d(a, u) = d(a, x) + d(x, u) \ge d(a, x) + d(x, b) = D.
+\]
+$D$ 是所有距離裡最大的，所以 $d(a, u) = D$。 （$x = a$ 或 $u = x$ 時，某條路徑
+只有一個點，上面的說法一樣成立。）
+\end{whybox}
+
+證明裡用到的兩件事，正好是這個方法的適用範圍：
+
+\begin{itemize}
+\item \textbf{一定要是樹。} 下圖六個點圍成一圈，再在 $4$ 掛上 $7$。 從 $1$ 出
+發，最遠的是 $6$（距離 $3$）；從 $6$ 出發，最遠的距離還是 $3$。 可是 $7$ 到
+$5$ 是 $7 - 4 - 1 - 3 - 5$，距離 $4$。 有環的圖，最遠的兩點要老實從每個點各做
+一次 BFS。
+\item \textbf{邊長不能是負的。} 負的邊長讓事實 (2) 不成立，本章練習第
+~\ref{drill:tree-negative}~題請你造一個反例。 邊長是 $0$ 沒有關係。
+\end{itemize}
+
+\begin{center}
+\begin{tikzpicture}[x=1.1cm, y=1.0cm]
+\node[tvhl] (1) at (0,1) {1};
+\node[tv] (3) at (1,2) {3};
+\node[tv] (5) at (2.2,2) {5};
+\node[tvalt] (6) at (3.2,1) {6};
+\node[tv] (2) at (2.2,0) {2};
+\node[tv] (4) at (1,0) {4};
+\node[tv] (7) at (1,-1.1) {7};
+\foreach \a/\b in {1/3, 3/5, 5/6, 6/2, 2/4, 4/1, 4/7} {\draw[te] (\a) -- (\b);}
+\end{tikzpicture}
+\diagcaption{有環的圖上，兩次走訪會失敗：從 $1$ 找到 $6$，從 $6$ 最遠只有 $3$，
+真正最遠的是 $7$ 和 $5$，距離 $4$。}
+\label{fig:tree-cycle-cex}
+\end{center}
+
+\subsection{邊有長度的樹}
+
+第~11~章說過，邊有不同長度的圖要用續集的 Dijkstra 演算法求最短距離。 樹不用：
+兩點之間只有一條路徑，沿著它把長度加起來就是距離。 從起點做一次 BFS，在
+\texttt{parent[v] = u;} 的地方寫 \texttt{dist[v] = dist[u] + w;}，每個點的距離
+就對了。 這裡的 BFS 只是「一種保證父節點先處理的走訪順序」，不再代表「一層一層
+由近到遠」，換成第~11~章的改法一也可以。 所以兩次走訪在帶長度的樹上照樣能用。
+
+\subsection{例題：校園地下管線的最長管路}
+\label{sec:ex-pipes}
+
+\textbf{題意}（\akiref{longest-underground-pipe-run-on-campus}{校園地下管線的最長管路}）
+
+\begin{itemize}
+\item 校園地下有 $n$ 個閥門，由 $n - 1$ 段水管連成一棵樹，每段水管有長度 $w$。
+\item 兩個閥門的距離是路線上水管長度的總和，路線經過幾段水管叫段數。
+\item 輸出所有配對裡最大的距離 $D$，以及距離等於 $D$ 的配對裡，段數最多是多少
+（記作 $K$）。
+\item $n \le 2 \times 10^5$，$1 \le w \le 10^9$。
+\end{itemize}
+
+例如下圖 $8$ 個閥門。 從 $3$ 往外有四條管線，末端是 $1$、$8$、$4$、$5$，長度
+分別是 $6$、$6$、$6$、$5$，段數是 $2$、$1$、$3$、$1$。 最遠的配對要在長度 $6$
+的三個末端裡挑兩個，距離都是 $12$；其中 $1$ 和 $4$ 的段數 $2 + 3 = 5$ 最多，
+答案是 \texttt{12 5}。
+
+\begin{center}
+\begin{tikzpicture}[x=1.15cm, y=0.95cm]
+\node[tv] (3) at (0,0) {3};
+\node[tv] (6) at (-1.6,0.9) {6};
+\node[tvalt] (1) at (-3.2,1.8) {1};
+\node[tv] (8) at (1.8,1.4) {8};
+\node[tv] (2) at (-1.2,-1.0) {2};
+\node[tv] (7) at (-2.4,-2.0) {7};
+\node[tvalt] (4) at (-3.6,-3.0) {4};
+\node[tv] (5) at (1.8,-1.2) {5};
+\draw[te] (1) -- node[tlbl, above] {2} (6);
+\draw[te] (6) -- node[tlbl, above] {4} (3);
+\draw[te] (3) -- node[tlbl, above left] {6} (8);
+\draw[te] (3) -- node[tlbl, above right] {1} (2);
+\draw[te] (2) -- node[tlbl, above right] {2} (7);
+\draw[te] (7) -- node[tlbl, above right] {3} (4);
+\draw[te] (3) -- node[tlbl, below left] {5} (5);
+\end{tikzpicture}
+\diagcaption{$8$ 個閥門，邊上的數字是水管長度。 粉色的 $1$、$4$ 是距離 $12$、段
+數 $5$ 的配對。}
+\label{fig:tree-pipes}
+\end{center}
+
+\textbf{想法}
+
+只求 $D$ 的話，就是帶長度的樹直徑，兩次走訪。 麻煩在 $K$：距離 $12$ 的配對有三
+組，兩次走訪只找到其中一組，不一定是段數最多的那組。
+
+把「距離」換成一對數（總長，段數），比較時先比總長，總長相同再比段數。 這樣
+「最大的距離」就是：總長最大，總長相同的裡面段數最多，正好是題目要的 $(D, K)$。
+每段水管的「長度」變成 $(w, 1)$，沿路相加時兩個數各自相加。
+
+換了比較方式，兩次走訪還對嗎？ 回去看證明，只用到兩件事：路徑唯一，以及「多走
+一段不會變短」。 前者是樹本身的性質；後者因為每段水管是 $(w, 1)$，$w \ge 1$，
+加上去之後總長變大，一定比原來「大」。 比較和加法也配合得起來：兩對數各加上同
+一對數，原本誰大，加完還是誰大。 所以證明一字不改都成立，兩次走訪都用數對比較
+就好。
+
+\texttt{pair} 本身的比較就是先比 \texttt{first}、相同再比 \texttt{second}，直接
+拿 \texttt{pair<long long, int>} 當距離。
+
+同樣的模型也出現在別的地方：要訂一條從任一機房都能拉到任一機房的光纖，長度要
+夠，接頭也要備齊；物流中心之間最遠的配送路線，路程相同時看要經過幾個轉運站。
+
+\textbf{程式}
+
+\begin{example}[label=ex:pipes]{cpp}{(pipes.cpp) 校園地下管線的最長管路}
+#include <iostream>
+#include <utility>
+#include <vector>
+using namespace std;
+
+using Dist = pair<long long, int>;          // （總長, 段數）
+
+int n;
+vector<vector<pair<int, int>>> adj;         // （鄰居, 水管長度）
+
+// 從 src 走遍整棵樹，算出到每個閥門的距離，回傳最遠的閥門
+int farthest(int src, vector<Dist> &dist) {
+    vector<int> parent(n + 1, 0), order = {src};
+    dist.assign(n + 1, Dist(0, 0));
+    int best = src;
+    for (int i = 0; i < (int)order.size(); i++) {
+        int u = order[i];
+        if (dist[u] > dist[best]) {         // pair 的比較
+            best = u;
+        }
+        for (auto [v, w] : adj[u]) {
+            if (v != parent[u]) {
+                parent[v] = u;
+                dist[v] = Dist(dist[u].first + w, dist[u].second + 1);
+                order.push_back(v);
+            }
+        }
+    }
+    return best;
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    cin >> n;
+    adj.assign(n + 1, {});
+    for (int i = 0; i < n - 1; i++) {
+        int u, v, w;
+        cin >> u >> v >> w;
+        adj[u].push_back({v, w});
+        adj[v].push_back({u, w});
+    }
+    vector<Dist> dist;
+    int a = farthest(1, dist);              // 第一次：從 1 出發
+    int b = farthest(a, dist);              // 第二次：從 a 出發
+    cout << dist[b].first << ' ' << dist[b].second << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+8 \\
+1 6 2 \\
+6 3 4 \\
+3 8 6 \\
+2 3 1 \\
+7 2 2 \\
+4 7 3 \\
+3 5 5 \\
+}{
+12 5 \\
+}
+
+兩次走訪各算出的距離：
+
+\begin{center}
+\begin{tabular}{c|cccccccc|c}
+\toprule
+出發點 & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 最遠 \\
+\midrule
+1 & $(0,0)$ & $(7,3)$ & $(6,2)$ & $(12,5)$ & $(11,3)$ & $(2,1)$ & $(9,4)$ & $(12,3)$ & 4 \\
+4 & $(12,5)$ & $(5,2)$ & $(6,3)$ & $(0,0)$ & $(11,4)$ & $(10,4)$ & $(3,1)$ & $(12,4)$ & 1 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+第一次從 $1$ 出發，$4$ 和 $8$ 的總長都是 $12$，段數 $5$ 比較多，選 $4$。 第二次
+從 $4$ 出發，最遠的是 $(12, 5)$ 的 $1$。
+
+\begin{itemize}
+\item \texttt{farthest} 一邊走訪一邊更新 \texttt{best}。 每個點在被處理時，它的
+距離已經在父節點那裡算好了，所以可以直接比。
+\item \texttt{for (auto [v, w] : adj[u])} 是結構化綁定（銜接書第~8~章），
+\texttt{v}、\texttt{w} 是串列裡每個 \texttt{pair} 的兩個成員。
+\item 第二次呼叫時 \texttt{dist} 會被 \texttt{assign} 整個重設，裡面留下的是從
+$a$ 出發的距離。
+\item 總長最大約 $2 \times 10^5 \times 10^9 = 2 \times 10^{14}$，要用
+\texttt{long long}。 段數最多 $n - 1$，\texttt{int} 就夠。
+\end{itemize}
+
+\textbf{複雜度}
+
+兩次走訪各 $O(n)$。 最大的測試資料在本書測試的環境下，CPU 時間不到 $0.1$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{只比總長，最後印出那一組的段數}：把 \texttt{dist[u] > dist[best]}
+改成只比 \texttt{.first}。 範例的輸入會印出 \texttt{12 3}：第一次從 $1$ 出發，
+$8$ 比 $4$ 先被處理，兩者總長相同就留下 $8$；第二次從 $8$ 出發，又先遇到總長
+$12$、只有 $3$ 段的 $1$。 走訪順序剛好對的時候會過，所以範例過了也不代表對，
+這題的測試資料有一半以上會錯。
+\item \textbf{只在第二次比段數}：第一次只比總長，找到的端點可能不在段數最多的
+那一組裡（範例就是 $8$），第二次怎麼比都救不回來，範例的輸入會印出
+\texttt{12 4}。 兩次都要用同一種比較。
+\item \textbf{總長用 \texttt{int}}：把 \texttt{Dist} 改成
+\texttt{pair<int, int>}，輸入一條 $2 \times 10^5$ 個閥門、每段 $10^9$ 的鏈，正確
+答案是 \texttt{199999000000000 199999}，在本書測試的環境下印出
+\texttt{2147459072 174992}，連段數都錯了：溢位之後比較大小的結果也不可靠。
+\end{itemize}
+
+\begin{apcsnote}
+「兩次走訪」的證明不需要記，但要記得它的條件：樹、邊長不是負的。 題目在這兩點
+上有變化時（多了一條邊、某些點不能當端點、距離的定義不同），先用「每個點各做一
+次 BFS」的暴力解在小資料上對拍，確定兩次走訪還成立再交。
+\end{apcsnote}
+
+\section{二元樹的三種走訪順序}
+\label{sec:tree-binary}
+
+每個點最多兩個子節點，而且分得出左、右的有根樹，叫\textbf{二元樹}（binary
+tree）。 只有一個子節點時，它是左子節點還是右子節點也算在形狀裡。 存法用兩個
+陣列：\texttt{L[v]}、\texttt{R[v]} 是 $v$ 的左、右子節點，沒有就填 $0$。 根是
+沒有出現在任何 \texttt{L}、\texttt{R} 裡的那個點。
+
+遞迴走一棵二元樹時，「處理自己」可以放在三個時間點，得到三種順序：
+
+\begin{itemize}
+\item \textbf{前序}（preorder）：自己、左子樹、右子樹。
+\item \textbf{中序}（inorder）：左子樹、自己、右子樹。
+\item \textbf{後序}（postorder）：左子樹、右子樹、自己。
+\end{itemize}
+
+第~8~章的呼叫樹印的就是中序：先走左邊，回來印自己，再走右邊。 下面的程式只走
+一次，在三個時間點各記錄一次，同時得到三種順序：
+
+\begin{example}[label=ex:traversal]{cpp}{(traversal.cpp) 二元樹的前序、中序、後序}
+#include <iostream>
+#include <vector>
+using namespace std;
+
+vector<int> L, R, pre, in, post;
+
+void walk(int v) {
+    if (v == 0) {
+        return;
+    }
+    pre.push_back(v);       // 第一次到 v
+    walk(L[v]);
+    in.push_back(v);        // 左子樹走完，回到 v
+    walk(R[v]);
+    post.push_back(v);      // 兩邊都走完，要離開 v
+}
+
+void print(const char *name, const vector<int> &a) {
+    cout << name;
+    for (int v : a) {
+        cout << ' ' << v;
+    }
+    cout << '\n';
+}
+
+int main() {
+    int n;
+    cin >> n;
+    L.assign(n + 1, 0);
+    R.assign(n + 1, 0);
+    vector<bool> isChild(n + 1, false);
+    for (int v = 1; v <= n; v++) {
+        cin >> L[v] >> R[v];
+        isChild[L[v]] = isChild[R[v]] = true;   // 0 也會被標，不影響
+    }
+    int root = 1;
+    while (isChild[root]) {
+        root++;
+    }
+    walk(root);
+    print("pre:", pre);
+    print("in:", in);
+    print("post:", post);
+    return 0;
+}
+\end{example}
+
+\iosample{
+7 \\
+0 0 \\
+7 0 \\
+0 0 \\
+0 0 \\
+1 3 \\
+2 5 \\
+0 4 \\
+}{
+pre: 6 2 7 4 5 1 3 \\
+in: 7 4 2 6 1 5 3 \\
+post: 4 7 2 1 3 5 6 \\
+}
+
+\begin{center}
+\begin{tikzpicture}[x=1.1cm, y=1.0cm]
+\node[tvhl] (6) at (2,3) {6};
+\node[tv] (2) at (0.8,2) {2};
+\node[tv] (5) at (3.2,2) {5};
+\node[tv] (7) at (0.2,1) {7};
+\node[tv] (1) at (2.6,1) {1};
+\node[tv] (3) at (3.8,1) {3};
+\node[tv] (4) at (0.8,0) {4};
+\foreach \a/\b in {6/2, 6/5, 2/7, 5/1, 5/3, 7/4} {\draw[te] (\a) -- (\b);}
+\end{tikzpicture}
+\diagcaption{範例的二元樹。 $2$ 只有左子節點 $7$，$7$ 只有右子節點 $4$。}
+\label{fig:tree-binary}
+\end{center}
+
+三種順序的規律：
+
+\begin{itemize}
+\item 前序的第一個、後序的最後一個都是根。
+\item 中序裡，根把序列切成兩半：左邊是左子樹的點，右邊是右子樹的點。 範例的中
+序 \texttt{7 4 2 | 6 | 1 5 3} 就是這樣。
+\item 每一棵子樹在三種順序裡都是連在一起的一段。
+\end{itemize}
+
+這幾條合起來，給前序和中序就能一層一層切出整棵樹的形狀（本章練習第
+~\ref{drill:tree-binary}~題）；給後序和中序也可以。 只給前序和後序就不一定了，
+同一組序列可能對應好幾棵樹。
+
+這支程式用遞迴，深度等於樹的高度。 二元樹也可能是一條很長的鏈，$n$ 到 $10^5$
+以上時，要照第~11~章的改法二改寫：堆疊裡記住每個點走到哪一步（還沒走左邊、左
+邊走完、兩邊都走完）。
+
+\section{預告：樹形動態規劃}
+\label{sec:tree-dp-preview}
+
+這一章由下往上算的量，高度、子樹大小、子樹和，都是同一個形狀：每個點的答案，用
+它所有子節點的答案組出來。 把「每個點的答案」當成狀態、「怎麼用子節點的答案組
+出來」當成轉移，這就是第~9~章的動態規劃搬到樹上，叫\textbf{樹形動態規劃}（tree
+DP）。 順序也已經有了：倒著看 BFS 順序。
+
+到目前為止，每個點只存一個數。 第~20~章的題目，每個點常常要存好幾個數，例如：
+
+\begin{itemize}
+\item 在樹上挑一些點，相鄰的兩點不能都挑，要讓挑到的值總和最大。 每個點要存兩
+個數：挑自己時子樹裡的最大總和、不挑自己時的最大總和。
+\item 直徑也可以用樹形 DP 算：最長的路徑一定有一個「最高點」，在那個點把往下最
+長的兩條鏈接起來。 每個點存「往下最長的鏈」，順便更新答案。
+\end{itemize}
+
+這些留到第~20~章，用的仍然是這一章的迴圈，只是每個點多存幾個數。
+
+\section{本章常見錯誤}
+\label{sec:tree-pitfalls}
+
+\begin{center}
+\begin{tabular}{p{0.22\linewidth}p{0.46\linewidth}p{0.2\linewidth}}
+\toprule
+錯誤 & 例子 & 見 \\
+\midrule
+假設根是 $1$，或父節點的編號比較小 & 照編號順序由下往上算；直接用 $1$ 當族譜的根 &
+第~\ref{sec:tree-terms}~節、第~6~章 \\
+走回父節點 & 無向的樹走訪時沒記「從哪裡來」；用 \texttt{parent[v] == 0} 判斷沒走
+過，把根當成子節點 & 第~\ref{sec:ex-phonetree}~節 \\
+照輸入的方向當父子 & 把邊的第二個點當成子節點 & 第~\ref{sec:ex-phonetree}、
+\ref{sec:ex-roads}~節 \\
+遞迴太深 & 一條 $2 \times 10^5$ 個點的鏈，遞迴算子樹大小當掉 &
+第~\ref{sec:ex-roads}~節 \\
+\texttt{int} 溢位 & $\mathit{sz} \times (n - \mathit{sz})$、子樹和、帶長度的距
+離 & 第~\ref{sec:ex-roads}、\ref{sec:ex-pipes}~節 \\
+兩次走訪用錯地方 & 有環的圖、負的邊長；比較的標準兩次不一致 &
+第~\ref{sec:tree-diameter}~節 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+另外兩個邊界：只有一個點的樹（沒有邊，\texttt{n - 1} 是 $0$，很多迴圈一次都不
+跑），以及深度、高度從 $0$ 還是 $1$ 數。 交出去之前各用一組小輸入確認。
+
+\section{本章練習}
+\label{sec:ch13-exercises}
+
+\begin{drills}[label=drills:ch13]
+\item 一棵樹有 $8$ 個點，父節點陣列是 \texttt{parent} $= [3, 0, 2, 3, 2, 5, 5,
+4]$（依序是 $1$ 到 $8$ 號，$0$ 表示根）。
+\begin{enumerate}
+\item 找出根，畫出這棵樹，寫出每個點的深度、高度和子樹大小。
+\item 子節點串列照編號由小到大，寫出從根出發的 BFS 順序。
+\item 下面三種順序，哪些倒過來看（從最後一個往前）可以拿來由下往上算子樹大小？
+說明理由。 (i) $1, 2, \ldots, 8$；(ii) $2, 5, 7, 6, 3, 4, 8, 1$；(iii) 依深度由
+小到大，深度相同時編號小的在前。
+\end{enumerate}
+
+\item \label{drill:tree-binary}
+\begin{enumerate}
+\item 一棵二元樹：$1$ 的左、右子節點是 $2$、$3$；$2$ 只有左子節點 $4$；$4$ 只
+有右子節點 $5$；$3$ 的左、右子節點是 $6$、$7$。 寫出前序、中序、後序。
+\item 一棵二元樹的前序是 $5, 2, 1, 4, 3, 6$，中序是 $1, 2, 3, 4, 5, 6$。 畫出這
+棵樹。
+\item 前序是 $1, 2, 3$、後序是 $3, 2, 1$ 的二元樹有幾棵？ 全部畫出來。
+\end{enumerate}
+
+\item \label{drill:tree-pairsum} 證明：把樹上每條邊的 $\mathit{sz}(c) \times (n
+- \mathit{sz}(c))$ 加起來，等於所有點對 $\{p, q\}$ 的距離總和。 用範例
+~\ref{ex:roads} 的輸出驗算一次。
+
+\item 有人把範例~\ref{ex:roads} 改成「每條路拿掉後從一端 BFS 數一側的點數」。
+\begin{enumerate}
+\item 時間複雜度是多少？ $n = 2 \times 10^5$ 時大約要走幾步？
+\item 範例~\ref{ex:tree-basic} 由下往上那個迴圈，\texttt{sz[p] += sz[v];} 一共
+執行幾次？ 為什麼不是 $O(n^2)$，雖然一個點可能有很多子節點？
+\end{enumerate}
+
+\item \label{drill:tree-ecc} 設 $a$、$b$ 是一條直徑的兩端。 證明：對樹上任意一
+點 $s$，離 $s$ 最遠的距離等於 $\max(d(s, a), d(s, b))$。 （提示：沿用證明框的
+$x$，說明 $d(x, u) \le \max(d(x, a), d(x, b))$。） 這個性質讓「每個點離最遠的
+點多遠」只要三次走訪：先兩次找到 $a$、$b$，再從 $b$ 走一次。
+
+\item \label{drill:tree-negative} 造一棵有負邊長的樹（四個點以內），讓兩次走訪
+得到的答案比真正最遠的距離小。 說明證明框裡哪一步不成立。
+
+\item 第~6~章的「層層彙整的報告」，改成用本章的方法：先從總經理做 BFS，再倒著
+看 BFS 順序算每個人完成報告的時刻。 輸入只有每個人的直屬主管，程式要先多建什
+麼？ 寫出倒著看的那個迴圈。
+\end{drills}
+
+\section{實作練習}
+\label{sec:ch13-practice}
+
+下面是 Aki-Judge 上和本章相關的題目，依小節分組。 難度分四階：暖身是直接套用
+本章的寫法；基本要自己決定根、決定由上往下還是由下往上；實戰的題敘比較長，要
+先把題目轉換成本章的形狀；挑戰會和其他章的技巧合在一起。
+
+\begin{center}
+\begin{tabular}{llc}
+\toprule
+小節 & 題目 & 難度 \\
+\midrule
+表示與定根 & \akiref{full-path-of-a-library-category}{圖書分類的完整路徑} & 暖身 \\
+ & \akiref{which-way-the-water-flows}{灌溉渠道的水流方向} & 暖身 \\
+ & \akiref{checking-reported-generations}{社團傳承的自報代數} & 暖身 \\
+ & \akiref{the-club-mentor-register}{學長姐傳承名冊} & 基本 \\
+ & \akiref{indented-meeting-notes}{會議紀錄的縮排大綱} & 實戰 \\
+\midrule
+高度與子樹 & \akiref{days-until-the-memo-reaches-the-bottom}{公告傳到最底層要幾天} & 暖身 \\
+ & \akiref{overloaded-delivery-roads}{超過載量的運輸路段} & 暖身 \\
+ & \akiref{who-sits-on-the-longest-relay-chains}{最長轉達鏈上的人} & 基本 \\
+ & \akiref{top-score-in-each-group}{帶領範圍內的最高分} & 基本 \\
+ & \akiref{interchangeable-teams}{可以互換的小組} & 基本 \\
+ & \akiref{zone-meters}{分區電表的裝設位置} & 基本 \\
+ & \akiref{total-reporting-steps}{回報路徑總步數} & 實戰 \\
+ & \akiref{removing-one-manager}{拿掉一層主管} & 實戰 \\
+\midrule
+邊的貢獻 & \akiref{stranded-rooms}{封走廊後受困的房間數} & 暖身 \\
+ & \akiref{the-old-system-only-stores-binary-trees}{只能存二元樹的舊系統} & 挑戰 \\
+\midrule
+樹直徑 & \akiref{the-two-farthest-bike-stations}{相距最遠的兩個租借站} & 基本 \\
+ & \akiref{longest-line-after-the-outage}{停電後各區最長的線路} & 基本 \\
+ & \akiref{tour-route-with-the-most-junction-stops}{解說站最多的導覽路線} & 基本 \\
+ & \akiref{the-longest-one-way-hike}{最長單程健行路線的起訖站} & 實戰 \\
+ & \akiref{night-inspection-starting-points}{巡檢員的出發地點} & 實戰 \\
+ & \akiref{temporary-link-proposals-between-two-campuses}{兩校區網路的臨時連線提案} & 挑戰 \\
+\midrule
+二元樹 & \akiref{when-to-sign}{簽核的時機} & 暖身 \\
+ & \akiref{a-family-tree-in-numbered-slots}{書架格號族譜} & 暖身 \\
+ & \akiref{the-inspection-robots-move-log}{巡檢機器人的移動紀錄} & 基本 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+本章的三題例題也在 Aki-Judge 上，讀完各節之後可以先自己寫一次再對照。 直徑那
+一組有幾題會用到練習第~\ref{drill:tree-ecc}~題的性質。
+
+\section{讀完你應該會}
+\label{sec:ch13-checklist}
+
+\begin{itemize}
+\item 拿到父節點陣列、子節點名單或無向邊三種輸入，都能存成程式要用的形式，找出
+根，並且不假設根是 $1$、父節點編號比較小。
+\item 能從根做一次 BFS，用「不走回父節點」定出每條邊的方向，順著 BFS 順序算深
+度，倒著算高度、子樹大小和子樹和，不用遞迴。
+\item 看到「每條邊兩側」「經過這條邊的配對」，能用 $\mathit{sz}(c) \times (n -
+\mathit{sz}(c))$ 一次算出全部的邊，並分得出輸入的兩端哪一個是子節點。
+\item 會用兩次走訪求樹直徑（含帶長度的樹），說得出它需要「是樹」和「邊長不是負
+的」，並能在比較標準改變時判斷證明是否還成立。
+\item 能寫出一棵二元樹的前序、中序、後序，給前序和中序能畫出原來的樹。
+\end{itemize}
+
+\textbf{延伸閱讀}（書末會整理完整的參考資料）
+
+\begin{itemize}
+\item Antti Laaksonen，\textit{Competitive Programmer's Handbook}，第 14 章：
+篇幅很短，有走訪、子樹大小、直徑的兩種算法，以及「每個點最遠多遠」的做法，可以
+當第~20~章的預習。
+\item 吳邦一，《AP325：從 APCS 實作題檢測三級到五級》，第 8 章：樹的各種儲存方
+式和由下往上的走訪，題目很多，適合要準備 APCS 的讀者多練。
+\item Thomas H. Cormen 等，\textit{Introduction to Algorithms}，第 4 版，10.3
+節：有根樹的幾種表示法；12.1 節：二元搜尋樹與中序走訪。
+\end{itemize}
+
+\addcontentsline{toc}{section}{練習解答}
+\section*{練習解答}
+
+\begin{enumerate}
+\item
+\begin{enumerate}
+\item 根是 $2$。 子節點：$2$ 有 $3$、$5$；$3$ 有 $1$、$4$；$4$ 有 $8$；$5$ 有
+$6$、$7$。
+\begin{center}
+\begin{tabular}{c|cccccccc}
+\toprule
+點 & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
+\midrule
+深度 & 2 & 0 & 1 & 2 & 1 & 2 & 2 & 3 \\
+高度 & 0 & 3 & 2 & 1 & 1 & 0 & 0 & 0 \\
+子樹大小 & 1 & 8 & 4 & 2 & 3 & 1 & 1 & 1 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\item $2, 3, 5, 1, 4, 6, 7, 8$。
+\item 要求的是：倒過來看時，每個點都在它所有子節點之後，也就是原本的順序裡，每
+個點都在它的子節點之前。 (i) 不行：$3$ 是 $1$ 的父節點，卻排在 $1$ 後面；倒過來
+看時先處理 $3$，把還沒加上 $1$ 的 \texttt{sz[3]} 交給 $2$，\texttt{sz[2]} 會少
+$1$。 (ii) 可以，逐一檢查父節點都在前面（它是第~11~章改法一那種堆疊走訪的順
+序）。 (iii) 可以：父節點的深度比子節點小一，一定排在前面。 BFS 順序就是 (iii)
+的一種。
+\end{enumerate}
+
+\item
+\begin{enumerate}
+\item 前序 $1, 2, 4, 5, 3, 6, 7$；中序 $4, 5, 2, 1, 6, 3, 7$；後序 $5, 4, 2, 6,
+7, 3, 1$。 把這棵樹寫成範例~\ref{ex:traversal} 的輸入跑一次可以核對。
+\item 前序的第一個 $5$ 是根；中序裡 $5$ 的左邊 $1, 2, 3, 4$ 是左子樹，右邊 $6$
+是右子樹。 左子樹的前序是接下來的四個 $2, 1, 4, 3$，根是 $2$；中序 $1 | 2 | 3,
+4$，$1$ 是 $2$ 的左子節點，右子樹是 $\{3, 4\}$，前序 $4, 3$，根是 $4$，中序 $3,
+4$ 表示 $3$ 是 $4$ 的左子節點。 所以：$5$ 的左 $2$、右 $6$；$2$ 的左 $1$、右
+$4$；$4$ 的左 $3$。
+\item $4$ 棵。 前序和後序都只說明 $1$ 在最上面、$2$ 在中間、$3$ 在最下面，排成
+一條鏈；但 $2$ 可以是 $1$ 的左或右子節點，$3$ 可以是 $2$ 的左或右子節點，前序、
+後序都不變，$2 \times 2 = 4$ 種。 中序就分得出來：四棵的中序各不相同。
+\end{enumerate}
+
+\item 一對點 $\{p, q\}$ 的距離，是它們之間的路徑有幾條邊。 換個方式數：對每條
+邊，問它在幾對點的路徑上，再全部加起來，數到的是同一個總數（每一對點，路徑上
+的每條邊各被數到一次）。 一條邊在 $\{p, q\}$ 的路徑上，剛好是拿掉這條邊後 $p$、
+$q$ 分在兩邊的時候，這樣的配對有 $\mathit{sz}(c) \times (n - \mathit{sz}(c))$
+對。 範例的輸出加起來是 $10 + 6 + 12 + 6 + 6 + 6 = 46$。 直接算：以 $1$ 為根
+時各點深度是 $1{:}0$、$2{:}1$、$7{:}1$、$3{:}2$、$4{:}2$、$5{:}3$、$6{:}3$，
+$21$ 對點的距離逐一加起來也是 $46$。
+
+\item
+\begin{enumerate}
+\item 每條路一次 BFS，$O(n)$，共 $n - 1$ 條，$O(n^2)$。 $n = 2 \times 10^5$ 時
+約 $4 \times 10^{10}$ 步，遠超過時間限制。
+\item 迴圈 \texttt{i} 從 $n - 1$ 到 $1$，剛好 $n - 1$ 次。 每次是一個點把值交
+給父節點，每個非根的點只交一次；子節點多的點只是「收到」很多次，收的次數加起來
+也是 $n - 1$。 這和「每條邊只看一次」是同一件事。
+\end{enumerate}
+
+\item 沿用證明框的記號，$u$ 是離 $s$ 最遠的點。 $x \to u$ 最多和 $x \to a$、$x
+\to b$ 其中一邊共用第一條邊，設它不和 $x \to a$ 共用。 如果 $d(x, u) > d(x, b)$，
+由事實 (1)，$d(a, u) = d(a, x) + d(x, u) > d(a, x) + d(x, b) = D$，和 $D$ 最大
+矛盾，所以 $d(x, u) \le d(x, b)$。 由事實 (2)，$d(s, u) \le d(s, x) + d(x, u)
+\le d(s, x) + d(x, b) = d(s, b)$。 另一方面 $d(s, u)$ 本來就是最大的，不小於
+$d(s, a)$、$d(s, b)$。 所以離 $s$ 最遠的距離等於 $\max(d(s, a), d(s, b))$。
+
+\item 一條鏈 $1 - 2 - 3 - 4$，邊長依序是 $3$、$-10$、$8$。 從 $2$ 出發：到 $1$
+是 $3$、到 $3$ 是 $-10$、到 $4$ 是 $-2$，最遠的是 $1$。 從 $1$ 出發：到 $2$ 是
+$3$、到 $3$ 是 $-7$、到 $4$ 是 $1$，最遠只有 $3$。 但 $3$ 到 $4$ 的距離是 $8$。
+不成立的是事實 (2)：從 $1$ 到 $4$ 的真正路徑經過長度 $-10$ 的邊，「刪掉走回頭
+的部分不會變長」在這裡變成會變長，證明裡 $d(s, u) \le d(s, x) + d(x, u)$ 那一步
+就斷了。
+
+\item 輸入只有每個人的主管 \texttt{boss}，要從總經理往下 BFS，得先建出每個人的
+部屬串列 \texttt{children}（和第~\ref{sec:tree-terms}~節由父節點陣列建子節點串
+列一樣），並找出 \texttt{boss} 是 $0$ 的總經理。 BFS 得到 \texttt{order} 之後：
+\begin{code}{cpp}{練習 7}
+// ready[v]：部屬裡最晚的完成時刻，一開始都是 0
+for (int i = n - 1; i >= 0; i--) {
+    int v = order[i];
+    finish[v] = ready[v] + t[v];
+    if (boss[v] != 0) {
+        ready[boss[v]] = max(ready[boss[v]], finish[v]);
+    }
+}
+\end{code}
+這次迴圈要跑到 \texttt{i = 0}，因為總經理自己的 \texttt{finish} 也要算。 輪到
+$v$ 時，它的部屬都在 \texttt{order} 的後面，已經處理過了，\texttt{ready[v]} 是
+最終的值。
+\end{enumerate}

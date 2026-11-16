@@ -1,4 +1,1273 @@
-% 佔位：本章尚未開始。book.tex 裡先註解掉。
 \chapter{綜合練習}
+\label{ch:capstone}
 
-本章尚未開始。
+修腳踏車的師傅聽到「騎起來喀喀響」，不會把整台車拆開。 他會先問幾個問題：
+什麼時候響、踩快踩慢有沒有差、換檔時會不會更明顯，再決定先看鏈條、踏板還是
+花鼓。 拿到一題沒看過的程式題，也可以這樣做：先問幾個固定的問題，把可能的
+做法縮小到兩三種，再動手。
+
+前 13 章每一章教一類技巧，例題也都放在那一章裡，讀的時候已經知道要用什麼。
+考試和實際工作時沒有這個提示，題目不會寫「請用二分搜」。 這一章不教新的技
+巧，練的是前面一直跳過的那一步：看到一題陌生的題目，怎麼判斷該用哪一章的方
+法。
+
+本章的安排是：第~\ref{sec:cap-questions}~節是一份讀題時自問的問題清單；第
+~\ref{sec:cap-clues}~節整理資料範圍和題目問法透露的線索；第
+~\ref{sec:cap-flow}~節是一套固定的解題流程；接著四題綜合例題，每題都從判斷
+開始，包括先想錯、再修正的過程。 最後是一份不標章節的總題單。 程式用到的語
+法都在前面各章出現過。
+
+\section{拿到題目時先問自己的問題}
+\label{sec:cap-questions}
+
+會卡住的時候，常常是因為讀完題目直接開始想「要用什麼演算法」，中間少了好幾
+步。 下面這份清單把這幾步拆開。 不用每題都從頭問到尾，但卡住時，回到清單上
+看看漏了哪一題。
+
+\textbf{第一組：我真的看懂題目了嗎？}
+
+\begin{enumerate}
+\item 輸入的每一個數字代表什麼？ 輸出要的是一個數、一個位置，還是一整個
+排法？ 「找不到」「做不到」時要輸出什麼？
+\item 能不能自己編一個三到五筆資料的小例子，用手算出答案？ 算的時候，留意自
+己是怎麼找的：一個一個試、先排好再看，還是一步一步往外擴。 手算的方法常常就
+是暴力解，有時候也直接透露出正確的做法。
+\item 題目的範例算出來，和你的理解一樣嗎？ 不一樣時，先回頭重讀題目，不要急
+著寫程式。
+\end{enumerate}
+
+\textbf{第二組：可以多慢？}
+
+\begin{enumerate}[resume]
+\item 每一個會讓工作量變大的量，上限各是多少？ 筆數 $n$、詢問數 $q$、數值範
+圍、格子的長寬都要看。 代進去之後，大約允許哪一種複雜度？（第~1~章「從資料
+範圍反推需要的複雜度」小節）
+\item 最笨、但一定對的做法是什麼？ 多慢？ 題目如果分了子題，它夠拿下哪幾個？
+\end{enumerate}
+
+\textbf{第三組：怎麼變快？}
+
+\begin{enumerate}[resume]
+\item 暴力解慢在哪一行？ 那一行反覆在做什麼：一再從頭加總、一再找最大值、一
+再從頭找某個值、一再算同一個狀態，還是一再試已經知道不行的東西？ 不同的「一
+再」對應不同的章，第~\ref{sec:cap-clues}~節的表會整理。
+\item 換一種問法會不會比較容易？ 先排序會不會讓問題變簡單？ 直接求答案很難
+時，「給一個答案，檢查它行不行」會不會比較容易？ 前面的選擇會不會影響後面能
+做什麼？ 能不能把東西看成點，把關係看成邊？
+\item 拿掉一個條件，或把某個數設成 $0$、$1$，問題會不會變成學過的題目？ 會的
+話，被拿掉的那個條件要怎麼加回去？
+\end{enumerate}
+
+\textbf{第四組：還是卡住時。}
+
+\begin{enumerate}[resume]
+\item 在草稿紙上把試過的想法列出來，每個都寫一句「為什麼不行」：太慢、會算
+錯、還是根本做不出來。 理由寫不出來的那一個，常常其實可以用，只是剛才沒想清
+楚。
+\item 先把暴力解寫好、交出去。 部分分先拿到手，暴力解等一下也是對拍的工具。
+然後再從第三組重新問一次。
+\end{enumerate}
+
+這份清單的重點在前兩組。 很多錯誤發生在第 1 題和第 4 題：題目看錯了，或範圍
+沒看完。 這兩種錯誤和會不會演算法無關，寫再好的程式也救不回來。
+
+\section{從題目線索判斷技巧}
+\label{sec:cap-clues}
+
+\subsection{資料範圍}
+
+第~1~章已經整理過從範圍估算複雜度的步驟，範圍和複雜度的對照表在銜接書 10.1
+節。 這裡換一個方向：範圍確定之後，本書哪幾章的方法是候選。
+
+\begin{center}
+\begin{tabular}{p{0.3\linewidth}p{0.6\linewidth}}
+\toprule
+範圍 & 先想到的方法 \\
+\midrule
+$n$ 只有十左右 & 試遍所有排列（第~4~章） \\
+$n$ 二十左右 & 子集合枚舉、回溯（第~4~章） \\
+$n$ 幾百 & 三層迴圈，例如枚舉兩個端點再掃一遍 \\
+$n$ 幾千 & 兩兩比較；狀態有兩維的動態規劃（第~9、10~章） \\
+$n$ 到 $2 \times 10^5$ 以上 & 排序（第~2~章）、二分搜（第~3~章）、前綴和與雙指標（第~5~章）、
+堆疊與堆積（第~6~章）、貪心（第~7~章）、BFS／DFS（第~11~章起） \\
+格子 $1000 \times 1000$ & 每格只處理常數次：格子 DP（第~10~章）、BFS（第~11、12~章） \\
+數值到 $10^9$ 或 $10^{18}$ & 對答案二分搜（第~3~章）、找週期（第~4~章）、每次減半的遞迴（第~8~章） \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+最後一列要特別留意：數值很大不代表 $n$ 很大。 數值到 $10^9$ 時，「答案從 $0$
+一個一個試」不行，但只要每次檢查夠快，對答案二分搜只要試三十次左右。
+
+\subsection{題目的問法和資料的形狀}
+
+範圍把候選縮小之後，再看題目怎麼問。 下表左欄是常見的問法，右欄是本書對應的
+章；右欄寫的是「先試這個」，不是保證。
+
+\begin{center}
+\begin{tabular}{p{0.56\linewidth}p{0.36\linewidth}}
+\toprule
+題目的問法或資料的形狀 & 先試 \\
+\midrule
+「最少要多少才夠」「最大可以多少仍然做得到」，答案範圍很大 & 對答案二分搜（第~3~章） \\
+很多次「某個值在哪裡」「有幾個不超過 $x$」，資料本身不變 & 排序加 \texttt{lower\_bound}（第~2、3~章） \\
+很多次「連續一段的總和」；很多次「把一段都加上 $v$」 & 前綴和；差分（第~5~章） \\
+「最長（最短）的連續一段，使得……」，段變長時條件只會更難（或更容易）滿足 & 雙指標、滑動視窗（第~5~章） \\
+「左邊（右邊）第一個比它大的」；「每個長度 $L$ 的視窗裡的最大值」 & 單調堆疊；單調佇列（第~6~章） \\
+一直要取出目前最大（最小）的，又一直有新的加進來 & 優先佇列（第~6~章） \\
+一堆時段或區間，選最多個不重疊、或用最少個蓋滿 & 排序後貪心（第~7~章） \\
+定義裡用到自己；輸入一層包一層 & 遞迴（第~8~章） \\
+照規則走 $k$ 步，$k$ 大到 $10^{18}$ & 模擬加上找週期（第~4~章） \\
+「有幾種方法」「總和最大是多少」，而且前面的選擇會影響後面能選什麼 & 動態規劃（第~9~章）；在格子上只往右、往下走時看第~10~章 \\
+「最少幾步」，每一步的代價都一樣 & BFS（第~11~章）；格子或「位置加上其他資訊」時看第~12~章「格子圖與狀態 BFS」 \\
+「誰和誰連在一起」「分成幾群」 & DFS 找連通元件（第~11~章） \\
+$n$ 個點、$n - 1$ 條邊，而且全部連通 & 樹（第~13~章「樹」） \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{線索不是口訣}
+
+上面兩張表的用途是縮小範圍，讓你知道先試哪兩三種方法；把它們背成「看到某個
+字就用某個演算法」，會套錯。 幾個看起來符合線索、其實不能照套的例子：
+
+\begin{itemize}
+\item \textbf{「最多能聽幾場講座」，但每場的學分不同，要學分總和最大。} 字面
+上是區間排程，可是第~7~章的「結束最早優先」只對「場數」成立。 每場有不同的
+價值時要用第~9~章的動態規劃。
+\item \textbf{「從左上走到右下最少要花多少體力」，每一格的體力不同。} 字面上
+是「最少」加上格子，像 BFS，可是 BFS 只能處理每一步代價相同的情況。 如果只
+能往右、往下走，是第~10~章的格子 DP；可以往四個方向走時，要用本書沒有教的加
+權最短路徑。
+\item \textbf{「最小的最大值」，但檢查函式沒有單調性。} 如果答案 $x$ 可行時，
+$x + 1$ 不一定可行，對答案二分搜就不能用（第~3~章「沒有單調性與實數答案」那
+一節）。
+\end{itemize}
+
+三個例子的共同點是：問法相同，但多了一個條件（價值不同、代價不同、不單調），
+原本的方法就失效了。 所以每次用表格選出候選之後，還要回頭確認：這個方法需要
+的前提，題目都滿足嗎？
+
+\section{一套固定的解題流程}
+\label{sec:cap-flow}
+
+第~\ref{sec:cap-questions}~節的問題清單用在「想」，這一節把「想」和「寫」接
+成一條流程。 前面每一章的例題其實都照這個順序講，只是沒有明說。
+
+\begin{center}
+\begin{tikzpicture}[node distance=0.55cm and 0.5cm, font=\small]
+\node[process, minimum width=2.1cm] (read) {1. 讀題};
+\node[process, minimum width=2.1cm, right=of read] (hand) {2. 手算範例};
+\node[process, minimum width=2.1cm, right=of hand] (brute) {3. 想暴力解};
+\node[process, minimum width=2.1cm, right=of brute] (neck) {4. 找瓶頸};
+\node[process, minimum width=2.1cm, below=1.1cm of neck] (switch) {5. 換技巧};
+\node[process, minimum width=2.1cm, left=of switch] (code) {6. 寫程式};
+\node[decision, left=0.8cm of code, aspect=1.9, inner sep=1pt] (check) {7. 對拍\\相同？};
+\node[startend, left=0.6cm of check, minimum width=1.4cm] (done) {交出};
+\draw[flowarrow] (read) -- (hand);
+\draw[flowarrow] (hand) -- (brute);
+\draw[flowarrow] (brute) -- (neck);
+\draw[flowarrow] (neck) -- node[right, font=\scriptsize] {不夠快} (switch);
+\draw[flowarrow] (switch) -- (code);
+\draw[flowarrow] (code) -- (check);
+\draw[flowarrow] (check) -- node[above, font=\scriptsize] {是} (done);
+\draw[flowarrow] (check.south) -- ++(0,-0.6) -| node[pos=0.25, below, font=\scriptsize] {否：找出哪一邊錯，回到第 5 或第 6 步} (switch.south);
+\end{tikzpicture}
+\diagcaption{解題流程。 第 4 步發現暴力解已經夠快時，直接寫暴力解，第 5 步跳過。}
+\label{fig:cap-flow}
+\end{center}
+
+每一步都有一個看得見的產出，做完才往下：
+
+\begin{enumerate}
+\item \textbf{讀題}：把題目改寫成三五行的重點，輸入輸出、限制、特殊情況各一
+行。 第~\ref{sec:cap-questions}~節的第一組問題都要有答案。
+\item \textbf{手算範例}：用題目的範例和自己編的小例子各算一次，寫下答案。 這
+些小例子等一下就是測試資料。
+\item \textbf{想暴力解}：寫下最直接的做法和它的複雜度。 時間允許的話把它寫
+出來，它是第 7 步要用的。
+\item \textbf{找瓶頸}：把上限代進暴力解的複雜度。 不夠快的話，指出是哪一層迴
+圈、在重複做什麼事。
+\item \textbf{換技巧}：針對那個重複的動作，用第~\ref{sec:cap-clues}~節的表找
+候選，並確認前提成立。 這一步最容易想錯，下面四題例題都會示範想錯之後怎麼發
+現。
+\item \textbf{寫程式}：用前面各章的骨架，先寫最核心的部分，再補輸入輸出。
+\item \textbf{對拍}：用暴力解和正式的程式在隨機的小資料上比對（第~1~章「用暴
+力解比對」小節）。 出現不同時，先手算那組資料，確定是哪一邊錯，再回頭修。
+\end{enumerate}
+
+熟練之後，第 1 到第 4 步可能一兩分鐘就做完。 但碰到陌生的題目時，跳過其中一
+步，通常就是後面花最多時間的原因：沒有第 2 步，寫完才發現題意理解錯了；沒有
+第 3 步，就沒有東西可以對拍。
+
+\section{例題一：走廊分享器的訊號半徑}
+\label{sec:cap-router}
+
+\textbf{題意}（\akiref{hallway-router-range}{走廊分享器的訊號半徑}）
+
+\begin{itemize}
+\item 一條走廊看成數線，第 $j$ 個攤位在座標 $h_j$，牆上第 $i$ 個插座在座標
+$c_i$。
+\item 分享器只能插在插座上，每個插座最多一台，最多用 $k$ 台。 所有分享器的
+訊號半徑都是同一個非負整數 $r$，插在 $x$ 的分享器蓋得到 $[x - r, x + r]$ 裡
+的攤位。
+\item 每個攤位都要被蓋到，求最小的 $r$。
+\item $k \le n \le 2 \times 10^4$，$m \le 2 \times 10^4$，座標在 $0$ 到 $10^9$
+之間，沒有排序，可能重複。
+\end{itemize}
+
+例如插座在 $2, 9, 15, 20$，攤位在 $1, 4, 6, 11, 13, 19$，最多 $2$ 台。
+$r = 4$ 時插在 $2$ 和 $15$ 就全部蓋到（下圖）；$r = 3$ 時怎麼插都不夠，答案
+是 $4$。
+
+\begin{center}
+\begin{tikzpicture}[x=0.55cm, y=0.6cm]
+\draw[black!45] (-2.5,0) -- (21,0);
+\foreach \x in {0,5,10,15,20} {
+    \draw[black!45] (\x,0.08) -- (\x,-0.08) node[below, font=\scriptsize, text=black!60] {\x};
+}
+\foreach \x in {1,4,6,11,13,19} {\fill[black!70] (\x,0) circle (0.13);}
+\foreach \x in {2,9,15,20} {\fill[coreStroke] (\x,0.45) -- (\x-0.25,0.85) -- (\x+0.25,0.85) -- cycle;}
+\draw[ivpick] (-2,1.3) rectangle (6,1.6);
+\draw[ivpick] (11,1.3) rectangle (19,1.6);
+\node[font=\scriptsize, right] at (21.2,0) {攤位};
+\node[font=\scriptsize, right] at (21.2,0.7) {插座};
+\node[font=\scriptsize, right] at (21.2,1.45) {$r = 4$ 的涵蓋範圍};
+\end{tikzpicture}
+\diagcaption{圓點是攤位，三角形是插座。 插在 $2$ 和 $15$ 的兩台分享器，半徑
+$4$ 時蓋住 $[-2, 6]$ 和 $[11, 19]$，六個攤位都在裡面。}
+\label{fig:cap-router}
+\end{center}
+
+\textbf{判斷}
+
+先照清單的第二組問題。 要找的是「最小的 $r$」，$r$ 可能到 $10^9$。 最直接的
+暴力解是 $r$ 從 $0$ 開始一個一個試；但「給定 $r$ 時夠不夠」本身也還不會判斷，
+先放著。 光是試的次數就有 $10^9$，再乘上每次的檢查，一定來不及。
+
+接著看第~\ref{sec:cap-clues}~節表格的第一列：「最小要多少才夠」，答案範圍很
+大，候選是對答案二分搜。 要用它，得確認兩件事：
+
+\begin{itemize}
+\item \textbf{單調性}：$r$ 可行時，$r + 1$ 也可行嗎？ 是的。 同樣的插法，半
+徑變大時每台蓋到的只會更多。
+\item \textbf{檢查}：給一個 $r$，能不能很快算出最少要幾台？ 能的話，和 $k$ 比
+一下就好。
+\end{itemize}
+
+所以問題變成第二件事。 這是一個「固定 $r$ 之後」的新問題：用最少的分享器蓋
+住所有攤位。 看起來像第~7~章的區間覆蓋，可以試試貪心。
+
+\textbf{第一次想錯。} 最左邊的攤位一定要有人蓋。 一個自然的想法是：在蓋得到
+它的插座裡，選最左邊（或離它最近）的那一個，接著跳過所有被這台蓋到的攤位，
+再處理下一個沒蓋到的。 這樣寫，題目的兩個範例都對。 但照第~7~章「先找反例」
+的習慣試幾個小例子：插座在 $0$ 和 $4$，攤位在 $2$ 和 $6$，$k = 1$。 $r = 2$
+時，蓋得到攤位 $2$ 的插座有 $0$ 和 $4$，選左邊的 $0$ 只蓋到 $[-2, 2]$，攤位
+$6$ 還要另一台；選 $4$ 則一台就蓋住 $[2, 6]$。 選左邊的寫法要等到 $r = 6$ 才
+用一台蓋得完，答案從 $2$ 錯成 $6$。
+
+\textbf{修正。} 回頭想「選哪一台」真正影響的是什麼。 最左邊的攤位左邊已經沒
+有沒蓋到的攤位了，所以一台分享器往左蓋多遠完全沒有用處，有用的只有它往右蓋到
+哪裡。 蓋得到這個攤位的插座裡，座標最大的那一個往右蓋得最遠。 這和第~7~章區
+間覆蓋的「接得上的人裡，選走得最晚的」是同一個道理：任何一種插法換成這一台，
+蓋到的攤位不會變少，用的台數也不變。
+
+\textbf{合起來}：插座和攤位都排序；對 $r$ 二分搜；每次檢查從左到右掃一遍，
+每次選「蓋得到目前最左邊攤位的插座裡，最右邊的那一個」。
+
+\textbf{程式}
+
+\begin{example}[label=ex:cap-router]{cpp}{(router.cpp) 走廊分享器的訊號半徑}
+#include <algorithm>
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int n, m, k;
+vector<long long> c, h;   // 插座、攤位的座標，都會先排序
+
+// 半徑 r 時，k 台以內蓋得完所有攤位嗎？
+bool ok(long long r) {
+    int used = 0;
+    int p = -1;           // c[0..p] 是座標 <= h[i] + r 的插座
+    int i = 0;            // 最左邊還沒蓋到的攤位
+    while (i < m) {
+        while (p + 1 < n && c[p + 1] <= h[i] + r) {
+            p++;
+        }
+        // 蓋得到 h[i] 的插座裡，選最右邊的 c[p]
+        if (p < 0 || c[p] < h[i] - r) {
+            return false;     // 沒有插座蓋得到這個攤位
+        }
+        used++;
+        if (used > k) {
+            return false;
+        }
+        long long reach = c[p] + r;
+        while (i < m && h[i] <= reach) {
+            i++;
+        }
+    }
+    return true;
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    cin >> n >> m >> k;
+    c.resize(n);
+    h.resize(m);
+    for (long long &x : c) {
+        cin >> x;
+    }
+    for (long long &x : h) {
+        cin >> x;
+    }
+    sort(c.begin(), c.end());
+    sort(h.begin(), h.end());
+    long long lo = -1, hi = 1000000000;   // lo 不行（想像的），hi 一定行
+    while (hi - lo > 1) {
+        long long mid = (lo + hi) / 2;
+        if (ok(mid)) {
+            hi = mid;
+        } else {
+            lo = mid;
+        }
+    }
+    cout << hi << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+4 6 2 \\
+15 2 20 9 \\
+1 4 6 11 13 19 \\
+}{
+4 \\
+}
+
+\begin{itemize}
+\item 二分搜沿用第~3~章的寫法：\texttt{lo} 一直是「不行」，\texttt{hi} 一直
+是「行」。 $r = 0$ 可能就夠（每個攤位都剛好在插座上），所以下界用想像的
+\texttt{lo = -1}。 $r = 10^9$ 時任何一個插座都蓋得到整條走廊，一定行。
+\item \texttt{p} 是「座標不超過 $h_i + r$ 的插座裡最右邊的那一個」。 攤位往
+右移時 $h_i + r$ 只會變大，所以 \texttt{p} 只往右走，不用每次從頭找，這是第~5~
+章雙指標的寫法。
+\item 選了 \texttt{c[p]} 之後，下一個沒蓋到的攤位在 $c_p + r$ 的右邊，這個插座
+蓋不到它，所以不會有同一個插座被選兩次的問題。
+\end{itemize}
+
+範例在 $r = 4$ 和 $r = 3$ 時，\texttt{ok} 的過程如下（排序後插座是
+$2, 9, 15, 20$）：
+
+\begin{center}
+\begin{tabular}{cclccc}
+\toprule
+$r$ & 最左邊沒蓋到的攤位 & 蓋得到它的插座 & 選 & 蓋到哪裡 & \texttt{used} \\
+\midrule
+4 & 1 & 2 & 2 & 6 & 1 \\
+  & 11 & 9、15 & 15 & 19 & 2 \\
+  & \multicolumn{5}{l}{全部蓋到，回傳 \texttt{true}} \\
+\midrule
+3 & 1 & 2 & 2 & 5 & 1 \\
+  & 6 & 9 & 9 & 12 & 2 \\
+  & 13 & 15 & 15 & 18 & 3，超過 $k$，回傳 \texttt{false} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{複雜度}
+
+排序是 $O(n \log n + m \log m)$。 每次 \texttt{ok} 裡 \texttt{p} 和 \texttt{i}
+都只往前走，是 $O(n + m)$。 二分搜的區間長度一開始約 $10^9$，每輪減半，共
+$30$ 輪。 總共大約 $30 \times 4 \times 10^4 = 1.2 \times 10^6$ 次操作，最大
+的測試資料在本書測試的環境下約 $0.03$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{選最左邊的插座}：上面「第一次想錯」的寫法。 輸入
+\texttt{2 2 1}、\texttt{0 4}、\texttt{2 6}（三行）時，正確答案是 \texttt{2}，
+這樣寫印出 \texttt{6}。 改成選離攤位最近的插座也會錯，本章練習第~3~題會問。
+\item \textbf{忘了排序}：題目說座標沒有排序。 把兩行 \texttt{sort} 拿掉，範
+例的輸入印出 \texttt{14}。 雙指標和「最左邊的攤位」都假設資料已經排好。
+\item \textbf{下界寫成 \texttt{lo = 0}}：把 $0$ 當成一定不行，答案就不可能是
+$0$。 輸入 \texttt{1 1 1}、\texttt{5}、\texttt{5} 時，正確答案是 \texttt{0}，
+這樣寫印出 \texttt{1}。
+\end{itemize}
+
+\section{例題二：園遊會引導志工}
+\label{sec:cap-guides}
+
+\textbf{題意}（\akiref{guides-on-every-shortest-route}{園遊會引導志工}）
+
+\begin{itemize}
+\item 操場是 $h \times w$ 的方格，\texttt{\#} 是攤位不能走，\texttt{S} 是校門，
+\texttt{T} 是禮堂。 每一步走到上下左右相鄰的格子。
+\item 來賓一定走步數最少的路線，但這樣的路線可能有很多條。 只要某一格\textbf{至
+少在一條}最短路線上，就要在那裡站一位志工（\texttt{S}、\texttt{T} 也算）。
+\item 輸出最少步數 $D$ 和要站志工的格子數 $K$；走不到時輸出 \texttt{-1}。
+\item $h, w \le 500$。
+\end{itemize}
+
+例如下圖左邊的操場，$D = 7$，最短路線有三條，合起來經過 $12$ 格。 右上角的
+$(0, 3)$ 是死路，右邊的兩格要先經過 \texttt{T} 才進得去，都不在最短路線上。
+
+\textbf{判斷}
+
+「最少幾步」、每一步代價相同、在格子上：第~\ref{sec:cap-clues}~節的表指向
+BFS。 $D$ 用一次 BFS 就有了，難的是 $K$。
+
+\textbf{第一次想錯：只找一條路線。} BFS 的時候記下每一格是從哪一格走來的，從
+\texttt{T} 一路往回走到 \texttt{S}，數經過幾格。 這樣只找得到其中一條最短路
+線，範例會印出 \texttt{7 8}。 題目要的是所有最短路線經過的格子合起來，回頭重
+讀題目的「至少在一條」就會發現。
+
+\textbf{第二次想錯：列出所有路線。} 那就把每一條最短路線都找出來，用 DFS 一
+步一步走，步數超過 $D$ 就停。 範例沒問題，可是想一下最壞的情況：$500 \times
+500$ 的空地，\texttt{S} 在左上角、\texttt{T} 在右下角，最短路線就是選 $998$
+步裡哪 $499$ 步往右，大約 $10^{298}$ 條。 路線數量本身就太多了，不可能一條一
+條列。
+
+\textbf{換一個問法。} 不要問「有哪些路線」，改問「某一格 $v$ 在不在某條最短
+路線上」。 如果 $v$ 在一條最短路線上，這條路線從 \texttt{S} 走到 $v$ 的那一
+段，一定是 \texttt{S} 到 $v$ 的最短路線（不然換成更短的，整條就比 $D$ 短了）；
+從 $v$ 到 \texttt{T} 那一段也一樣。 所以只要知道兩個數：
+
+\begin{itemize}
+\item $d_S(v)$：從 \texttt{S} 走到 $v$ 最少幾步；
+\item $d_T(v)$：從 $v$ 走到 \texttt{T} 最少幾步，也就是從 \texttt{T} 走到 $v$
+最少幾步（每一步都能反著走）。
+\end{itemize}
+
+$v$ 在某條最短路線上，剛好是在 $d_S(v) + d_T(v) = D$ 的時候：如果等於 $D$，
+把兩段最短路線接起來就是一條長度 $D$ 的路線；如果大於 $D$，經過 $v$ 的路線至
+少要 $d_S(v) + d_T(v)$ 步，比 $D$ 長。 兩個陣列各用一次 BFS 算出來，一次 BFS
+從 \texttt{S} 出發，一次從 \texttt{T} 出發。 這個「從兩端各跑一次，再合起來
+看」的做法，在圖和樹的題目裡很常用。
+
+\begin{center}
+\begin{tikzpicture}[x=1.15cm, y=-1.15cm]
+\tikzset{
+  gwall/.style={draw=black!55, fill=black!65, minimum width=1.1cm, minimum height=1.1cm},
+  gcell/.style={draw=black!55, minimum width=1.1cm, minimum height=1.1cm, font=\scriptsize, align=center},
+  gon/.style={gcell, draw=memStroke, thick, fill=memFill},
+}
+\foreach \r/\c/\t in {0/0/{S\\0,7}, 0/1/{1,6}, 0/2/{2,5}, 1/0/{1,6}, 1/2/{3,4},
+                      2/0/{2,5}, 2/1/{3,4}, 2/2/{4,3}, 3/1/{4,3}, 3/2/{5,2}, 3/3/{6,1}, 3/4/{T\\7,0}} {
+    \node[gon] at (\c,\r) {\t};
+}
+\foreach \r/\c/\t in {0/3/{3,6}, 1/4/{9,2}, 2/4/{8,1}} {
+    \node[gcell] at (\c,\r) {\t};
+}
+\foreach \r/\c in {0/4, 1/1, 1/3, 2/3, 3/0} {
+    \node[gwall] at (\c,\r) {};
+}
+\end{tikzpicture}
+\diagcaption{範例的操場。 每格寫著「$d_S$，$d_T$」，黑色是攤位。 橘色的 $12$
+格兩數相加剛好是 $D = 7$，就是要站志工的格子；$(0, 3)$ 是 $3 + 6 = 9$，右邊兩
+格是 $11$ 和 $9$，都不在最短路線上。}
+\label{fig:cap-guides}
+\end{center}
+
+\textbf{程式}
+
+\begin{example}[label=ex:cap-guides]{cpp}{(guides.cpp) 園遊會引導志工}
+#include <iostream>
+#include <queue>
+#include <string>
+#include <vector>
+using namespace std;
+
+int h, w;
+vector<string> g;
+
+// 從格子 src 出發做 BFS，回傳每一格的最少步數，走不到是 -1
+vector<int> bfs(int src) {
+    const int dr[4] = {-1, 1, 0, 0};
+    const int dc[4] = {0, 0, -1, 1};
+    vector<int> dist(h * w, -1);
+    queue<int> q;
+    dist[src] = 0;
+    q.push(src);
+    while (!q.empty()) {
+        int u = q.front();
+        q.pop();
+        int r = u / w, c = u % w;
+        for (int d = 0; d < 4; d++) {
+            int nr = r + dr[d], nc = c + dc[d];
+            if (nr < 0 || nr >= h || nc < 0 || nc >= w || g[nr][nc] == '#') {
+                continue;
+            }
+            int v = nr * w + nc;
+            if (dist[v] == -1) {
+                dist[v] = dist[u] + 1;
+                q.push(v);
+            }
+        }
+    }
+    return dist;
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    cin >> h >> w;
+    g.resize(h);
+    int s = 0, t = 0;
+    for (int r = 0; r < h; r++) {
+        cin >> g[r];
+        for (int c = 0; c < w; c++) {
+            if (g[r][c] == 'S') {
+                s = r * w + c;
+            } else if (g[r][c] == 'T') {
+                t = r * w + c;
+            }
+        }
+    }
+    vector<int> ds = bfs(s), dt = bfs(t);
+    if (ds[t] == -1) {
+        cout << -1 << '\n';
+        return 0;
+    }
+    int D = ds[t], K = 0;
+    for (int v = 0; v < h * w; v++) {
+        if (ds[v] != -1 && dt[v] != -1 && ds[v] + dt[v] == D) {
+            K++;
+        }
+    }
+    cout << D << ' ' << K << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+4 5 \\
+S...\# \\
+.\#.\#. \\
+...\#. \\
+\#...T \\
+}{
+7 12 \\
+}
+
+\begin{itemize}
+\item 第 $r$ 列第 $c$ 行的格子編號成 $r \times w + c$，距離就能存在一維的
+\texttt{vector} 裡，佇列裡也只要放一個 \texttt{int}。 要還原列和行時，
+\texttt{u / w} 是列、\texttt{u \% w} 是行。
+\item 越界檢查寫在讀 \texttt{g[nr][nc]} 之前，\texttt{||} 由左到右算，前面成立
+就不會讀到格子外面。
+\item 判斷時先排除 $-1$。 在這一題，\texttt{S} 走得到 \texttt{T} 時，一格要嘛
+兩邊都走得到、要嘛兩邊都走不到，所以不檢查也不會算錯；但換一題有向的圖，或
+距離用很大的數表示「走不到」時，相加就會出事，養成先排除的習慣比較安全。
+\end{itemize}
+
+\textbf{複雜度}
+
+兩次 BFS 各是 $O(hw)$，最後掃一遍也是 $O(hw)$，$hw \le 2.5 \times 10^5$。 最
+大的測試資料在本書測試的環境下約 $0.05$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{只回溯一條路線}：範例印出 \texttt{7 8}，少了另外兩條路線經過的
+格子。
+\item \textbf{只看 $d_S \le D$}：把「從 \texttt{S} 出發 $D$ 步之內走得到」的
+格子都算進去，沒有檢查從那一格到 \texttt{T} 還要幾步。 範例印出
+\texttt{7 13}，多算了死路 $(0, 3)$：它離 \texttt{S} 只有 $3$ 步，可是從它走
+到 \texttt{T} 要 $6$ 步。
+\item \textbf{每一格各跑一次 BFS}：想分別算每一格到 \texttt{S}、\texttt{T}
+的距離，對每一格都跑 BFS。 $2.5 \times 10^5$ 格各跑一次 $O(hw)$，是
+$6 \times 10^{10}$，來不及。 從 \texttt{T} 出發跑一次，就得到所有格子到
+\texttt{T} 的距離。
+\end{itemize}
+
+\section{例題三：攝影師的喘息空檔}
+\label{sec:cap-breather}
+
+\textbf{題意}（\akiref{breathing-room-between-shoots}{攝影師的喘息空檔}）
+
+\begin{itemize}
+\item 攝影師有 $n$ 個可以接的案子，第 $i$ 個是半開區間 $[a_i, b_i)$，同一時
+間只能拍一個。
+\item 他至少要接 $m$ 個。 接下的案子依時間排好後，每個案子的開始減去前一個的
+結束，都要至少是 $c$。
+\item 求最大的非負整數 $c$；$c = 0$ 都接不到 $m$ 個時輸出 \texttt{-1}。
+\item $2 \le m \le n \le 5 \times 10^4$，時刻在 $0$ 到 $10^9$ 之間。
+\end{itemize}
+
+例如五個案子 $[1, 3)$、$[2, 5)$、$[4, 6)$、$[7, 9)$、$[10, 12)$，$m = 3$。
+$c = 1$ 時可以接 $[1, 3)$、$[4, 6)$、$[7, 9)$、$[10, 12)$；$c = 2$ 時最多只
+能接兩個，答案是 $1$。
+
+\textbf{判斷}
+
+這題的線索和例題一很像：問「最大的 $c$ 使得仍然做得到」，$c$ 可能到 $10^9$。
+單調性也很直接：$c$ 可行時，同一組案子的空檔都至少 $c$，當然也至少
+$c - 1$。 所以對 $c$ 二分搜，問題又變成檢查：給一個 $c$，最多能接幾個？
+
+檢查的問題，拿掉 $c$ 之後（清單第 8 題：把某個數設成 $0$），就是第~7~章的區間
+排程：選最多個不重疊的區間。 這一題要想的是：加回 $c$ 之後，原來的方法還能用
+嗎？
+
+\textbf{第一次想錯。} 照時間順序，依開始時間排序，能接就接。 第~7~章的規則 1
+已經示範過它會錯；加上 $c$ 之後還是錯。 輸入三個案子 $[0, 10)$、$[1, 2)$、
+$[3, 4)$，$m = 2$：依開始時間先接 $[0, 10)$，後面兩個都被擋掉，連 $c = 0$
+都判成不行，程式印出 \texttt{-1}；正確答案是 $1$（接後面兩個，空檔 $3 - 2 = 1$）。
+
+\textbf{修正。} 「下一個的開始 $\ge$ 上一個的結束 $+ c$」，等於把每個案子的
+結束時刻往後延 $c$，變成 $[a_i, b_i + c)$，再要求這些延長過的區間互不重疊。
+這樣就完全是區間排程，「結束最早優先」仍然正確。 而且每個案子都延長同樣的
+$c$，結束時刻的先後順序不會變，只要一開始依 $b_i$ 排序一次，每次檢查都不用重
+排。
+
+這題和例題一的結構相同：外層對答案二分搜，內層是一個第~7~章的貪心。 不同的是
+這題問「最大」，二分搜要找的是最後一個「行」。
+
+\textbf{程式}
+
+\begin{example}[label=ex:cap-breather]{cpp}{(breather.cpp) 攝影師的喘息空檔}
+#include <algorithm>
+#include <iostream>
+#include <utility>
+#include <vector>
+using namespace std;
+
+int n, m;
+vector<pair<long long, long long>> job;   // (結束, 開始)，依結束時刻排序
+
+// 相鄰兩個案子至少隔 c 時，能不能接到 m 個？
+bool ok(long long c) {
+    int count = 0;
+    long long last = 0;                    // 上一個接下的案子何時結束
+    for (const auto &[b, a] : job) {
+        if (count == 0 || a >= last + c) { // 第一個案子沒有空檔的限制
+            count++;
+            last = b;
+        }
+    }
+    return count >= m;
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    cin >> n >> m;
+    job.resize(n);
+    for (auto &[b, a] : job) {
+        cin >> a >> b;
+    }
+    sort(job.begin(), job.end());
+    if (!ok(0)) {
+        cout << -1 << '\n';
+        return 0;
+    }
+    long long lo = 0, hi = 1000000000;     // lo 一定行，hi 一定不行
+    while (hi - lo > 1) {
+        long long mid = (lo + hi) / 2;
+        if (ok(mid)) {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    cout << lo << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+5 3 \\
+1 3 \\
+2 5 \\
+4 6 \\
+7 9 \\
+10 12 \\
+}{
+1 \\
+}
+
+\begin{itemize}
+\item \texttt{pair} 把結束時刻放在 \texttt{first}，預設的排序就是依結束時刻；
+讀入時用結構化綁定直接把開始、結束放到對的位置。 結束相同時依開始排，對答案
+沒有影響。
+\item 二分搜找最後一個「行」：\texttt{lo} 一直是行、\texttt{hi} 一直是不行。
+先確認 $c = 0$ 行，\texttt{lo = 0} 才成立。 上界：前一個案子最早在時刻 $1$ 結
+束，後一個最晚在 $10^9 - 1$ 開始，空檔不可能到 $10^9$，所以 \texttt{hi =
+1000000000} 一定不行。
+\item \texttt{count == 0} 的判斷讓第一個案子不受空檔限制。 把它拿掉、只寫
+\texttt{a >= last + c}，等於要求第一個案子在時刻 $c$ 之後才開始，這是下面常見
+錯誤的第二項。
+\end{itemize}
+
+\textbf{複雜度}
+
+排序 $O(n \log n)$，每次檢查 $O(n)$，二分搜 $30$ 輪，總共約 $1.5 \times 10^6$
+次操作。 最大的測試資料在本書測試的環境下約 $0.04$ 秒。 如果 $c$ 從 $0$ 往上
+一個一個試，最壞要試 $10^9$ 次、每次 $5 \times 10^4$，完全來不及。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{依開始時間貪心}：上面的三個案子印出 \texttt{-1}，正確答案是
+\texttt{1}。 範例的輸入剛好也印出 \texttt{1}，只用範例測不出來。
+\item \textbf{第一個案子也要求空檔}：\texttt{last} 從 $0$ 開始，又拿掉
+\texttt{count == 0} 的判斷。 輸入 \texttt{2 2}、\texttt{0 1}、\texttt{5 6}
+時，正確答案是 \texttt{4}，這樣寫印出 \texttt{0}：$c \ge 1$ 時第一個案子
+$[0, 1)$ 被擋掉。 範例的第一個案子從時刻 $1$ 開始，同樣測不出來。
+\item \textbf{忘了 \texttt{-1}}：沒有先檢查 \texttt{ok(0)}，二分搜的
+\texttt{lo = 0} 就不一定是「行」，做不到時會印出 \texttt{0}。
+\end{itemize}
+
+\section{例題四：兩廳趕場}
+\label{sec:cap-halls}
+
+\textbf{題意}（\akiref{running-between-two-halls}{兩廳趕場}）
+
+\begin{itemize}
+\item 有兩個演講廳，共 $n$ 場講座。 第 $i$ 場在第 $h_i$ 廳，時間是半開區間
+$[s_i, e_i)$。
+\item 每場都要從頭聽到尾。 下一場在同一廳時，開始時刻 $\ge$ 這一場的結束就來
+得及；在另一廳時，要走 $T$ 分鐘，開始時刻要 $\ge$ 結束 $+ T$。 第一場隨便選。
+\item 求最多能聽完幾場。
+\item $n \le 2 \times 10^5$，$T$ 和時刻都到 $10^9$。
+\end{itemize}
+
+下圖是題目的第一個範例，$T = 5$。 答案是 $3$：一開始就待在第 2 廳，連聽三場。
+
+\begin{center}
+\begin{tikzpicture}[x=1cm, y=0.6cm]
+\node[left, font=\small] at (-0.6,2) {第 1 廳};
+\node[left, font=\small] at (-0.6,1) {第 2 廳};
+\ivbar[ivalt]{2}{0}{2}{}
+\ivbar{2}{8}{9}{}
+\ivbar[ivpick]{1}{3}{4}{}
+\ivbar[ivpick]{1}{4}{5}{}
+\ivbar[ivpick]{1}{5}{6}{}
+\ivaxis{0}{9}{0.3}
+\end{tikzpicture}
+\diagcaption{範例一的五場講座。 橘色是最佳的聽法；粉色的 $[0, 2)$ 結束得最早，
+可是聽了它，最早 $7$ 才走得到第 2 廳，三場都趕不上。}
+\label{fig:cap-halls}
+\end{center}
+
+\textbf{判斷}
+
+這是第~7~章的區間排程，多了一個換廳的條件。 照清單第 8 題，先看拿掉條件時的
+做法（$T = 0$ 就是普通的區間排程），再想怎麼加回去。
+
+\textbf{第一次想錯：直接套「結束最早優先」。} 依結束時刻排序，能接上（同廳看
+結束、換廳要加 $T$）就聽。 範例一會先聽結束最早的 $[0, 2)$，之後第 2 廳的三
+場都趕不上，只聽到 $2$ 場。 圖~\ref{fig:cap-halls} 已經看得出原因：結束得早，
+卻把人留在不對的廳。
+
+為什麼普通的區間排程可以只看「結束最早」？ 回想第~7~章的交換論證，它真正用到
+的是：\textbf{聽了一樣多場時，最後一場結束得越早越好}，因為後面能接的講座只多
+不少。 加上換廳之後，這句話只在「最後一場在同一廳」時成立。 結束在 $2$ 但人
+在第 1 廳，和結束在 $4$ 但人在第 2 廳，沒有誰一定比較好，要看後面的講座在哪一
+廳。
+
+\textbf{第二個想法：動態規劃，但太慢。} 既然「最後一場」的資訊不夠，就把它記
+下來。 把講座依結束時刻排好，$\mathit{best}[i]$ 是「最後一場是第 $i$ 場時最
+多聽幾場」，轉移時看前面每一場 $j$ 能不能接到 $i$。 這是第~9~章的寫法，一定
+對，但每一場都要看前面所有的場，是 $O(n^2)$，$n = 2 \times 10^5$ 時是
+$4 \times 10^{10}$。 它是很好的暴力解，先寫下來：
+
+\begin{example}[label=ex:cap-halls-brute]{cpp}{(halls\_brute.cpp) 兩廳趕場的暴力解}
+#include <algorithm>
+#include <iostream>
+#include <vector>
+using namespace std;
+
+struct Talk {
+    int hall;
+    long long s, e;
+};
+
+int main() {
+    int n;
+    long long T;
+    cin >> n >> T;
+    vector<Talk> v(n);
+    for (Talk &x : v) {
+        cin >> x.hall >> x.s >> x.e;
+    }
+    sort(v.begin(), v.end(), [](const Talk &a, const Talk &b) {
+        return a.e < b.e;
+    });
+    // best[i]：最後一場是 v[i] 時，最多聽幾場
+    vector<int> best(n, 1);
+    int ans = 0;
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < i; j++) {
+            long long ready = v[j].e + (v[j].hall == v[i].hall ? 0 : T);
+            if (v[i].s >= ready) {
+                best[i] = max(best[i], best[j] + 1);
+            }
+        }
+        ans = max(ans, best[i]);
+    }
+    cout << ans << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+5 5 \\
+1 0 2 \\
+2 3 4 \\
+2 4 5 \\
+2 5 6 \\
+1 8 9 \\
+}{
+3 \\
+}
+
+\textbf{找瓶頸，換技巧。} 暴力解記了「最後一場是哪一場」，有 $n$ 種可能；但從
+上面的分析看，真正需要的資訊只有兩樣：最後在哪一廳、什麼時候結束。 而且在同
+一廳、聽了同樣多場時，只要記結束最早的那一種。 所以改成對「聽了幾場」一步一步
+推：
+
+\begin{itemize}
+\item $E_1(k)$：聽了 $k$ 場、最後一場在第 1 廳時，最早的結束時刻；
+\item $E_2(k)$：同上，最後一場在第 2 廳。
+\end{itemize}
+
+沒有這種聽法時記成「不存在」。 第 $k + 1$ 場如果在第 1 廳，前面可以是在第 1
+廳結束（要等到 $E_1(k)$），也可以是在第 2 廳結束再走過來（要等到
+$E_2(k) + T$），所以最早可以從
+\[
+\mathit{ready}_1 = \min\bigl(E_1(k),\ E_2(k) + T\bigr)
+\]
+開始。 $E_1(k + 1)$ 就是第 1 廳裡、開始時刻 $\ge \mathit{ready}_1$ 的講座中，
+最早的結束時刻。 第 2 廳對稱。 兩個值都不存在時，$k$ 就是答案。
+
+剩下的問題是「開始時刻 $\ge x$ 的講座裡，最早的結束時刻」怎麼查得快。 把每一
+廳的講座依開始時刻排序，從後往前算結束時刻的最小值（後綴最小值，和第~5~章的
+前綴和反方向），查詢時用 \texttt{lower\_bound} 找到第一個開始時刻 $\ge x$ 的
+位置，讀那裡的後綴最小值。
+
+\begin{whybox}[只記最早的結束時刻就夠]
+設某一種聽法 $P$ 聽了 $k + 1$ 場，最後一場是第 1 廳的講座 $t$；它的前 $k$ 場
+最後在第 $g$ 廳、在 $f$ 結束。 照定義 $E_g(k) \le f$。 $P$ 能接上 $t$，表示
+$s_t \ge f$（$g = 1$）或 $s_t \ge f + T$（$g = 2$），所以 $s_t$ 也
+$\ge \mathit{ready}_1$：把 $P$ 的前 $k$ 場換成達到 $E_g(k)$ 的那一種，後面
+照樣接得上 $t$。 因此 $t$ 是查詢時的候選之一，$E_1(k + 1) \le e_t$。 也就是
+說，任何聽了 $k + 1$ 場的聽法都會被算到，$E_1$、$E_2$ 不會漏掉可能性。
+\end{whybox}
+
+\textbf{程式}
+
+\begin{example}[label=ex:cap-halls]{cpp}{(halls.cpp) 兩廳趕場}
+#include <algorithm>
+#include <iostream>
+#include <utility>
+#include <vector>
+using namespace std;
+
+const long long INF = 4e18;        // 「沒有這種排法」
+vector<long long> st[2], suf[2];   // 每廳的開始時刻（排序後）、結束時刻的後綴最小值
+
+// 第 hall 廳裡、開始時刻 >= x 的講座中，最早的結束時刻
+long long earliest(int hall, long long x) {
+    if (x >= INF) {
+        return INF;
+    }
+    int i = lower_bound(st[hall].begin(), st[hall].end(), x) - st[hall].begin();
+    return suf[hall][i];
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n;
+    long long T;
+    cin >> n >> T;
+    vector<pair<long long, long long>> talk[2];   // (開始, 結束)
+    for (int i = 0; i < n; i++) {
+        int hall;
+        long long s, e;
+        cin >> hall >> s >> e;
+        talk[hall - 1].push_back({s, e});
+    }
+    for (int hall = 0; hall < 2; hall++) {
+        sort(talk[hall].begin(), talk[hall].end());
+        int sz = talk[hall].size();
+        st[hall].resize(sz);
+        suf[hall].assign(sz + 1, INF);
+        for (int i = sz - 1; i >= 0; i--) {
+            st[hall][i] = talk[hall][i].first;
+            suf[hall][i] = min(suf[hall][i + 1], talk[hall][i].second);
+        }
+    }
+    // e0、e1：聽了 k 場、最後一場在第 1／2 廳時，最早的結束時刻
+    long long e0 = earliest(0, 0), e1 = earliest(1, 0);
+    int k = 0;
+    while (e0 < INF || e1 < INF) {
+        k++;
+        // 下一場在第 1 廳：留在第 1 廳，或從第 2 廳走過來
+        long long ready0 = min(e0, e1 < INF ? e1 + T : INF);
+        long long ready1 = min(e1, e0 < INF ? e0 + T : INF);
+        e0 = earliest(0, ready0);
+        e1 = earliest(1, ready1);
+    }
+    cout << k << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+5 5 \\
+1 0 2 \\
+2 3 4 \\
+2 4 5 \\
+2 5 6 \\
+1 8 9 \\
+}{
+3 \\
+}
+
+程式裡的廳從 $0$ 編號，\texttt{e0}、\texttt{e1} 就是 $E_1$、$E_2$。 範例的
+過程（\texttt{INF} 寫成「無」）：
+
+\begin{center}
+\begin{tabular}{cccccc}
+\toprule
+$k$ & \texttt{e0} & \texttt{e1} & \texttt{ready0} & \texttt{ready1} & 說明 \\
+\midrule
+1 & 2 & 4 & $\min(2, 9) = 2$ & $\min(4, 7) = 4$ & 一場：$[0, 2)$ 或 $[3, 4)$ \\
+2 & 9 & 5 & $\min(9, 10) = 9$ & $\min(5, 14) = 5$ & 第 1 廳只剩 $[8, 9)$ 接得上 \\
+3 & 無 & 6 & $\min(\text{無}, 11)$ & $6$ & 第 2 廳連聽三場 \\
+4 & 無 & 無 & & & 迴圈結束，答案 $3$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{itemize}
+\item \texttt{e0}、\texttt{e1} 進入迴圈時代表聽了 $k + 1$ 場的狀態；迴圈一開
+始先 \texttt{k++}，所以兩個都變成「無」時，\texttt{k} 正好是最後一個還存在的
+場數。
+\item 「不存在」用 $4 \times 10^{18}$ 表示，它比任何真正的時刻都大，取
+\texttt{min} 時不會被選到。 加 $T$ 之前先判斷是不是 \texttt{INF}，避免溢位；
+\texttt{earliest} 收到 \texttt{INF} 時直接回傳 \texttt{INF}。
+\item \texttt{suf} 多開一格，最後一格是 \texttt{INF}：\texttt{lower\_bound}
+找不到時回傳尾端，讀到的就是「不存在」。
+\item 起始狀態查「開始時刻 $\ge 0$」，題目保證時刻不是負的，等於每一廳裡結束
+最早的講座。
+\end{itemize}
+
+\textbf{複雜度}
+
+排序和後綴最小值是 $O(n \log n)$。 迴圈每一輪代表多聽一場，最多 $n$ 輪，每輪
+兩次 \texttt{lower\_bound}，是 $O(n \log n)$。 最大的測試資料在本書測試的環
+境下約 $0.15$ 秒。 寫完之後，用上面的暴力解在 $n \le 8$ 的隨機小資料上對拍。
+
+回頭看判斷的過程：先套第~7~章失敗，從失敗的原因看出要多記一個狀態（第~9~章
+的想法），再用排序、後綴最小值和 \texttt{lower\_bound}（第~2、3、5~章）把每
+一步加速。 這一題的每一步都是學過的東西，難在把它們接起來。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{只用一個狀態}：直接套結束最早優先，範例一印出 \texttt{2}。
+\item \textbf{接得上寫成 \texttt{>}}：題目是半開區間，前一場在 $5$ 結束、下一
+場在 $5$ 開始是接得上的。 輸入 \texttt{2 0}、\texttt{1 0 5}、\texttt{2 5 7}
+時，答案是 \texttt{2}；暴力解的判斷寫成 \texttt{>} 會印出 \texttt{1}。 暴力
+解也可能寫錯，所以對拍出現不同時，要先手算。
+\item \textbf{用 $10^9$ 表示「不存在」}：時刻最大剛好是 $10^9$，結束在
+$10^9$ 的講座會被當成不存在。 把 \texttt{INF} 改成 \texttt{1000000000}，輸
+入 \texttt{1 0}、\texttt{1 0 1000000000} 時印出 \texttt{0}，正確答案是
+\texttt{1}。
+\end{itemize}
+
+\section{APCS 實作題考場策略}
+\label{sec:cap-apcs}
+
+\begin{apcsnote}
+\textbf{官方公告的規則}（依 2026 年 11 月官網的公告；規則會調整，報名前請再看
+一次官網）
+
+\begin{itemize}
+\item 程式實作有初級、中級、中高級、高級四種題本，每次 $3$ 題，檢測時間
+$120$ 分鐘；可以用 C、C++、Java、Python 作答，由電腦自動評分。
+\item 每一題都可以在時間結束前重複上傳，系統只保留並評分\textbf{最後一次}上傳的
+檔案。 程式檔要照題目的要求命名。
+\item 官網公布的範例題本，每題最後有「評分說明」：每筆測試資料各有執行時間
+限制，依通過的測資筆數給分；測資分成幾個子題組，各組有自己的配分和額外的限制，
+例如「$n = 1$」「$n$ 不超過 $1000$」。 考試時以題目上寫的為準。
+\end{itemize}
+
+\textbf{從規則推出來的做法}（下面是建議，不是規則）
+
+\begin{itemize}
+\item 開始時先把三題都讀過，連同每一題的子題組限制。 子題組的限制就是第
+~\ref{sec:cap-clues}~節說的線索：「$n \le 1000$」是在告訴你 $O(n^2)$ 拿得到
+那一組。
+\item 每一題先寫能通過最小子題組的暴力解，跑過範例就上傳。 之後改進的版本，
+在自己的電腦上和暴力解比對過再上傳。 因為只評最後一次上傳的檔案，沒測過的新
+版本可能把原本拿得到的分數蓋掉。
+\item 暴力解另外存一份檔案，不要在同一個檔案上直接改成快的版本。 快的版本寫
+不完時，最後上傳的是暴力解，而不是寫到一半的程式。
+\item 時間大致這樣分：開頭約 $10$ 分鐘讀完三題、決定順序，從最有把握的那題寫
+起；每題給自己一個停損點，例如卡了 $20$ 分鐘沒有進展，就先把暴力解交了、換下
+一題；最後約 $10$ 分鐘只做檢查，確認每一題最後上傳的檔案都是你要的版本。
+\end{itemize}
+\end{apcsnote}
+
+\section{本章常見錯誤}
+\label{sec:cap-pitfalls}
+
+這一章的錯誤大多和特定的演算法無關，是解題流程裡跳過了某一步。
+
+\begin{center}
+\begin{tabular}{p{0.22\linewidth}p{0.46\linewidth}p{0.22\linewidth}}
+\toprule
+錯誤 & 例子 & 跳過的步驟 \\
+\midrule
+題目看錯 & 例題二只找一條路線；把「至少一條」看成「其中一條」 & 讀題、手算範例 \\
+沒看完限制 & 例題一沒注意座標沒排序；例題四沒注意時刻可以剛好是 $10^9$ & 讀題 \\
+看到關鍵字就套 & 例題四直接用結束最早優先；「最多幾場」但每場有價值 & 換技巧時沒確認前提 \\
+貪心沒先找反例 & 例題一選最左邊的插座；例題三依開始時間排序 & 換技巧 \\
+只用範例測試 & 例題三的兩種錯誤寫法都通過範例 & 對拍 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+最後一列最常見，也最可惜：程式的想法對了一大半，只差一個邊界，範例卻剛好沒
+測到。 第~1~章的對拍腳本寫一次就能一直用，每一題都值得跑一次。
+
+\section{本章練習}
+\label{sec:cap-exercises}
+
+\begin{drills}[label=drills:cap]
+\item 下面每一題只給大意和範圍。 寫出你第一個想試的方法、它的複雜度，以及它
+在本書的哪一章。
+\begin{enumerate}
+\item $n \le 18$ 位同學分成兩隊，要讓兩隊的總身高差最小。
+\item $n \le 2 \times 10^5$ 天的氣溫，對每一天找出之後第一個比它熱的日子。
+\item $n \le 2 \times 10^5$ 天的雨量，回答 $q \le 2 \times 10^5$ 次「第 $l$
+天到第 $r$ 天的總雨量」。
+\item $1000 \times 1000$ 的地圖，有些格子不能走，求入口到出口最少幾步。
+\item $n \le 10^5$ 本書依序分給 $k$ 位同學抄寫，每人拿連續的一段，要讓抄最多
+頁的人頁數最少。
+\item $n \le 5000$ 個數，選出最長的子序列，相鄰兩項的差都不超過 $d$。
+\end{enumerate}
+
+\item 下面每一題都有一個看起來很像的線索。 說明為什麼照線索直接套會錯，以及
+應該改用哪一章的方法。
+\begin{enumerate}
+\item 一天有很多場講座，每場有不同的學分，求能拿到的學分總和最多是多少。
+\item 一張格子地圖，每一格有不同的體力消耗，只能往右或往下，求從左上走到右下
+最少消耗多少體力。
+\item 例題三改成「接下的案子裡，相鄰兩個的空檔\textbf{剛好}都等於 $c$」，求最大的 $c$。
+\end{enumerate}
+
+\item 例題一的檢查函式，有人改成「在蓋得到目前最左邊攤位的插座裡，選離它最近
+的那一個」。 給一組讓答案出錯的輸入，並說明錯在哪裡。
+
+\item 例題二的程式在判斷時檢查了 \texttt{ds[v] != -1 \&\& dt[v] != -1}。 正文
+說在這一題拿掉也不會算錯。 為什麼？ 把題目改成每一格只能往右或往下走（\texttt{S}
+在左上方、\texttt{T} 在右下方）時，還能直接用「從 \texttt{T} 跑一次 BFS」嗎？
+
+\item 對下面的輸入，照例題四的程式寫出每一輪 \texttt{e0}、\texttt{e1}、
+\texttt{ready0}、\texttt{ready1} 的值和最後的答案。
+\begin{code}{text}{練習 5 的輸入}
+5 2
+1 0 3
+2 1 2
+2 3 5
+1 6 8
+2 7 9
+\end{code}
+
+\item 估計次數。
+\begin{enumerate}
+\item 例題一的二分搜一共呼叫 \texttt{ok} 幾次？ 如果座標範圍改成 $10^{18}$
+呢？
+\item 例題四的 \texttt{while} 迴圈最多跑幾輪？ 為什麼？
+\end{enumerate}
+\end{drills}
+
+\section{總題單}
+\label{sec:cap-practice}
+
+下面是 Aki-Judge 上的題目，從前面各章難度「實戰」和「挑戰」的題目裡挑出來，
+另外加了兩題格子圖和樹的題目。 題目的順序是打亂的，也不標章節：每一題先照第
+~\ref{sec:cap-flow}~節的流程判斷要用什麼方法，寫完再看本章最後的解答，那裡只
+寫用到的技巧和對應的章。 前面已經寫過其中某幾題也沒關係，這次從判斷開始重做
+一次。
+
+\begin{center}
+\begin{tabular}{rlc}
+\toprule
+ & 題目 & 難度 \\
+\midrule
+1 & \akiref{the-last-truckload-of-sand}{最後一車補沙的位置} & 實戰 \\
+2 & \akiref{breakfast-on-the-way}{順路買早餐} & 實戰 \\
+3 & \akiref{the-shop-that-keeps-raising-prices}{越買越貴的商店} & 實戰 \\
+4 & \akiref{how-many-dishes-can-the-fridge-make}{冰箱裡能做幾道菜} & 實戰 \\
+5 & \akiref{smallest-water-bottle-for-the-hike}{登山水壺的最小容量} & 實戰 \\
+6 & \akiref{food-truck-run-with-limited-moves}{最多換場 k 次的餐車檔期} & 實戰 \\
+7 & \akiref{fewest-extra-cables}{最少補幾條網路線} & 實戰 \\
+8 & \akiref{longest-open-stretch-after-roadworks}{道路施工後最長的通行路段} & 實戰 \\
+9 & \akiref{k-steps-on-the-arrow-floor}{箭頭地板走 k 步} & 挑戰 \\
+10 & \akiref{bus-segments-with-a-splittable-fare}{可以平分車資的路段} & 實戰 \\
+11 & \akiref{the-priciest-item-is-free}{最貴的一件免費} & 挑戰 \\
+12 & \akiref{when-water-reaches-each-compartment}{隔板水箱的進水量} & 挑戰 \\
+13 & \akiref{the-cart-that-hates-turning}{轉彎次數有限的推車} & 實戰 \\
+14 & \akiref{the-last-day-someone-ran-far-enough}{上一次跑得夠多是哪一天} & 實戰 \\
+15 & \akiref{taking-down-one-partition}{拆一面隔板的效果} & 實戰 \\
+16 & \akiref{splitting-a-print-job}{列印工作的拆分} & 實戰 \\
+17 & \akiref{field-trip-van-cost}{校外教學的小巴士費用} & 挑戰 \\
+18 & \akiref{two-training-camps-not-too-far-apart}{休息不能太久的兩次集訓} & 挑戰 \\
+19 & \akiref{junctions-that-may-lie-on-the-longest-route}{可能出現在最長路線上的路口} & 實戰 \\
+20 & \akiref{the-most-fertile-stone-free-plot}{避開石頭的最肥沃菜園} & 實戰 \\
+21 & \akiref{fewest-trips-for-the-health-check-van}{健檢巡迴車的最少出車次數} & 實戰 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+本章的四題例題也在 Aki-Judge 上。 建議讀完題意之後先蓋住後面，自己走一次判
+斷的流程，再和書上的過程對照。
+
+\section{讀完你應該會}
+\label{sec:cap-checklist}
+
+\begin{itemize}
+\item 拿到一題陌生的題目，能在動手寫程式前，寫出它的輸入輸出重點、一個手算的小
+例子，以及所有會變大的量的上限。
+\item 能從資料範圍和題目的問法，列出兩三種候選的方法，並指出各自需要的前提（單
+調性、每步代價相同、前面的選擇不影響後面等），逐一確認。
+\item 能先寫出暴力解，指出它慢在哪一行、在重複做什麼，再據此換成前面各章的技巧。
+\item 想到一條貪心規則或一個檢查函式時，會先用小例子找反例，再用暴力解對拍。
+\item 考 APCS 的讀者：能說出官方公告的作答與計分規則，並照子題組安排先拿部分分、
+再改進的順序。
+\end{itemize}
+
+\textbf{延伸閱讀}（書末會整理完整的參考資料）
+
+\begin{itemize}
+\item Steven S. Skiena，\textit{The Algorithm Design Manual}，第 3 版，第 13
+章：作者整理的一份設計演算法時自問的問題清單，可以和本章第
+~\ref{sec:cap-questions}~節對照，挑出適合自己的問法。
+\item Steven Halim 等，\textit{Competitive Programming 4}，第 1 冊 1.3 節：怎
+麼快速判斷題型、從範圍估算複雜度，以及練習的方法。
+\item 吳邦一，《AP325》，第 0 章：從資料量推估需要的複雜度，以及子題的概念。
+\end{itemize}
+
+\addcontentsline{toc}{section}{練習解答}
+\section*{練習解答}
+
+\begin{enumerate}
+\item
+\begin{enumerate}
+\item 枚舉每個人在哪一隊，$2^{18} \approx 2.6 \times 10^5$ 種，每種 $O(n)$
+算總和，或用遞迴一路累加成 $O(2^n)$。 第~4~章。
+\item 單調堆疊，$O(n)$。 第~6~章。
+\item 前綴和，預處理 $O(n)$，每次 $O(1)$。 第~5~章。
+\item BFS，$O(10^6)$。 第~11~章，格子的寫法見第~12~章「格子圖與狀態 BFS」。
+\item 對答案（最多頁數）二分搜，檢查時由前往後貪心地分段，
+$O(n \log S)$，$S$ 是總頁數。 第~3~章。
+\item 動態規劃，$\mathit{dp}[i]$ 是以第 $i$ 個數結尾的最長長度，每個 $i$ 看前面
+所有 $j$，$O(n^2) = 2.5 \times 10^7$。 第~9~章。
+\end{enumerate}
+
+\item
+\begin{enumerate}
+\item 「最多」加上區間，像第~7~章的區間排程，但結束最早優先只保證場數最多；
+每場價值不同時，先選結束早但學分少的可能擋掉學分多的。 用第~9~章的動態規劃。
+\item 「最少」加上格子，像 BFS，但 BFS 只適用每一步代價相同。 只能往右、往下
+時，每一格的最小消耗由上面和左邊兩格決定，是第~10~章的格子 DP。
+\item 「最大的 $c$」像對答案二分搜，但沒有單調性：空檔剛好都是 $3$ 的接法，
+不代表有空檔剛好都是 $2$ 的接法。 例如 $[0, 1)$、$[4, 5)$ 兩個案子、$m = 2$，
+$c = 3$ 可以，$c = 2$ 就不行。 要另外想，例如直接枚舉可能的 $c$（某兩個案子
+的開始和結束的差）。
+\end{enumerate}
+
+\item 插座在 $1$ 和 $4$，攤位在 $2$ 和 $5$，$k = 1$：
+\begin{code}{text}{練習 3 的反例}
+2 2 1
+1 4
+2 5
+\end{code}
+正確答案是 $2$：插在 $4$，蓋住 $[2, 6]$。 選最近的寫法在 $r = 2$ 時，蓋得到
+攤位 $2$ 的插座有 $1$（距離 $1$）和 $4$（距離 $2$），選了較近的 $1$，只蓋到
+$3$，攤位 $5$ 還要一台；要到 $r = 4$，插座 $1$ 才蓋得到 $5$，所以印出
+$4$。 錯在「近」只照顧到左邊：目前最左邊的攤位左邊已經沒有要蓋的了，該比的
+是往右蓋到哪裡。
+
+\item 每一步都能反著走，所以「$v$ 走得到 \texttt{T}」和「\texttt{T} 走得到
+$v$」是同一件事；而 \texttt{S} 走得到 \texttt{T} 時，$v$ 走得到 \texttt{S}
+就一定走得到 \texttt{T}，反之亦然。 所以一格的 \texttt{ds}、\texttt{dt} 要嘛
+都是 $-1$，要嘛都不是，兩個 $-1$ 加起來是 $-2$，不會等於 $D$。 只能往右、往下
+時，步不能反著走，「$v$ 到 \texttt{T}」要在反過來的圖上算：從 \texttt{T} 出
+發、每一步往左或往上。 這是第~11~章反向圖的想法。
+
+\item 第 1 廳是 $[0, 3)$、$[6, 8)$，第 2 廳是 $[1, 2)$、$[3, 5)$、$[7, 9)$，
+$T = 2$。
+\begin{center}
+\begin{tabular}{ccccc}
+\toprule
+$k$ & \texttt{e0} & \texttt{e1} & \texttt{ready0} & \texttt{ready1} \\
+\midrule
+1 & 3 & 2 & $\min(3, 4) = 3$ & $\min(2, 5) = 2$ \\
+2 & 8 & 5 & $\min(8, 7) = 7$ & $\min(5, 10) = 5$ \\
+3 & 無 & 9 & $\min(\text{無}, 11)$ & $9$ \\
+\midrule
+ & 無 & 無 & \multicolumn{2}{l}{迴圈結束，答案 $3$} \\
+\bottomrule
+\end{tabular}
+\end{center}
+第 2 輪的 \texttt{ready0} 是 $7$：從第 2 廳 $5$ 結束走過來，比留在第 1 廳等到
+$8$ 早，可惜第 1 廳開始時刻 $\ge 7$ 的講座沒有。 答案的一種聽法是第 2 廳的
+$[1, 2)$、$[3, 5)$、$[7, 9)$。
+
+\item
+\begin{enumerate}
+\item 一開始 \texttt{hi - lo} $= 10^9 + 1$，每輪大約減半，到 $1$ 為止要
+$30$ 輪，呼叫 $30$ 次。 範圍到 $10^{18}$ 時大約 $60$ 次，每次仍然是
+$O(n + m)$，一樣很快；但 \texttt{h[i] + r} 要確認不會超過 \texttt{long long}
+的範圍。
+\item 每一輪結束時，\texttt{e0}、\texttt{e1} 至少有一個存在，代表有一種聽法聽
+了 $k + 1$ 場。 每場最多聽一次，聽的場數不會超過 $n$，所以 \texttt{k} 最多
+加到 $n$；第 $n$ 輪結束時兩者一定都不存在，迴圈最多跑 $n$ 輪。 再加上最後一次
+判斷條件，條件最多檢查 $n + 1$ 次。 每輪兩次 \texttt{lower\_bound}，所以迴圈部分是 $O(n \log n)$。
+\end{enumerate}
+\end{enumerate}
+
+\subsection*{總題單的解答}
+
+只寫用到的技巧和對應的章。 有些題不只一種做法，這裡寫的是其中一種。
+
+\begin{enumerate}
+\item 差分還原每段的高度，再用兩個 0/1 陣列（倒沙前達標、倒沙後達標）的前綴
+和比較每個起點（第~5~章）。
+\item 從起點和終點各跑一次 BFS，再對每家店相加（第~11~章，和例題二同一個想
+法）。
+\item 用相鄰交換找出排序的比較方式，再排序（第~7~章的交換論證）。
+\item 用位元表示食材集合，對每一種冰箱狀態枚舉它的子集合，總共 $3^k$ 次；「只
+差一種」用兩個狀態的答案相減（第~4~章）。
+\item 對容量二分搜，檢查時一路模擬、能取就取（第~3~章、第~7~章）。
+\item 動態規劃，狀態記「今天在哪個廣場、已經換了幾次」（第~9~章）。
+\item DFS 找連通元件，再把元件當成點，在需求上再找一次連通元件（第~11~章）。
+\item 施工範圍排序後合併區間，找最長的空隙（第~2~章）。
+\item 模擬加上記錄每一格第一次到達的步數，找週期（第~4~章）。
+\item 前綴和的奇偶，加上「前面有幾個奇數、幾個偶數」的計數（第~5~章）。
+\item 雙指標，視窗裡的最大值用單調佇列（第~5~章、第~6~章）。
+\item 隔板依高度排序，由高到低把區段切開（第~2~章）。
+\item 格子 DP，每格多記「最後一步的方向、轉彎了幾次」（第~10~章）。
+\item 單調堆疊，在堆疊上二分搜（第~6~章、第~3~章）。
+\item 從起點和終點各跑一次 BFS，拆掉的隔板四周的格子兩兩相加（第~12~章「格子
+圖與狀態 BFS」，和例題二同一個想法）。
+\item 遞迴，同一層只會出現兩種頁數，記憶化（第~8~章）。
+\item 依距離排序，把目前這位當成最遠的人，用優先佇列維護前面保險費最小的
+$K - 1$ 位（第~2~章、第~6~章）。
+\item 先算每一週結尾、每一週開頭的最大連續和（第~5~章的最大子陣列和），再用
+單調佇列在休息週數的範圍內取最大（第~6~章）。
+\item 樹的直徑：找出直徑的中點，從中點往下走得到最大深度的路口都在某條最長路
+線上（第~13~章「樹」）。
+\item 每一列往上連續的高度，單調堆疊找撐到最大的矩形，配合二維前綴和算價值
+（第~10~章、第~6~章）。
+\item 依最後一天排序，優先佇列和貪心（第~7~章、第~6~章）。
+\end{enumerate}

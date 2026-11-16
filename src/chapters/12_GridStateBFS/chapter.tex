@@ -1,4 +1,1311 @@
-% 佔位：本章尚未開始。book.tex 裡先註解掉。
 \chapter{格子圖與狀態 BFS}
+\label{ch:gridbfs}
 
-本章尚未開始。
+% 本章的格子圖共用的樣式：一般格、牆、三種顏色、強調格、綠色格
+\tikzset{
+    gc/.style={draw=black!45, minimum size=0.62cm, inner sep=0pt, font=\small\ttfamily},
+    gwall/.style={gc, fill=black!70},
+    gred/.style={gc, fill=optFill},
+    gyel/.style={gc, fill=procFill},
+    gblu/.style={gc, fill=coreFill},
+    ghl/.style={gc, draw=memStroke, thick, fill=memFill},
+    ggreen/.style={gc, fill=greenFill},
+}
+
+美術課做了一幅拼豆，排成 $5$ 列 $7$ 行，豆子有紅（r）、黃（y）、藍（b）三
+種顏色，如下圖。 用熨斗燙平之後，上下左右相鄰而且同色的豆子會黏在一起，黏在
+一起的關係可以一路傳下去。 整幅作品一共黏成幾塊？ 哪一種顏色的塊最大？ 往下
+讀之前先在圖上數一次，留意自己是怎麼確定「這一塊數完了」的。
+
+\begin{center}
+\begin{tikzpicture}[x=0.62cm, y=0.62cm]
+\node[gred] at (0,0) {r}; \node[gred] at (1,0) {r}; \node[gyel] at (2,0) {y}; \node[gyel] at (3,0) {y}; \node[gblu] at (4,0) {b}; \node[gblu] at (5,0) {b}; \node[gblu] at (6,0) {b};
+\node[gred] at (0,-1) {r}; \node[gyel] at (1,-1) {y}; \node[gyel] at (2,-1) {y}; \node[gred] at (3,-1) {r}; \node[gred] at (4,-1) {r}; \node[gblu] at (5,-1) {b}; \node[gyel] at (6,-1) {y};
+\node[gblu] at (0,-2) {b}; \node[gred] at (1,-2) {r}; \node[gyel] at (2,-2) {y}; \node[gred] at (3,-2) {r}; \node[gyel] at (4,-2) {y}; \node[gyel] at (5,-2) {y}; \node[gyel] at (6,-2) {y};
+\node[gblu] at (0,-3) {b}; \node[gred] at (1,-3) {r}; \node[gred] at (2,-3) {r}; \node[gred] at (3,-3) {r}; \node[gyel] at (4,-3) {y}; \node[gblu] at (5,-3) {b}; \node[gblu] at (6,-3) {b};
+\node[gblu] at (0,-4) {b}; \node[gblu] at (1,-4) {b}; \node[gred] at (2,-4) {r}; \node[gyel] at (3,-4) {y}; \node[gyel] at (4,-4) {y}; \node[gblu] at (5,-4) {b}; \node[gred] at (6,-4) {r};
+\end{tikzpicture}\par\nopagebreak
+\diagcaption{一幅 $5 \times 7$ 的拼豆。 本章前半都用這幅當例子。}
+\label{fig:beads}
+\end{center}
+
+大多數人會從左上角開始，像拿一桶油漆倒下去：從一顆豆子往四周擴散，同色的都
+塗上，塗不動了就是一塊；接著找下一顆還沒塗過的豆子，再倒一次。 這樣數下來是
+$8$ 塊：紅色 $3$ 塊、黃色 $2$ 塊、藍色 $3$ 塊，最大的是中間那塊彎彎曲曲的紅色，
+有 $8$ 顆。 第 $3$ 列第 $2$ 行的紅豆只和左上角那塊紅色碰到斜角，不算黏在一起。
+
+倒油漆的動作，就是第~11~章在圖上找連通元件，只是這張圖沒有寫在輸入裡：
+點是格子，邊是「相鄰而且符合條件」的兩格。 很多題目的輸入就是這樣一張格子
+地圖：迷宮、平面圖、農田、停車場。 這一章先說明怎麼把格子當成圖來走，接著是
+三種常見的用法：數區塊、求最短距離、同時從好幾個地方出發。 最後一節處理「只
+記位置不夠」的題目：同一格可能要經過好幾次，每次手上的資訊不同，這時要把那些
+資訊也放進點裡，叫做狀態 BFS。
+
+第~11~章的 BFS、DFS、連通元件、多源 BFS 在這一章直接拿來用，不再重講；遞迴
+太深要改成迴圈的理由也在第~11~章。 方向陣列在第~4~章的山火例題第一次出現，
+用二維表格存地圖在第~10~章。 用到的語法：\texttt{vector<string>} 在銜接書第
+~3~章 3.6 節，\texttt{queue} 和 \texttt{pair} 在第~8~章，lambda 在第~9~章。 沒
+讀過銜接書的讀者，只要會用 \texttt{vector}、\texttt{queue} 和結構化綁定
+\texttt{auto [r, c] = q.front();}，就能讀這一章。
+
+\section{把格子當成圖}
+\label{sec:grid-graph}
+
+一張 $n$ 列 $m$ 行的地圖，每一格是一個點，一共 $nm$ 個點。 第 $r$ 列第 $c$ 行
+記成 $(r, c)$，和程式一樣從 $0$ 編號：$0 \le r < n$、$0 \le c < m$。 本章寫
+成 $(r, c)$ 時都從 $0$ 數起，寫成「第幾列第幾行」時照一般的說法從 $1$ 數起。 兩格之間有沒
+有邊，由題目決定，常見的是「兩格相鄰，而且都不是牆」，或者「兩格相鄰，而且顏
+色相同」。
+
+和第~11~章最大的不同是：鄰居不用存。 $(r, c)$ 的鄰居就是上下左右那幾格，需要
+時用加減法算出來就好。 這種沒有真的存下來、要用時才算出鄰居的圖，叫做
+\textbf{隱式圖}（implicit graph）。 不存鄰接串列也省下不少記憶體：
+$1000 \times 1000$ 的地圖有 $10^6$ 個點、將近 $4 \times 10^6$ 個鄰居關係，真的
+建成鄰接串列，光是 $10^6$ 個 \texttt{vector} 本身就要二十幾 MB。
+
+\subsection{四方向和八方向}
+
+第~4~章用過的方向陣列，是把「往哪個方向走一步」寫成兩個陣列：第 $k$ 個方向
+的鄰格是 \texttt{(r + dr[k], c + dc[k])}。 題目說「上下左右相鄰」時用前四個；
+說「周圍八格」或「斜對角也算」時，再加上四個斜的方向：
+
+\begin{code}{cpp}{四方向與八方向的方向陣列}
+// 0 上、1 下、2 左、3 右；4 左上、5 右上、6 左下、7 右下
+const int dr[8] = {-1, 1, 0, 0, -1, -1, 1, 1};
+const int dc[8] = {0, 0, -1, 1, -1, 1, -1, 1};
+
+for (int k = 0; k < 4; k++) { ... }   // 四方向：只用前四個
+for (int k = 0; k < 8; k++) { ... }   // 八方向：八個都用
+\end{code}
+
+\begin{center}
+\begin{tikzpicture}[x=0.62cm, y=0.62cm]
+\begin{scope}
+\node[font=\small] at (1,1.1) {四方向};
+\node[gc] at (0,0) {}; \node[gc] at (1,0) {0}; \node[gc] at (2,0) {};
+\node[gc] at (0,-1) {2}; \node[ghl] at (1,-1) {}; \node[gc] at (2,-1) {3};
+\node[gc] at (0,-2) {}; \node[gc] at (1,-2) {1}; \node[gc] at (2,-2) {};
+\end{scope}
+\begin{scope}[xshift=3.2cm]
+\node[font=\small] at (1,1.1) {八方向};
+\node[gc] at (0,0) {4}; \node[gc] at (1,0) {0}; \node[gc] at (2,0) {5};
+\node[gc] at (0,-1) {2}; \node[ghl] at (1,-1) {}; \node[gc] at (2,-1) {3};
+\node[gc] at (0,-2) {6}; \node[gc] at (1,-2) {1}; \node[gc] at (2,-2) {7};
+\end{scope}
+\end{tikzpicture}\par\nopagebreak
+\diagcaption{中間那格的鄰居，數字是方向陣列裡的 $k$。}
+\label{fig:dirs}
+\end{center}
+
+圖~\ref{fig:beads} 用八方向重新數，第 $3$ 列第 $2$ 行那顆紅豆和左上角的紅色
+斜對角相鄰，兩塊紅色會併成一塊，總數從 $8$ 塊變成 $7$ 塊。 同一張地圖，四方
+向和八方向的答案常常不同，讀題時要先確認是哪一種。 有些題目會用其他的走法，
+例如西洋棋騎士的「日」字跳法，一樣寫成方向陣列，只是陣列裡的數字和長度不同。
+
+\subsection{邊界}
+
+最外圈的格子，有些方向走出去就離開地圖了。 第~4~章已經說過：越界的檢查要放
+在讀 \texttt{g[nr][nc]} 之前。 這一章的程式都寫成同一個形狀：
+
+\begin{code}{cpp}{先檢查邊界，再讀格子}
+int nr = r + dr[k], nc = c + dc[k];
+if (nr < 0 || nr >= n || nc < 0 || nc >= m || g[nr][nc] == '#') {
+    continue;                       // 出界或是牆：這個方向不能走
+}
+\end{code}
+
+\texttt{||} 由左往右算，只要前面某一個條件成立，後面就不會再算，所以
+\texttt{g[nr][nc]} 只有在 \texttt{nr}、\texttt{nc} 都合法時才會被讀到。 條件很
+多的時候，可以寫成一個 lambda，每個方向呼叫一次：
+
+\begin{code}{cpp}{把「能不能走進去」寫成 lambda}
+auto open = [&](int r, int c) {
+    return r >= 0 && r < n && c >= 0 && c < m && g[r][c] != '#';
+};
+\end{code}
+
+另一種寫法是第~10~章的「多開一圈」：讀進地圖後，在四周補一圈牆，地圖變成
+$(n + 2) \times (m + 2)$，原本的格子從 $(1, 1)$ 開始。 走到牆就停，永遠不會走
+出補過的範圍，所以不用檢查邊界。 兩種都可以，但同一支程式只用一種；混在一起
+時最常見的錯誤是補了一圈，輸出座標時卻忘了減一。
+
+\subsection{一格一個編號}
+
+BFS 的佇列可以直接放 \texttt{pair<int, int>}，本章前兩節都這樣寫。 另一種做法
+是把 $(r, c)$ 換成一個整數
+\[
+\mathit{id} = r \times m + c,
+\]
+也就是由上到下、由左到右，第幾個格子。 反過來，$r = \mathit{id} / m$、
+$c = \mathit{id} \bmod m$。 例如 $m = 7$ 時，$(2, 3)$ 的編號是 $17$，而
+$17 / 7 = 2$、$17 \bmod 7 = 3$。 有了編號，距離、標記都可以存在長度 $nm$ 的一
+維 \texttt{vector} 裡，第~\ref{sec:state-bfs}~節的狀態也是用同樣的方法編號。
+
+乘的一定是\textbf{行數} $m$，因為每一列有 $m$ 格。 寫成 $r \times n + c$，在
+$n = m$ 的地圖上完全看不出錯；換成 $3 \times 5$ 的地圖，$(1, 0)$ 和 $(0, 3)$
+都會算出 $3$，兩格共用一個標記。
+
+\subsection{讀進地圖}
+
+大部分題目每一列是一個沒有空白的字串，例如 \texttt{..\#.S.}，用
+\texttt{vector<string> g(n)} 加上 \texttt{cin >> g[r]} 一列一列讀就好。 要留
+意兩種不同的格式：
+
+\begin{itemize}
+\item 每格之間用空白隔開，例如 \texttt{1 0 0 1}。 這時 \texttt{cin >> g[r]} 只
+會讀到第一格。 改成一格一格讀：\texttt{char ch; cin >> ch;}，\texttt{>>} 會自
+動跳過空白和換行。
+\item 一列裡可能有空白字元本身就代表一格（例如空白是空地）。 這時只能用
+\texttt{getline} 讀整列，而且要先處理掉 \texttt{cin >> n >> m} 留下的換行，見
+第~1~章。 \texttt{>>} 和 \texttt{getline} 混用時，第一列讀到空字串，是格子題
+最常見的讀入錯誤。
+\end{itemize}
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{列和行顛倒}：題目寫「$n$ 列 $m$ 行」，迴圈卻寫成
+\texttt{r < m}、\texttt{c < n}。 正方形的地圖測不出來，自己測試時一定要有一
+組 $n \ne m$ 的輸入，再加一組只有一列的，例如 $1 \times 5$。
+\item \textbf{越界檢查放在後面}：寫成
+\texttt{if (g[nr][nc] != '\#' \&\& nr >= 0 \&\& ...)}，先讀了
+\texttt{g[-1]}。 在本書測試的環境下，加了 ASan 會直接報
+\texttt{heap-buffer-overflow}；沒加的話可能輸出正常，也可能讀到別的資料，換一
+組輸入就出錯。
+\item \textbf{編號乘錯}：把 $r \times m + c$ 寫成 $r \times n + c$，上面已經舉
+過例子。
+\end{itemize}
+
+\section{洪水填充：數區塊}
+\label{sec:flood-fill}
+
+章首倒油漆的做法叫\textbf{洪水填充}（flood fill）：從一格出發，把和它連在一起、
+符合條件的格子全部標記起來。 它就是第~11~章「從每個還沒走過的點出發，做一次
+走訪」的連通元件，只是鄰居用方向陣列算。 外層掃過每一格，遇到還沒標記的就是
+新的一塊，從它出發填一次：
+
+\begin{code}{cpp}{洪水填充的骨架}
+int count = 0;
+for (int r = 0; r < n; r++) {
+    for (int c = 0; c < m; c++) {
+        if (ok(r, c) && !seen[r][c]) {   // ok：這格符合條件
+            count++;
+            bfs(r, c);                   // 標記走得到的每一格
+        }
+    }
+}
+\end{code}
+
+把圖~\ref{fig:beads} 照掃描的順序替每一塊編號，結果如下。 每一塊的編號，就是
+它最上面一列裡最左邊那一格被掃到的順序：
+
+\begin{center}
+\begin{tikzpicture}[x=0.62cm, y=0.62cm]
+\node[gred] at (0,0) {1}; \node[gred] at (1,0) {1}; \node[gyel] at (2,0) {2}; \node[gyel] at (3,0) {2}; \node[gblu] at (4,0) {3}; \node[gblu] at (5,0) {3}; \node[gblu] at (6,0) {3};
+\node[gred] at (0,-1) {1}; \node[gyel] at (1,-1) {2}; \node[gyel] at (2,-1) {2}; \node[gred] at (3,-1) {4}; \node[gred] at (4,-1) {4}; \node[gblu] at (5,-1) {3}; \node[gyel] at (6,-1) {5};
+\node[gblu] at (0,-2) {6}; \node[gred] at (1,-2) {4}; \node[gyel] at (2,-2) {2}; \node[gred] at (3,-2) {4}; \node[gyel] at (4,-2) {5}; \node[gyel] at (5,-2) {5}; \node[gyel] at (6,-2) {5};
+\node[gblu] at (0,-3) {6}; \node[gred] at (1,-3) {4}; \node[gred] at (2,-3) {4}; \node[gred] at (3,-3) {4}; \node[gyel] at (4,-3) {5}; \node[gblu] at (5,-3) {7}; \node[gblu] at (6,-3) {7};
+\node[gblu] at (0,-4) {6}; \node[gblu] at (1,-4) {6}; \node[gred] at (2,-4) {4}; \node[gyel] at (3,-4) {5}; \node[gyel] at (4,-4) {5}; \node[gblu] at (5,-4) {7}; \node[gred] at (6,-4) {8};
+\end{tikzpicture}\par\nopagebreak
+\diagcaption{四方向的洪水填充，每一格標上它屬於第幾塊。}
+\label{fig:bead-labels}
+\end{center}
+
+第 $4$ 塊紅色是在掃到 $(1, 3)$ 時才發現的，從那裡往下、往左繞了一大圈，連到
+$(2, 1)$ 和 $(4, 2)$。 掃描繼續往後走時，這些格子都已經標記過，不會再開新的一
+塊。 每一格只會被標記一次、放進佇列一次，每次看四個鄰居，所以不管有幾塊，整
+個洪水填充是 $O(nm)$。
+
+填充時用 BFS 還是 DFS 都可以，因為只問「連在一起的有哪些」。 但遞迴的 DFS 在
+格子上很容易太深：$1000 \times 1000$ 的地圖如果是一條來回彎折的蛇形走道，一
+塊就有大約 $5 \times 10^5$ 格連成一條長鏈，遠超過第~11~章量到的十幾萬層。 本
+章的填充一律用 BFS。
+
+\subsection{例題：拼豆作品的色塊統計}
+\label{sec:ex-beads}
+
+\textbf{題意}（\akiref{color-pieces-in-a-bead-pattern}{拼豆作品的色塊統計}）
+
+\begin{itemize}
+\item 拼豆作品排成 $n$ 列 $m$ 行，每格是一個小寫字母，代表豆子的顏色。
+\item 上下左右相鄰而且同色的豆子黏在一起，可以一路傳下去；黏成一體的叫一個色
+塊。 斜對角不算相鄰。
+\item 依字母順序，對每一種出現過的顏色，輸出它有幾個色塊，以及最大的色塊有幾
+顆。
+\item $1 \le n, m \le 100$。
+\end{itemize}
+
+章首的圖~\ref{fig:beads} 就是一組輸入，答案是 \texttt{b 3 4}、\texttt{r 3 8}、
+\texttt{y 2 7} 三行。
+
+\textbf{想法}
+
+最直接的做法：對每一格，把整張地圖從頭比一次，找出所有和它黏在一起的豆子。
+「黏在一起」要一路傳下去，比一次不夠，得重複比到不再增加為止，一格就可能要
+$O((nm)^2)$。 這樣的寫法不但慢，也不好寫對。
+
+換個角度：這題就是在一張圖上數連通元件。 點是格子，邊連接四方向相鄰而且同色
+的兩格。 和第~11~章的差別只有兩點：鄰居用方向陣列算，而且「有沒有邊」要比較
+兩格的顏色。 洪水填充一次得到一個色塊和它的大小，再依顏色累計塊數和最大值。
+
+同樣的模型也出現在別的地方：影像處理裡把相同顏色的像素分成區域（繪圖軟體的
+油漆桶就是這樣做的）、平面圖上數有幾個房間、衛星照片上數湖泊和每個湖的面積。
+
+\textbf{程式}
+
+\begin{example}[label=ex:beads]{cpp}{(bead.cpp) 拼豆作品的色塊統計}
+#include <iostream>
+#include <queue>
+#include <string>
+#include <utility>
+#include <vector>
+using namespace std;
+
+const int dr[4] = {-1, 1, 0, 0};          // 上、下、左、右
+const int dc[4] = {0, 0, -1, 1};
+
+int n, m;
+vector<string> g;
+vector<vector<bool>> seen;
+
+// 從 (sr, sc) 出發，標記同色而且四方向連在一起的格子，回傳一共幾格
+int floodFill(int sr, int sc) {
+    char color = g[sr][sc];
+    queue<pair<int, int>> q;
+    seen[sr][sc] = true;
+    q.push({sr, sc});
+    int size = 0;
+    while (!q.empty()) {
+        auto [r, c] = q.front();
+        q.pop();
+        size++;
+        for (int k = 0; k < 4; k++) {
+            int nr = r + dr[k], nc = c + dc[k];
+            if (nr < 0 || nr >= n || nc < 0 || nc >= m) {
+                continue;                     // 先擋掉越界，再讀 g
+            }
+            if (seen[nr][nc] || g[nr][nc] != color) {
+                continue;
+            }
+            seen[nr][nc] = true;              // 放進佇列時就標記
+            q.push({nr, nc});
+        }
+    }
+    return size;
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    cin >> n >> m;
+    g.resize(n);
+    for (string &row : g) {
+        cin >> row;
+    }
+    seen.assign(n, vector<bool>(m, false));
+    vector<int> pieces(26, 0), biggest(26, 0);
+    for (int r = 0; r < n; r++) {
+        for (int c = 0; c < m; c++) {
+            if (!seen[r][c]) {                // 還沒被塗過：新的一塊
+                int size = floodFill(r, c);
+                int k = g[r][c] - 'a';
+                pieces[k]++;
+                biggest[k] = max(biggest[k], size);
+            }
+        }
+    }
+    for (int k = 0; k < 26; k++) {
+        if (pieces[k] > 0) {
+            cout << char('a' + k) << ' ' << pieces[k] << ' '
+                 << biggest[k] << '\n';
+        }
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+5 7 \\
+rryybbb \\
+ryyrrby \\
+bryryyy \\
+brrrybb \\
+bbryybr \\
+}{
+b 3 4 \\
+r 3 8 \\
+y 2 7 \\
+}
+
+\begin{itemize}
+\item \texttt{floodFill} 的 BFS 和第~11~章的一樣，只是佇列裡放的是
+\texttt{pair<int, int>}，鄰居由 \texttt{dr}、\texttt{dc} 算出來。
+\texttt{size} 在每一格出佇列時加一，所以等於這一塊的格數。
+\item 有沒有邊的條件是 \texttt{g[nr][nc] == color}：只和出發那格的顏色比。 同
+一塊裡每一格都同色，所以和出發格比、和目前這格比，結果一樣。
+\item 標記另外用 \texttt{seen}，不去改 \texttt{g}。 原因見本節的常見錯誤。
+\item 每種顏色各有一個計數和一個最大值，用字母減掉 \texttt{'a'} 當索引。
+\end{itemize}
+
+\textbf{複雜度}
+
+外層掃 $nm$ 格，每一格只會在某一次 \texttt{floodFill} 裡進出佇列一次、看四個
+鄰居，總共 $O(nm)$，$100 \times 100$ 只有一萬格。 最大的測試資料在本書測試的
+環境下約 $0.02$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{把走過的格子改成某個字母當記號}：很多人寫洪水填充時，習慣把填過的
+格子改成 \texttt{'x'} 或 \texttt{'.'}，省一個 \texttt{seen} 陣列。 地圖只有
+\texttt{\#} 和 \texttt{.} 兩種時沒問題，這題的顏色卻可以是任何小寫字母。 輸入
+\begin{code}{text}{用 x 當記號會錯的輸入}
+2 4
+xxab
+axxb
+\end{code}
+正確答案有 \texttt{x 1 4} 這一行，改成 \texttt{'x'} 的寫法完全不會印出它：真正
+的 \texttt{x} 豆子一開始就被當成「填過了」，跳過不數。 記號和資料共用同一個陣
+列時，先確定記號的值不會出現在資料裡；不確定就另開陣列。
+\item \textbf{用了八方向}：把斜對角也算進去，章首的輸入會印出 \texttt{r 2 11}，
+兩塊紅色被併在一起。 題目明白寫了「斜對角不算」，這種錯誤只能靠讀題時圈起來。
+\item \textbf{最大值沒有分顏色}：用一個變數記全部色塊裡最大的，每種顏色都印出
+同一個數。 章首的輸入會印出三行都是 $8$。
+\end{itemize}
+
+\begin{apcsnote}
+格子題的範例地圖通常很小、很工整，常常還是正方形。 交出去之前，自己再補幾組
+小輸入：$1 \times 1$、只有一列、只有一行、$n \ne m$，以及整張地圖都是同一種
+格子。 這幾組分別會抓到邊界、列行顛倒和「整張圖連成一塊」的錯誤。
+\end{apcsnote}
+
+\section{格子上的最短距離}
+\label{sec:grid-bfs}
+
+地圖上有牆，從起點每一步往上下左右走一格，走到每一格最少要幾步？ 每一步都算
+$1$，這就是無權圖上的最短距離，用第~11~章的 BFS。 寫法也和第~11~章一樣，只是
+\texttt{dist} 變成二維，鄰居用方向陣列算。
+
+下面的程式從 \texttt{S} 出發做 BFS，把每一格的距離印成一張表，牆印
+\texttt{\#}，走不到的格子印 \texttt{-}：
+
+\begin{example}[label=ex:maze]{cpp}{(maze.cpp) 從起點到每一格的步數}
+#include <iostream>
+#include <queue>
+#include <string>
+#include <utility>
+#include <vector>
+using namespace std;
+
+const int dr[4] = {-1, 1, 0, 0};
+const int dc[4] = {0, 0, -1, 1};
+
+int main() {
+    int n, m;
+    cin >> n >> m;
+    vector<string> g(n);
+    for (string &row : g) {
+        cin >> row;
+    }
+    vector<vector<int>> dist(n, vector<int>(m, -1));
+    queue<pair<int, int>> q;
+    for (int r = 0; r < n; r++) {
+        for (int c = 0; c < m; c++) {
+            if (g[r][c] == 'S') {
+                dist[r][c] = 0;
+                q.push({r, c});
+            }
+        }
+    }
+    while (!q.empty()) {
+        auto [r, c] = q.front();
+        q.pop();
+        for (int k = 0; k < 4; k++) {
+            int nr = r + dr[k], nc = c + dc[k];
+            if (nr < 0 || nr >= n || nc < 0 || nc >= m ||
+                g[nr][nc] == '#') {
+                continue;
+            }
+            if (dist[nr][nc] == -1) {
+                dist[nr][nc] = dist[r][c] + 1;
+                q.push({nr, nc});
+            }
+        }
+    }
+    for (int r = 0; r < n; r++) {             // 印出距離表
+        for (int c = 0; c < m; c++) {
+            if (g[r][c] == '#') {
+                cout << '#';
+            } else if (dist[r][c] == -1) {
+                cout << '-';                  // 走不到
+            } else {
+                cout << dist[r][c];
+            }
+            cout << (c + 1 == m ? '\n' : ' ');
+        }
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+5 6 \\
+..\#\#.. \\
+.S\#.\#. \\
+...\#.. \\
+.\#...\# \\
+...\#.. \\
+}{
+2 1 \# \# 10 9 \\
+1 0 \# - \# 8 \\
+2 1 2 \# 6 7 \\
+3 \# 3 4 5 \# \\
+4 5 4 \# 6 7 \\
+}
+
+\begin{center}
+\begin{tikzpicture}[x=0.62cm, y=0.62cm]
+\node[gc] at (0,0) {2}; \node[gc] at (1,0) {1}; \node[gwall] at (2,0) {}; \node[gwall] at (3,0) {}; \node[gc] at (4,0) {10}; \node[gc] at (5,0) {9};
+\node[gc] at (0,-1) {1}; \node[ghl] at (1,-1) {0}; \node[gwall] at (2,-1) {}; \node[gc] at (3,-1) {$-$}; \node[gwall] at (4,-1) {}; \node[gc] at (5,-1) {8};
+\node[gc] at (0,-2) {2}; \node[gc] at (1,-2) {1}; \node[gc] at (2,-2) {2}; \node[gwall] at (3,-2) {}; \node[gc] at (4,-2) {6}; \node[gc] at (5,-2) {7};
+\node[gc] at (0,-3) {3}; \node[gwall] at (1,-3) {}; \node[gc] at (2,-3) {3}; \node[gc] at (3,-3) {4}; \node[gc] at (4,-3) {5}; \node[gwall] at (5,-3) {};
+\node[gc] at (0,-4) {4}; \node[gc] at (1,-4) {5}; \node[gc] at (2,-4) {4}; \node[gwall] at (3,-4) {}; \node[gc] at (4,-4) {6}; \node[gc] at (5,-4) {7};
+\end{tikzpicture}\par\nopagebreak
+\diagcaption{範例的距離表。 橘色是起點，黑色是牆。}
+\label{fig:maze}
+\end{center}
+
+看起點附近：距離 $1$ 的三格在 \texttt{S} 的上、下、左，右邊是牆；距離 $2$ 的再
+往外一圈。 沒有牆的時候，一層一層剛好是以起點為中心的菱形，距離就是列差加行差
+（叫曼哈頓距離，Manhattan distance），根本不用 BFS。 牆讓路線繞遠：右上角的
+$(0, 4)$ 和起點的列差加行差只有 $4$，卻要繞到下面再上來，走 $10$ 步。
+$(1, 3)$ 上下左右都是牆，印出 \texttt{-}。
+
+幾個在格子上常用的變化：
+
+\begin{itemize}
+\item 只問到終點 \texttt{T} 的步數：BFS 照樣做，\texttt{T} 被放進佇列時就可以停，
+那時的距離已經是最短的。
+\item 起點和終點可能是同一格：答案是 $0$，提早停的寫法要先檢查這種情況。
+\item 地圖上同時要知道「從起點出發」和「到終點為止」的距離：從起點、從終點各做一
+次 BFS。 上下左右都能走時，路是雙向的，到終點的距離就是從終點出發的距離。
+\end{itemize}
+
+第~10~章最後提過：只能往右、往下走的格子用動態規劃；四個方向都能走時，會繞回
+走過的格子，找不到填表的順序，就用 BFS。 BFS 照距離由小到大處理每一格，它本身
+就是那個順序。
+
+\subsection{多源 BFS 在格子上}
+\label{sec:grid-multi}
+
+第~11~章的多源 BFS 把好幾個起點一起放進佇列，距離都設成 $0$，做一次 BFS 就得
+到每一點到\textbf{最近}的起點有多遠。 格子題用到它的場合特別多，因為很多題目
+描述的是「同時從好幾個地方擴散」：好幾處同時起火、好幾個灑水器同時開、好幾個
+感染源。 每一格最早被碰到的時刻，就是它到最近源頭的距離。 上面的
+\texttt{maze.cpp} 已經寫成多源的形狀：把所有 \texttt{S} 都放進佇列，地圖上有
+好幾個 \texttt{S} 時，印出的就是到最近那一個的步數。
+
+多源 BFS 的另一個常見用法是把起點換成「一整類格子」：每一格到最近的牆有多遠、
+每一格到最近的出口有多遠。 起點可能有好幾萬個，每個各做一次 BFS 是
+$O(k \cdot nm)$，一起放進佇列只要 $O(nm)$。
+
+\subsection{例題：浮萍長滿各個池塘}
+\label{sec:ex-duckweed}
+
+\textbf{題意}（\akiref{duckweed-over-the-ponds}{浮萍長滿各個池塘}）
+
+\begin{itemize}
+\item 濕地畫成 $n$ 列 $m$ 行，\texttt{\#} 是土堤，\texttt{.} 是水，\texttt{S}
+是放了浮萍的水。 四方向相連的水格是同一個池塘。
+\item 第 $0$ 天只有 \texttt{S} 有浮萍。 之後每一天，浮萍從有浮萍的格子長到上下
+左右相鄰的水格，不會越過土堤。
+\item 對每個池塘，輸出它在第幾天結束時第一次整個長滿；沒有浮萍的池塘輸出
+$-1$。 池塘照「最上面一列裡最左邊那一格」的位置排序，先比列再比行。
+\item $1 \le n, m \le 500$，\texttt{S} 的個數不限。
+\end{itemize}
+
+例如下面的濕地（圖~\ref{fig:duckweed} 左邊是池塘，右邊兩行是另一個池塘），左
+邊的池塘有兩處浮萍，第 $3$ 天長滿；右邊的池塘沒有浮萍，輸出 $-1$。
+
+\textbf{想法}
+
+最直接的做法是照題目模擬：每一天掃過整張地圖，把有浮萍的格子旁邊的水格標成
+「明天長」。 一天 $O(nm)$，可是一個池塘可能是一條蛇形的長水道，要長
+$10^5$ 天以上，總共 $10^5 \times 2.5 \times 10^5$，來不及。 第~4~章的山火已經
+看過這個問題：只有「昨天剛長出來」的那一批格子會往外長，把它們放進佇列，每一
+格只處理一次。 這就是多源 BFS，所有 \texttt{S} 都是第 $0$ 天。
+
+\textbf{觀察一：一格長浮萍的那天，就是它到最近的 \texttt{S} 的距離。} 浮萍每天
+往外一格，從每個 \texttt{S} 同時出發；最先到的那一處決定這一格的日子。
+
+\textbf{觀察二：池塘長滿的那天，是池塘裡最晚長的那一格。} 所以先用洪水填充替
+每個池塘編號，再對每個池塘取天數的最大值。 池塘裡只要有一格永遠長不到（距離
+是 $-1$），這個池塘就是 $-1$；浮萍不會越過土堤，所以這種池塘一定一個
+\texttt{S} 都沒有。
+
+排序的規定剛好不用另外處理：洪水填充照列、行的順序掃描，每個池塘第一次被掃到
+的格子，正好就是它最上面一列裡最左邊的那一格。 照發現的順序編號，就是題目要的
+順序。
+
+\begin{center}
+\begin{tikzpicture}[x=0.62cm, y=0.62cm]
+\node[ghl] at (0,0) {0}; \node[gblu] at (1,0) {1}; \node[gblu] at (2,0) {2}; \node[gblu] at (3,0) {3}; \node[gblu] at (4,0) {2}; \node[gwall] at (5,0) {}; \node[gc] at (6,0) {$-$}; \node[gc] at (7,0) {$-$};
+\node[gblu] at (0,-1) {1}; \node[gwall] at (1,-1) {}; \node[gwall] at (2,-1) {}; \node[gblu] at (3,-1) {2}; \node[gblu] at (4,-1) {1}; \node[gwall] at (5,-1) {}; \node[gc] at (6,-1) {$-$}; \node[gc] at (7,-1) {$-$};
+\node[gblu] at (0,-2) {2}; \node[gblu] at (1,-2) {3}; \node[gblu] at (2,-2) {2}; \node[gblu] at (3,-2) {1}; \node[ghl] at (4,-2) {0}; \node[gwall] at (5,-2) {}; \node[gc] at (6,-2) {$-$}; \node[gwall] at (7,-2) {};
+\node[gwall] at (0,-3) {}; \node[gwall] at (1,-3) {}; \node[gblu] at (2,-3) {3}; \node[gwall] at (3,-3) {}; \node[gwall] at (4,-3) {}; \node[gwall] at (5,-3) {}; \node[gc] at (6,-3) {$-$}; \node[gc] at (7,-3) {$-$};
+\end{tikzpicture}\par\nopagebreak
+\diagcaption{範例的濕地。 橘色是 \texttt{S}，數字是浮萍長到那一格的天數；右邊
+的池塘沒有浮萍。}
+\label{fig:duckweed}
+\end{center}
+
+圖裡左邊池塘最大的數字是 $3$，出現在 $(0, 3)$、$(2, 1)$、$(3, 2)$ 三格。
+$(0, 3)$ 離兩個 \texttt{S} 都是 $3$ 步，兩邊同時長到。 如果只從左上角的
+\texttt{S} 出發，$(3, 2)$ 要 $5$ 天、$(2, 4)$ 要 $6$ 天才長到；另一處浮萍同時從
+$(2, 4)$ 往外長，這兩格分別在第 $3$ 天和第 $0$ 天就有了。
+
+同樣的模型也出現在別的地方：城市裡開了幾家外送據點，每個街區由最近的據點負責，
+問最遠的街區要等多久；黴菌從幾個點同時長，問整塊麵包何時長滿。
+
+\textbf{程式}
+
+\begin{example}[label=ex:duckweed]{cpp}{(duckweed.cpp) 浮萍長滿各個池塘}
+#include <algorithm>
+#include <iostream>
+#include <queue>
+#include <string>
+#include <utility>
+#include <vector>
+using namespace std;
+
+const int dr[4] = {-1, 1, 0, 0};
+const int dc[4] = {0, 0, -1, 1};
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n, m;
+    cin >> n >> m;
+    vector<string> g(n);
+    for (string &row : g) {
+        cin >> row;
+    }
+    auto open = [&](int r, int c) {           // 在地圖裡，而且是水
+        return r >= 0 && r < n && c >= 0 && c < m && g[r][c] != '#';
+    };
+
+    // 第一步：洪水填充，替每個池塘編號。照列、行的順序掃，
+    // 每個池塘第一個被掃到的就是代表格，編號自然照題目的順序
+    vector<vector<int>> pond(n, vector<int>(m, -1));
+    int ponds = 0;
+    for (int r = 0; r < n; r++) {
+        for (int c = 0; c < m; c++) {
+            if (g[r][c] == '#' || pond[r][c] != -1) {
+                continue;
+            }
+            queue<pair<int, int>> q;
+            pond[r][c] = ponds;
+            q.push({r, c});
+            while (!q.empty()) {
+                auto [x, y] = q.front();
+                q.pop();
+                for (int k = 0; k < 4; k++) {
+                    int nx = x + dr[k], ny = y + dc[k];
+                    if (open(nx, ny) && pond[nx][ny] == -1) {
+                        pond[nx][ny] = ponds;
+                        q.push({nx, ny});
+                    }
+                }
+            }
+            ponds++;
+        }
+    }
+
+    // 第二步：多源 BFS，所有 S 都是第 0 天
+    vector<vector<int>> day(n, vector<int>(m, -1));
+    queue<pair<int, int>> q;
+    for (int r = 0; r < n; r++) {
+        for (int c = 0; c < m; c++) {
+            if (g[r][c] == 'S') {
+                day[r][c] = 0;
+                q.push({r, c});
+            }
+        }
+    }
+    while (!q.empty()) {
+        auto [x, y] = q.front();
+        q.pop();
+        for (int k = 0; k < 4; k++) {
+            int nx = x + dr[k], ny = y + dc[k];
+            if (open(nx, ny) && day[nx][ny] == -1) {
+                day[nx][ny] = day[x][y] + 1;
+                q.push({nx, ny});
+            }
+        }
+    }
+
+    // 第三步：每個池塘取最晚的一天；有一格長不到，整個池塘就是 -1
+    vector<int> full(ponds, 0);
+    vector<bool> never(ponds, false);
+    for (int r = 0; r < n; r++) {
+        for (int c = 0; c < m; c++) {
+            int p = pond[r][c];
+            if (p == -1) {
+                continue;
+            }
+            if (day[r][c] == -1) {
+                never[p] = true;
+            } else {
+                full[p] = max(full[p], day[r][c]);
+            }
+        }
+    }
+    cout << ponds << '\n';
+    for (int p = 0; p < ponds; p++) {
+        cout << (never[p] ? -1 : full[p]);
+        cout << (p + 1 == ponds ? '\n' : ' ');
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+4 8 \\
+S....\#.. \\
+.\#\#..\#.. \\
+....S\#.\# \\
+\#\#.\#\#\#.. \\
+}{
+2 \\
+3 -1 \\
+}
+
+\begin{itemize}
+\item 第一步和第二步是兩次獨立的 BFS，一次以「同一個池塘」為目的，一次以「天數」
+為目的。 兩者都只走水格，條件寫在 \texttt{open} 裡共用。
+\item 第一步每次填充都開一個新的 \texttt{queue}，填完就丟掉；第二步只有一個佇
+列，一開始就放進所有 \texttt{S}。
+\item \texttt{never[p]} 只要有一格長不到就設成 \texttt{true}，輸出時優先看它。
+\texttt{full} 的初始值 $0$ 剛好對應只有一格 \texttt{S} 的池塘：第 $0$ 天就長滿。
+\end{itemize}
+
+\textbf{複雜度}
+
+兩次 BFS 各 $O(nm)$，最後掃一次也是 $O(nm)$。 $500 \times 500 = 2.5 \times 10^5$
+格，最大的測試資料在本書測試的環境下約 $0.05$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{每個池塘只從一個 \texttt{S} 出發}：先填好池塘，再從每個池塘找到
+的第一個 \texttt{S} 做單源 BFS。 範例的輸入會印出 \texttt{6 -1}：只從左上角出
+發，右邊那處浮萍的貢獻完全沒算到。 「同時」從好幾處擴散，起點就要同時放進佇列。
+\item \textbf{沒有浮萍的池塘印出 $0$}：少了 \texttt{never}，只看 \texttt{full}。
+範例的輸入會印出 \texttt{3 0}：右邊池塘每一格的天數都是 $-1$，取最大值時一格
+都沒更新，留下初始值 $0$。
+\item \textbf{每個 \texttt{S} 各做一次 BFS，再取最小值}：答案是對的，但
+\texttt{S} 可能有十幾萬個，每次都是 $O(nm)$，最大的測試資料要算上百億次。
+\end{itemize}
+
+\section{狀態 BFS}
+\label{sec:state-bfs}
+
+到目前為止，BFS 裡的一個點就是一個格子，每一格最多走到一次。 有些題目不能這
+樣做，因為走到同一格的時候，手上的情況可能不一樣，而不同的情況之後能走的路
+也不一樣。
+
+\subsection{只記位置不夠的時候}
+
+看一張只有一列的平面圖：\texttt{C.S.GE}。 從 \texttt{S} 出發要走到出口
+\texttt{E}；\texttt{G} 是管制門，身上有門禁卡才能進去；走進 \texttt{C} 就拿到
+卡，拿到之後一直帶著。 最少要幾步？
+
+人來算很快：先往左走 $2$ 步拿卡，再往右走回來，經過 \texttt{S}、穿過
+\texttt{G}，到 \texttt{E} 還要 $5$ 步，共 $7$ 步。 可是照前一節的寫法，每格只
+走一次，BFS 會卡住：\texttt{S} 左邊那格在第 $1$ 步就標記過了，拿完卡要往回走時，
+它已經不能再進佇列；右邊那條路又被 \texttt{G} 擋住。 程式會印出 $-1$。
+
+問題在於，「站在 \texttt{S} 左邊那格、身上沒有卡」和「站在同一格、身上有卡」，
+之後能走的路不同，不能算成同一個點。 解法是把點換成
+\[
+(\text{位置}, \text{有沒有卡}),
+\]
+一格拆成兩個點。 可以想成地圖有兩層樓：一樓是沒有卡的時候，二樓是有卡的時候。
+在一樓走進 \texttt{C}，就從樓梯上到二樓；一樓的 \texttt{G} 當成牆，二樓的
+\texttt{G} 當成走道。 BFS 在這兩層加起來的 $2 \times 6 = 12$ 個點上做：
+
+\begin{center}
+\begin{tikzpicture}[x=0.62cm, y=0.62cm]
+\node[left, font=\small] at (-0.6,1) {地圖};
+\node[font=\small\ttfamily] at (0,1) {C}; \node[font=\small\ttfamily] at (1,1) {.}; \node[font=\small\ttfamily] at (2,1) {S}; \node[font=\small\ttfamily] at (3,1) {.}; \node[font=\small\ttfamily] at (4,1) {G}; \node[font=\small\ttfamily] at (5,1) {E};
+\node[left, font=\small] at (-0.6,0) {沒有卡};
+\node[gc] at (0,0) {$-$}; \node[gc] at (1,0) {1}; \node[ghl] at (2,0) {0}; \node[gc] at (3,0) {1}; \node[gwall] at (4,0) {}; \node[gc] at (5,0) {$-$};
+\node[left, font=\small] at (-0.6,-1.6) {有卡};
+\node[ggreen] at (0,-1.6) {2}; \node[ggreen] at (1,-1.6) {3}; \node[ggreen] at (2,-1.6) {4}; \node[ggreen] at (3,-1.6) {5}; \node[ggreen] at (4,-1.6) {6}; \node[ghl] at (5,-1.6) {7};
+\draw[diagarrow] (1,-0.35) -- (0.1,-1.25);
+\end{tikzpicture}\par\nopagebreak
+\diagcaption{兩層的狀態圖，數字是到該狀態的步數。 箭頭是從一樓走進
+\texttt{C}，同時上到二樓。}
+\label{fig:card-layers}
+\end{center}
+
+同一格在兩層各有一個距離：\texttt{S} 左邊那格，一樓是 $1$、二樓是 $3$。 BFS
+本身完全沒變，變的只是「點」的定義。 這種在「位置加上一些資訊」構成的圖上做
+BFS 的方法，叫\textbf{狀態 BFS}（state-space BFS）；所有狀態和它們之間的轉移合起來，叫
+\textbf{狀態空間}（state space）。 第~10~章的「格子加上一點資訊」是同一個想法，
+只是那裡只能往右往下，用填表；這裡可以往回走，用 BFS。
+
+設計一個狀態 BFS，照這四步：
+
+\begin{itemize}
+\item \textbf{狀態}：除了位置，還有什麼會影響「之後能怎麼走」？ 把它們全部列出
+來，和位置合成一個狀態。 判斷的方法是問：兩次走到同一格，如果這項資訊不同，之
+後能走的路會不會不同？ 會，就要放進狀態。
+\item \textbf{轉移}：從一個狀態走一步，會到哪些狀態？ 位置怎麼變、資訊怎麼變，
+哪些情況不能走。
+\item \textbf{估狀態數}：位置數乘上資訊的種類數。 時間和記憶體都跟它成正比，
+第~\ref{sec:state-count}~小節細說。
+\item \textbf{編號}：把狀態換成一個整數，\texttt{dist} 開成一維陣列。 BFS 照
+抄，標記和距離都以狀態為單位。
+\end{itemize}
+
+\subsection{例題：電動滑板車的電量}
+\label{sec:ex-scooter}
+
+\textbf{題意}（\akiref{scooter-battery}{電動滑板車的電量}）
+
+\begin{itemize}
+\item 城市地圖 $n$ 列 $m$ 行，\texttt{\#} 是建築物，\texttt{S} 是出發點，
+\texttt{T} 是目的地，\texttt{P} 是充電站，其他是道路。
+\item 滑板車電池最多 $B$ 格電，出發時滿電。 每走一步（上下左右一格）用掉 $1$ 格
+電，電量是 $0$ 時不能再走。
+\item 走進 \texttt{P} 的那一刻電量變回 $B$，剛好用完時走進去也可以充。 走進
+\texttt{T} 就算抵達，電量是 $0$ 也算。 同一格可以重複經過。
+\item 求 \texttt{S} 到 \texttt{T} 最少幾步，到不了輸出 $-1$。 $n, m \le 200$，
+$B \le 30$。
+\end{itemize}
+
+下圖的地圖，$B = 3$：
+
+\begin{center}
+\begin{tikzpicture}[x=0.62cm, y=0.62cm]
+\node[gc] at (0,0) {}; \node[gwall] at (1,0) {}; \node[gc] at (2,0) {}; \node[gc] at (3,0) {}; \node[ghl] at (4,0) {S}; \node[gc] at (5,0) {};
+\node[gc] at (0,-1) {}; \node[gc] at (1,-1) {}; \node[ggreen] at (2,-1) {P}; \node[gc] at (3,-1) {}; \node[gwall] at (4,-1) {}; \node[gc] at (5,-1) {};
+\node[gc] at (0,-2) {}; \node[gc] at (1,-2) {}; \node[gc] at (2,-2) {}; \node[gc] at (3,-2) {}; \node[ghl] at (4,-2) {T}; \node[gwall] at (5,-2) {};
+\end{tikzpicture}\par\nopagebreak
+\diagcaption{滑板車的地圖，綠色是充電站。}
+\label{fig:scooter}
+\end{center}
+
+\texttt{S} 在 $(0, 4)$，\texttt{T} 在 $(2, 4)$，中間隔著建築物。 最短的路
+$(0, 4) \to (0, 3) \to (1, 3) \to (2, 3) \to (2, 4)$ 要 $4$ 步，電只夠走 $3$
+步。 只好先繞去充電：$(0, 3) \to (1, 3) \to (1, 2)$ 剛好用完電、走進
+\texttt{P} 充滿，再 $(1, 3) \to (2, 3) \to (2, 4)$，共 $6$ 步。 $(1, 3)$ 被經
+過兩次：第一次在第 $2$ 步，剩 $1$ 格電；第二次在第 $4$ 步，剩 $2$ 格電。
+
+\textbf{想法}
+
+最直接的做法是用第~4~章的回溯列出所有走法。 可以重複經過同一格，走法的數量沒
+有上限，連小地圖都列不完。
+
+照上一小節的四步來設計：
+
+\begin{itemize}
+\item \textbf{狀態}：兩次走到同一格，剩下的電不同，之後走得到的地方就不同，所
+以狀態是 $(r, c, b)$，$b$ 是剩下的電量，$0 \le b \le B$。 範例的 $(1, 3)$ 就是
+這樣：電量 $1$ 的那次走不到 \texttt{T}，電量 $2$ 的那次走得到。
+\item \textbf{轉移}：$b = 0$ 時不能動。 否則往四個方向走一格，不能出界、不能進
+建築物；新的電量是 $b - 1$，走進 \texttt{P} 時改成 $B$。 走進 \texttt{T} 就結
+束，不管電量。
+\item \textbf{狀態數}：$200 \times 200 \times 31 \approx 1.24 \times 10^6$ 個，
+每個看四個方向，大約 $5 \times 10^6$ 次，很快。 \texttt{dist} 用 \texttt{int}
+存，約 $5$ MB。
+\item \textbf{編號}：$(r, c, b)$ 編成 $(r \times m + c) \times K + b$，$K = B + 1$
+是電量的種類數。 拆回來時，$b$ 是編號除以 $K$ 的餘數，商是格子的編號，再照第
+~\ref{sec:grid-graph}~節拆成 $r$、$c$。
+\end{itemize}
+
+每一步都算 $1$，所以在狀態圖上做 BFS，第一次走進 \texttt{T} 時的步數就是答案。
+從 \texttt{S} 出發的狀態是 $(0, 4, 3)$，範例每一層的狀態（列、行從 $0$ 開始）：
+
+\begin{center}
+\begin{tabular}{cl}
+\toprule
+步數 & 這一層的狀態 $(r, c, b)$ \\
+\midrule
+0 & $(0,4,3)$ \\
+1 & $(0,3,2)$、$(0,5,2)$ \\
+2 & $(1,3,1)$、$(0,2,1)$、$(0,4,1)$、$(1,5,1)$ \\
+3 & $(0,3,0)$、$(2,3,0)$、$(1,2,3)$、$(0,5,0)$ \\
+4 & $(0,2,2)$、$(2,2,2)$、$(1,1,2)$、$(1,3,2)$ \\
+5 & $(0,3,1)$、$(2,1,1)$、$(2,3,1)$、$(1,0,1)$ \\
+6 & 從 $(2,3,1)$ 往右走進 \texttt{T} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+第 $3$ 步的 $(2, 3, 0)$ 就在 \texttt{T} 旁邊，可是電量是 $0$，動不了。 同一格
+$(2, 3)$ 在第 $5$ 步以 $(2, 3, 1)$ 再出現一次，這次有電，下一步就到了。 只記位
+置的 BFS 會在第 $3$ 步把 $(2, 3)$ 標記掉，第 $5$ 步那次就進不了佇列。
+
+同樣的模型也出現在別的地方：電動車在充電站之間規劃路線、無人機有飛行時間上限、
+遊戲角色的體力值，只要「剩下多少」會影響之後能走多遠，就放進狀態。
+
+\textbf{程式}
+
+\begin{example}[label=ex:scooter]{cpp}{(scooter.cpp) 電動滑板車的電量}
+#include <iostream>
+#include <queue>
+#include <string>
+#include <vector>
+using namespace std;
+
+const int dr[4] = {-1, 1, 0, 0};
+const int dc[4] = {0, 0, -1, 1};
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n, m, B;
+    cin >> n >> m >> B;
+    vector<string> g(n);
+    for (string &row : g) {
+        cin >> row;
+    }
+    int sr = 0, sc = 0;
+    for (int r = 0; r < n; r++) {
+        for (int c = 0; c < m; c++) {
+            if (g[r][c] == 'S') {
+                sr = r;
+                sc = c;
+            }
+        }
+    }
+
+    // 狀態 (r, c, b) 的編號；電量有 K = B + 1 種
+    int K = B + 1;
+    auto id = [&](int r, int c, int b) {
+        return (r * m + c) * K + b;
+    };
+    vector<int> dist(n * m * K, -1);
+    queue<int> q;
+    dist[id(sr, sc, B)] = 0;
+    q.push(id(sr, sc, B));
+    while (!q.empty()) {
+        int s = q.front();
+        q.pop();
+        int b = s % K, cell = s / K;          // 拆回電量和位置
+        int r = cell / m, c = cell % m;
+        if (b == 0) {
+            continue;                         // 沒電了，動不了
+        }
+        for (int k = 0; k < 4; k++) {
+            int nr = r + dr[k], nc = c + dc[k];
+            if (nr < 0 || nr >= n || nc < 0 || nc >= m ||
+                g[nr][nc] == '#') {
+                continue;
+            }
+            if (g[nr][nc] == 'T') {           // 走進 T 就到了
+                cout << dist[s] + 1 << '\n';
+                return 0;
+            }
+            int nb = (g[nr][nc] == 'P') ? B : b - 1;
+            int t = id(nr, nc, nb);
+            if (dist[t] == -1) {
+                dist[t] = dist[s] + 1;
+                q.push(t);
+            }
+        }
+    }
+    cout << -1 << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+3 6 3 \\
+.\#..S. \\
+..P.\#. \\
+....T\# \\
+}{
+6 \\
+}
+
+\begin{itemize}
+\item 佇列裡放的是狀態的編號，一個 \texttt{int}。 拿出來先拆成 $b$ 和格子，再
+拆成 $r$、$c$，順序和編號時相反。
+\item 走進 \texttt{T} 在產生的時候就輸出。 BFS 照步數由小到大拿出狀態，所以第
+一個能走進 \texttt{T} 的狀態，步數一定最小。 \texttt{T} 本身不用放進佇列，也
+就不用管它的電量。
+\item \texttt{nb} 不會是負的：$b \ge 1$ 才會走到這裡，$b - 1 \ge 0$。 剛好用完
+電走進 \texttt{P}，\texttt{nb} 直接是 $B$，題目的「剛好用完也可以充」自然成立。
+\item 編號最大是 $nmK - 1 \approx 1.24 \times 10^6$，\texttt{int} 放得下。 狀態
+再多一兩個數量級時，要先確認乘出來不會超過 \texttt{int}。
+\end{itemize}
+
+\textbf{複雜度}
+
+每個狀態最多進出佇列一次，看四個方向，總共 $O(nmB)$。 最大的測試資料在本書測
+試的環境下不到 $0.1$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{只用位置判斷走過沒有}：\texttt{dist} 只開 $n \times m$，每格記第一
+次到達時的電量。 範例的輸入會印出 \texttt{-1}，原因就是上面表格說的：
+$(2, 3)$ 第一次到達時沒電，標記掉之後，有電的那次就進不來。 寫狀態 BFS 時，
+\texttt{dist} 的大小就是狀態數；只開了位置數，表示狀態少放了東西。
+\item \textbf{剛好用完電就不讓走}：把「電量是 $0$ 時不能再走」寫成「走完會變成
+$0$ 就不能走」，例如 \texttt{if (b - 1 <= 0) continue;}。 範例的輸入會印出
+\texttt{-1}：到充電站那一步剛好用完最後一格電，被擋掉了。 題目的規定是「走之
+前」要有電，邊界情況用範例裡剛好用完的那一步對一次。
+\item \textbf{電量的種類數少算一}：把 $K$ 寫成 $B$。 電量是 $0$ 到 $B$，共
+$B + 1$ 種；$K = B$ 時，滿電的狀態 $(r, c, B)$ 會算成下一格的 $(r, c + 1, 0)$，
+兩個不同的狀態共用一格。 範例的輸入會印出 \texttt{-1}。 起點如果在地圖的右下
+角，起點的狀態編號 $nm \cdot B$ 已經在陣列外面，加了 ASan 會報
+\texttt{heap-buffer-overflow}。
+\item \textbf{用 \texttt{map} 存狀態}：把 \texttt{dist} 寫成
+\texttt{map<tuple<int, int, int>, int>}，不用自己編號，答案也對。 但每次查詢要
+$O(\log)$，常數又大，一百多萬個狀態時會慢上好幾倍。 狀態能編成連續整數時，用
+\texttt{vector}。
+\end{itemize}
+
+\subsection{狀態數怎麼估}
+\label{sec:state-count}
+
+狀態 BFS 的時間和記憶體都由狀態數決定。 動手寫之前，先把每一項資訊有幾種乘起
+來：
+
+\begin{center}
+\begin{tabular}{p{0.2\linewidth}p{0.18\linewidth}p{0.5\linewidth}}
+\toprule
+多記的資訊 & 種類數 & 什麼時候需要 \\
+\midrule
+面向哪個方向 & $4$（或 $8$） & 不能迴轉、轉彎有限制、直走和轉彎的規則不同 \\
+有沒有某樣東西 & $2$ & 一張門禁卡、一把鑰匙、一個開關的狀態 \\
+$k$ 種不同的鑰匙 & $2^k$ & 每種鑰匙開不同的門，要記拿到了哪幾種 \\
+用了幾次（最多 $K$ 次）& $K + 1$ & 可以拆牆、跳躍、用道具，但次數有上限 \\
+剩下多少（最多 $B$）& $B + 1$ & 電量、體力、氧氣 \\
+在第幾層 & 層數 $L$ & 地圖有好幾層樓，或有地上地下兩層 \\
+步數的奇偶 & $2$ & 規則和「走了奇數步還是偶數步」有關 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+好幾項都要記時，種類數相乘。 再乘上位置數 $nm$，就是狀態數 $S$。 估計的方法：
+
+\begin{itemize}
+\item \textbf{時間}：每個狀態看幾個方向，$S$ 乘上方向數，和銜接書 10.1 節的表
+比較。 一般在 $10^7$ 左右沒有問題。
+\item \textbf{記憶體}：\texttt{dist} 每個狀態 $4$ 個位元組，$S = 10^7$ 時是
+$40$ MB，再看題目寫的記憶體限制。 只要知道走過沒有、不需要距離時，可以用
+\texttt{vector<char>}，每個狀態 $1$ 個位元組。
+\item \textbf{太多的時候}：重新檢查每一項資訊是不是真的需要。 常見的省法有兩
+種：資訊的範圍其實比題目給的小（例如電量 $B$ 比整張地圖的格子數還多時，電量永
+遠用不完，可以不記）；或者兩個狀態可以比出好壞，只留好的那個。 後者需要另外證
+明，不在本章範圍。
+\end{itemize}
+
+拿幾個例子算一次：$1000 \times 1000$ 的地圖加上面向，$4 \times 10^6$ 個狀態，
+沒問題；$50 \times 50$ 加上 $8$ 種鑰匙，$2500 \times 256 = 6.4 \times 10^5$，
+沒問題；同樣大小改成 $20$ 種鑰匙，$2500 \times 2^{20} \approx 2.6 \times 10^9$，
+開不出來。 鑰匙的種類數是放在指數上的，多幾種，狀態數就翻好幾倍。
+
+狀態也不一定要有格子。 第~11~章練習的計數器，點是顯示的數字；如果規定「最多
+只能按 $3$ 次 $-3$」，點就變成（顯示的數字, 已經按了幾次 $-3$）。 只要每一步
+都算 $1$，在任何「點加上資訊」的圖上，BFS 都照樣能用。
+
+\begin{apcsnote}
+狀態 BFS 的題目，題敘裡的上限常常就是在暗示狀態要記什麼：$B \le 30$、最多拆
+$K \le 5$ 面牆、鑰匙最多 $6$ 種。 讀題時把這些小上限圈起來，乘上地圖大小，先
+確認狀態數和記憶體都夠，再開始寫。
+\end{apcsnote}
+
+\subsection{走一步的代價不一樣時}
+\label{sec:01bfs-preview}
+
+BFS 的前提是「每走一步都算 $1$」。 有些格子題問的不是步數，例如：地圖上有牆，
+可以拆，問從起點到終點\textbf{最少要拆幾面牆}。 這時走進空地不花代價，走進牆
+要花 $1$，邊的代價有 $0$ 和 $1$ 兩種。 直接用 BFS 求出的是步數最少的路，不一
+定是拆牆最少的路：繞一大圈不拆牆，步數多，代價卻是 $0$。
+
+這種代價只有 $0$ 和 $1$ 的圖，有一個和 BFS 很像的做法，叫\textbf{0/1 BFS}：佇
+列換成兩端都能放的雙向佇列 \texttt{deque}，走代價 $0$ 的邊時放到前端，走代價
+$1$ 的邊時放到尾端，佇列裡就仍然照代價由小到大排好。 它和代價是任意正數時用的
+Dijkstra 演算法屬於同一類問題，留到續集一起講。 本章的題目每一步都算 $1$，不
+需要它。
+
+\section{什麼時候用}
+\label{sec:grid-when}
+
+\begin{itemize}
+\item 輸入是一張格子地圖，問「有幾塊」「最大的一塊多大」「哪些格子和這格連在
+一起」：洪水填充。 先確認四方向還是八方向。
+\item 每一步走一格、每一步都算 $1$，問最少幾步、第幾分鐘到：格子上的 BFS。
+\item 有好幾個起點同時出發，或問「離最近的某一類格子多遠」：多源 BFS，所有起點
+一起放進佇列。
+\item 同一格可能要經過好幾次，每次手上的東西、面向、剩下的量不同：狀態 BFS，
+先列出狀態、估狀態數。
+\end{itemize}
+
+看起來像、但不能直接用的情況：
+
+\begin{itemize}
+\item 只能往右、往下走，問路線數、經過的數字總和最小：第~10~章的動態規劃。 這
+類問題要的不是步數，移動方向又固定，照順序填表最直接。
+\item 每一步的代價不同（有的格子走比較慢、走進去要花錢）：加權最短路徑，0/1 的
+情況用上一小節的 0/1 BFS，一般的情況用 Dijkstra，本書不談。
+\item 規定每一格最多經過一次，又要問最長的路或所有的路：狀態要記住走過哪些格
+子，種類數是指數，只有很小的地圖能用第~4~章的回溯。
+\end{itemize}
+
+\section{本章常見錯誤}
+\label{sec:grid-pitfalls}
+
+前面各節的錯誤，歸納起來是五類。 寫格子題時，交出去之前逐項檢查一次。
+
+\begin{center}
+\begin{tabular}{p{0.2\linewidth}p{0.48\linewidth}p{0.2\linewidth}}
+\toprule
+錯誤 & 例子 & 見 \\
+\midrule
+座標 & 列和行顛倒；編號寫成 $r \times n + c$；越界檢查放在讀格子之後 &
+第~\ref{sec:grid-graph}~節 \\
+相鄰的定義 & 題目說四方向卻用了八方向；只和出發格以外的條件比 &
+第~\ref{sec:grid-graph}、\ref{sec:ex-beads}~節 \\
+標記 & 把格子改成某個字母當記號，和真正的資料撞在一起 &
+第~\ref{sec:ex-beads}~節 \\
+起點 & 多源的題目只從一個起點出發；長不到的區塊沒有輸出 $-1$ &
+第~\ref{sec:ex-duckweed}~節 \\
+狀態 & 狀態少放了資訊，只用位置判斷走過沒有；種類數少算一；邊界的電量 &
+第~\ref{sec:ex-scooter}~節 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+另外兩個在每一題都會遇到的習慣：讀入格子前先看清楚每一列有沒有空白；只用範例
+測試不夠，正方形、只有一列、整張圖同一種格子這幾種小輸入一定要自己補。
+
+\section{本章練習}
+\label{sec:ch12-exercises}
+
+\begin{drills}[label=drills:ch12]
+\item 下面的地圖，\texttt{\#} 是墨水，\texttt{.} 是空白：
+\begin{code}{text}{練習 1 的地圖}
+#..#.
+.#.##
+..#..
+##..#
+\end{code}
+\begin{enumerate}
+\item 用四方向和八方向，墨水各有幾團？
+\item 照第~\ref{sec:flood-fill}~節的掃描順序，用四方向替每一團編號，寫出最大
+的那一團的編號和格數。
+\end{enumerate}
+
+\item 一張 $n = 3$、$m = 5$ 的地圖。
+\begin{enumerate}
+\item 用 $r \times m + c$ 編號時，$(2, 4)$ 的編號是多少？ 編號 $13$ 是哪一格？
+\item 有人寫成 $r \times n + c$。 找出所有被算成同一個編號的格子組合。
+\item 第~\ref{sec:ex-scooter}~小節的編號，$m = 5$、$B = 3$ 時，狀態
+$(1, 2, 0)$ 的編號是多少？ 編號 $47$ 是哪一個狀態？
+\end{enumerate}
+
+\item 下面每一題，寫出狀態要記什麼、狀態數大約多少，判斷 BFS 來不來得及、記憶
+體夠不夠（記憶體限制 $256$ MB）。
+\begin{enumerate}
+\item $1000 \times 1000$ 的地圖，可以拆牆，最多拆 $K = 3$ 面，問最少步數。
+\item $30 \times 30$ 的地圖，有 $10$ 種顏色的鑰匙和門，拿到某色鑰匙才能過同色的
+門，問最少步數。
+\item $500 \times 500$ 的草地，割草機一次可以往面向的方向走一格，或原地向左、
+向右轉 $90$ 度，每個動作都算一步，問最少幾個動作。
+\item $2000 \times 2000$ 的地圖，可以拆牆，最多拆 $K = 50$ 面。
+\end{enumerate}
+
+\item 第~\ref{sec:ex-scooter}~小節的題目，如果 $B \ge nm$，答案和「不管電量、
+直接在格子上做 BFS」有沒有可能不同？ 如果題目把 $B$ 的上限改成 $10^9$，狀態數
+要怎麼控制？
+
+\item 有人用八方向數墨水團，又想知道哪些空白格被墨水「圍住」、走不到地圖外面。
+\begin{code}{text}{練習 5 的地圖}
+.#.
+#.#
+.#.
+\end{code}
+\begin{enumerate}
+\item 用八方向，墨水有幾團？
+\item 中間那格空白有沒有被圍住？ 空白格之間用四方向和八方向判斷，結論各是什麼？
+\item 說明為什麼「墨水用八方向」時，空白應該用四方向判斷。
+\end{enumerate}
+
+\item 下面的程式片段想對格子做 BFS，找出所有錯誤，並說明各會在什麼輸入出錯。
+地圖是 $n$ 列 $m$ 行。
+\begin{code}{cpp}{練習 6}
+vector<vector<int>> dist(n, vector<int>(n, -1));
+// ……起點放進佇列……
+while (!q.empty()) {
+    auto [r, c] = q.front();
+    q.pop();
+    for (int k = 0; k < 4; k++) {
+        int nr = r + dr[k], nc = c + dc[k];
+        if (g[nr][nc] == '#' || nr < 0 || nr >= n || nc < 0 || nc >= m) {
+            continue;
+        }
+        if (dist[nr][nc] == -1) {
+            q.push({nr, nc});
+        }
+        dist[nr][nc] = dist[r][c] + 1;
+    }
+}
+\end{code}
+\end{drills}
+
+\section{實作練習}
+\label{sec:ch12-practice}
+
+下面是 Aki-Judge 上和本章相關的題目，依小節分組。 難度分四階：暖身是直接套用
+本章的寫法；基本要自己決定相鄰的條件、起點或狀態；實戰的題敘比較長，要先把題
+目轉換成本章的形狀；挑戰會和其他章的技巧合在一起。
+
+\begin{center}
+\begin{tabular}{llc}
+\toprule
+小節 & 題目 & 難度 \\
+\midrule
+洪水填充 & \akiref{rooms-and-narrow-aisles}{窄走道隔出的區域} & 暖身 \\
+ & \akiref{ink-blots-four-directions-or-eight}{四方向與八方向的墨跡} & 暖身 \\
+ & \akiref{robot-vacuums-per-room}{每間房各派幾台掃地機} & 暖身 \\
+ & \akiref{doors-that-join-two-rooms}{能打通兩個房間的門} & 基本 \\
+ & \akiref{one-field-a-day}{收割機一天收一塊田} & 基本 \\
+ & \akiref{painted-patches-on-a-paper-lantern}{圓筒燈籠上的彩繪區} & 基本 \\
+ & \akiref{solid-blocks-and-hollow-frames-on-the-floor}{地磚上的實心塊與空心框} & 實戰 \\
+ & \akiref{eroding-island-with-lakes-and-cliffs}{岩壁、湖與被侵蝕的島} & 挑戰 \\
+\midrule
+格子上的最短距離 & \akiref{cleaning-zones-by-distance}{打掃區域的距離分層} & 暖身 \\
+ & \akiref{shortest-walk-in-a-thin-wall-maze}{薄木板迷宮的最短走法} & 暖身 \\
+ & \akiref{beat-the-rising-tide}{趕在漲潮前上岸} & 基本 \\
+ & \akiref{a-piece-with-custom-moves}{自訂走法的棋子} & 基本 \\
+ & \akiref{footprints-of-all-shortest-routes}{所有最短路線的足跡} & 實戰 \\
+ & \akiref{cells-on-every-shortest-route}{每條最短路線都經過的格子} & 挑戰 \\
+\midrule
+多源 BFS & \akiref{evacuation-drill-steps}{疏散演練的步數} & 基本 \\
+ & \akiref{dry-land-after-the-flood}{淹水後剩下的乾地} & 基本 \\
+ & \akiref{a-quiet-seat-away-from-the-drills}{離電鑽夠遠的空位} & 基本 \\
+ & \akiref{believe-it-after-two-neighbors-say-so}{兩戶鄰居都說才相信} & 實戰 \\
+ & \akiref{mixed-up-meeting-points}{聽到兩種說法的同學} & 實戰 \\
+\midrule
+狀態 BFS & \akiref{access-cards-and-locked-doors}{門禁卡與管制門} & 暖身 \\
+ & \akiref{the-shuttle-that-cannot-u-turn}{不能迴轉的園區接駁車} & 基本 \\
+ & \akiref{shortcut-through-the-underpass}{穿過地下道的最短走法} & 基本 \\
+ & \akiref{dodging-the-midday-sun}{躲太陽的最短路線} & 基本 \\
+ & \akiref{even-ride-discount-pass}{偶數段優惠票} & 實戰 \\
+ & \akiref{moving-the-big-stage-crate}{搬運大型舞台箱} & 挑戰 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+本章的三題例題也在 Aki-Judge 上，讀完各節之後可以先自己寫一次再對照。
+
+\section{讀完你應該會}
+\label{sec:ch12-checklist}
+
+\begin{itemize}
+\item 看到格子地圖，能說出點是什麼、哪兩格之間有邊（四方向或八方向、要不要同
+色、能不能走），用方向陣列列出鄰居，並且先檢查邊界再讀格子。
+\item 能用 BFS 寫洪水填充，替每一塊編號、算出每塊的大小，不依賴遞迴。
+\item 能在格子上做 BFS 求最短步數，並在題目有好幾個源頭時，把它們一起放進佇
+列。
+\item 遇到同一格要走好幾次的題目，能說出狀態要多記什麼、狀態數大約多少，把狀
+態編成整數後做 BFS。
+\item 看到每一步代價不同的題目，知道 BFS 不能直接用。
+\end{itemize}
+
+\textbf{延伸閱讀}（書末會整理完整的參考資料）
+
+\begin{itemize}
+\item Steven Halim 等，\textit{Competitive Programming 4}，Book 1 第 4.2.5 節、
+Book 2 第 8.2.2 節：洪水填充和狀態空間搜尋的題目分類，題目數量多，適合想多練
+的讀者。
+\item 劉汝佳，《算法競賽入門經典》第 2 版，6.4 節與 7.5 節：格子上的連通塊、迷
+宮最短路，以及把局面當成點的路徑尋找問題，中文，例題多。
+\item Antti Laaksonen，\textit{Competitive Programmer's Handbook}，第 12 章：
+篇幅短，可以很快複習 BFS 和 DFS 在格子上的寫法。
+\end{itemize}
+
+\addcontentsline{toc}{section}{練習解答}
+\section*{練習解答}
+
+\begin{enumerate}
+\item
+\begin{enumerate}
+\item 四方向 $6$ 團，八方向 $2$ 團。 四方向的六團是 $\{(0,0)\}$、$\{(0,3),
+(1,3), (1,4)\}$、$\{(1,1)\}$、$\{(2,2)\}$、$\{(3,0), (3,1)\}$、$\{(3,4)\}$。 八
+方向時 $(0,0)$、$(1,1)$、$(2,2)$ 沿斜線連起來，$(2,2)$ 又斜接 $(1,3)$ 和
+$(3,1)$，所以除了 $(3,4)$ 以外全部連成一團；$(3,4)$ 周圍八格都沒有墨水，自成
+一團。
+\item 掃描順序是 $(0,0)$ 第 $1$ 團、$(0,3)$ 第 $2$ 團、$(1,1)$ 第 $3$ 團、
+$(2,2)$ 第 $4$ 團、$(3,0)$ 第 $5$ 團、$(3,4)$ 第 $6$ 團。 最大的是第 $2$ 團，
+$3$ 格。
+\end{enumerate}
+
+\item
+\begin{enumerate}
+\item $(2, 4)$ 是 $2 \times 5 + 4 = 14$。 $13 = 2 \times 5 + 3$，是 $(2, 3)$。
+\item $r \times 3 + c$：$(0, 3)$ 和 $(1, 0)$ 都是 $3$，$(0, 4)$ 和 $(1, 1)$ 都
+是 $4$，$(1, 3)$ 和 $(2, 0)$ 都是 $6$，$(1, 4)$ 和 $(2, 1)$ 都是 $7$。 一共
+四組。 另外 $(2, 4)$ 算成 $10$，最大只到 $10$，編號 $11$ 到 $14$ 完全沒用到，
+所以一定有格子擠在一起。
+\item $K = 4$，$(1 \times 5 + 2) \times 4 + 0 = 28$。 $47 = 11 \times 4 + 3$，
+格子編號 $11 = 2 \times 5 + 1$，所以是 $(2, 1, 3)$。
+\end{enumerate}
+
+\item
+\begin{enumerate}
+\item 狀態（位置, 已拆幾面），$10^6 \times 4 = 4 \times 10^6$ 個。 時間沒問題；
+\texttt{dist} 用 \texttt{int} 約 $16$ MB。 注意每一步代價都是 $1$（拆牆也只是
+走進去），問的是步數，所以是普通的狀態 BFS。
+\item 狀態（位置, 拿到哪幾種鑰匙），鑰匙的組合有 $2^{10} = 1024$ 種，
+$900 \times 1024 \approx 9.2 \times 10^5$ 個，沒問題。 拿到哪幾種用一個
+$10$ 位元的整數表示，第 $i$ 位是 $1$ 表示拿到第 $i$ 種（第~4~章的位元枚舉）。
+\item 狀態（位置, 面向），$2.5 \times 10^5 \times 4 = 10^6$ 個，每個狀態有三種
+動作，沒問題。 轉向是原地換面向，位置不變。
+\item $4 \times 10^6 \times 51 \approx 2 \times 10^8$ 個狀態，\texttt{dist} 用
+\texttt{int} 要 $800$ MB，超過限制；只存走過沒有用 \texttt{char} 也要 $200$ MB，
+時間也接近極限。 這種規模要另外想辦法，例如先證明 $K$ 其實可以縮小，超出本章
+的範圍。 如果題目改成只問最少要拆幾面牆、不問步數，就是第
+~\ref{sec:01bfs-preview}~小節的 0/1 BFS，狀態只要位置。
+\end{enumerate}
+
+\item 不可能不同。 地圖只有 $nm$ 格，任何一條最短路線經過的格子都不重複，最多
+走 $nm - 1$ 步。 所以只要 $B \ge nm - 1$，沿著普通 BFS 找到的最短路線走，電一定
+夠用。 反過來，有電量限制只會讓能走的路變少，不會讓最短的路變短。 兩邊的答案
+一樣。
+
+所以 $B$ 的上限改成 $10^9$ 時，先判斷：$B \ge nm - 1$ 就直接做普通的格子 BFS，
+狀態只要位置；否則 $B < nm$，再照原本的方法做，狀態數是 $nm(B + 1)$。 這時
+$nm(B+1)$ 可能還是很大，例如 $200 \times 200$ 的地圖、$B = 10^4$，就要
+$4 \times 10^8$ 個狀態，需要別的觀察，超出本章的範圍。 原題的 $B \le 30$，就是
+為了讓狀態數留在一百多萬。
+
+\item
+\begin{enumerate}
+\item $1$ 團。 四個 \texttt{\#} 兩兩斜對角相鄰，圍成一個菱形。
+\item 用四方向判斷空白：中間那格的上下左右都是墨水，被圍住了。 用八方向判斷：
+中間那格斜對角接到四個角落，而角落在地圖邊上，所以沒有被圍住。
+\item 墨水用八方向，表示斜對角相鄰的兩格墨水算連在一起，中間沒有縫。 如果空白
+也用八方向，空白就能從這個「沒有縫」的地方斜穿過去，兩種東西在同一個斜角交叉
+而過，互相矛盾。 所以一邊用八方向時，另一邊要用四方向，才不會穿過去。
+\end{enumerate}
+
+\item 三個錯誤：
+\begin{itemize}
+\item \texttt{dist} 開成 $n \times n$，應該是 $n \times m$。 $m > n$ 時讀寫到每
+列外面，$m < n$ 時浪費記憶體但不會錯。 輸入 $1 \times 5$ 的地圖就會出錯。
+\item 越界檢查放在 \texttt{g[nr][nc]} 之後。 起點在第 $0$ 列時，往上走就讀了
+\texttt{g[-1]}。
+\item \texttt{dist[nr][nc] = dist[r][c] + 1;} 放在 \texttt{if} 外面，已經有距離
+的格子會被改寫成更大的值。 例如 $1 \times 3$ 的地圖 \texttt{S..}：拿出
+$(0, 1)$ 時往左看到起點，把起點的距離改成 $2$。 應該和 \texttt{push} 一起放在
+\texttt{if} 裡，第一次看到時設定、之後不再改。
+\end{itemize}
+\end{enumerate}
