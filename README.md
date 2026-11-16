@@ -12,8 +12,9 @@
 
 每一章的例題照「題意、想法、程式、複雜度、常見錯誤」的順序寫，貪心要說明為什麼對，動態規劃要說明狀態的意義。 章末有觀念題（附解答）和 Aki-Judge 上的實作題單（只列題名，不附解答）。
 
-- 第 7 章 PDF（草稿）：[`output/chapters/07_Greedy.pdf`](output/chapters/07_Greedy.pdf)
-- 全書 PDF：[`output/book.pdf`](output/book.pdf)（目前只有第 7 章）
+- 全書 PDF（草稿，20 章）：[`output/book.pdf`](output/book.pdf)
+- 網頁版：[annotated.codes/learn/algorithms](https://annotated.codes/learn/algorithms)（一節一頁，手機也好讀）
+- 各章 PDF：[1](output/chapters/01_Preparation.pdf)、[2](output/chapters/02_Sorting.pdf)、[3](output/chapters/03_BinarySearchAnswer.pdf)、[4](output/chapters/04_EnumerationSimulation.pdf)、[5](output/chapters/05_PrefixSumsTwoPointers.pdf)、[6](output/chapters/06_StacksQueuesHeaps.pdf)、[7](output/chapters/07_Greedy.pdf)、[8](output/chapters/08_RecursionDivideConquer.pdf)、[9](output/chapters/09_DP1D.pdf)、[10](output/chapters/10_DPGrids.pdf)、[11](output/chapters/11_Graphs.pdf)、[12](output/chapters/12_GridStateBFS.pdf)、[13](output/chapters/13_Trees.pdf)、[14](output/chapters/14_Capstone.pdf)、[15](output/chapters/15_Knapsack.pdf)、[16](output/chapters/16_SubsequenceDP.pdf)、[17](output/chapters/17_IntervalDP.pdf)、[18](output/chapters/18_DAGTopo.pdf)、[19](output/chapters/19_DSUCyclesBipartite.pdf)、[20](output/chapters/20_TreeDP.pdf)
 - 原始碼：`src/`（XeLaTeX）
 
 ## 章節
