@@ -1,4 +1,1470 @@
-% 佔位：本章尚未開始。book.tex 裡先註解掉。
 \chapter{圖的表示與走訪}
+\label{ch:graphs}
 
-本章尚未開始。
+% 本章的圖共用的樣式（點、強調的點、無向邊、有向邊）
+\tikzset{
+    gv/.style={circle, draw=black!60, thick, minimum size=0.72cm, inner sep=0pt, font=\small},
+    gvhl/.style={gv, draw=memStroke, fill=memFill},
+    gvex/.style={gv, draw=greenStroke, fill=greenFill},
+    gvbad/.style={gv, draw=optStroke, fill=optFill},
+    ge/.style={thick, draw=black!60},
+    gd/.style={-{Stealth[length=2.2mm]}, thick, draw=black!60, shorten >=1pt},
+}
+
+城市裡有八個公共自行車站，站和站之間有幾段自行車道，畫在下圖。 你在站 1 借
+了一台車，想知道騎到每一站最少要經過幾段車道，也想知道有沒有哪一站不管怎麼
+騎都到不了。 往下讀之前，先在圖上算一次，並且留意自己是照什麼順序算的。
+
+\begin{center}
+\begin{tikzpicture}[x=1.5cm, y=1.1cm]
+\node[gv] (1) at (0,1) {1};
+\node[gv] (2) at (1,2) {2};
+\node[gv] (3) at (1,0) {3};
+\node[gv] (4) at (2,2) {4};
+\node[gv] (5) at (2,0) {5};
+\node[gv] (6) at (3,1) {6};
+\node[gv] (7) at (4.3,2) {7};
+\node[gv] (8) at (4.3,0) {8};
+\draw[ge] (1) -- (2);
+\draw[ge] (1) -- (3);
+\draw[ge] (2) -- (4);
+\draw[ge] (3) -- (4);
+\draw[ge] (3) -- (5);
+\draw[ge] (4) -- (6);
+\draw[ge] (5) -- (6);
+\draw[ge] (7) -- (8);
+\end{tikzpicture}
+\diagcaption{八個自行車站（圓圈）和八段車道（線）。 本章前半都用這張圖當例子。}
+\label{fig:bike}
+\end{center}
+
+大多數人會先圈出離站 1 只有一段的站（2、3），再從這兩站往外找兩段的（4、
+5），然後是三段的（6）。 站 7 和站 8 之間有車道，但它們和其他站完全沒有連
+起來，所以到不了。 這種「由近到遠、一層一層找」的算法，就是本章的主角之一。
+
+這類問題的資料都是「一些東西，加上它們之間兩兩的關係」：車站和車道、同學和
+好友關係、網路設備和線路、展間和通道。 把東西畫成點、關係畫成線，就是
+\textbf{圖}（graph）。 第~9~章在紙上畫過狀態圖，那時圖只是幫你想的工具，程
+式裡用不到。 這一章的圖直接寫在輸入裡，要先存進記憶體，再在上面走。
+
+本章先講名詞和存圖的方法；接著是兩種走遍一張圖的方法，廣度優先搜尋與深度優
+先搜尋，用它們求最短距離、找出彼此連通的幾群；然後回到第~8~章的遞迴深度，看
+深度優先搜尋太深時怎麼改成迴圈；最後是兩個常用的技巧：把每條邊反過來的反向
+圖，以及同時從好幾個起點出發的多源 BFS。 格子地圖和「狀態」構成的圖留到第
+~12~章。
+
+用到的語法：\texttt{vector<vector<int>>} 和 \texttt{queue} 在銜接書第~8~章
+8.5 節，那裡已經有一支 BFS 程式；遞迴的深度優先搜尋在第~10~章 10.2 節（數陸
+地）。 沒讀過銜接書的讀者，只要會用 \texttt{vector}、\texttt{queue} 和遞迴
+函式，就能讀這一章。
+
+\section{點和邊}
+\label{sec:graph-terms}
+
+圖由\textbf{點}（vertex）和\textbf{邊}（edge）組成，一條邊連接兩個點。 點通
+常編號成 $1$ 到 $n$，邊數記成 $m$。 下面的名詞全章都會用到，用圖
+~\ref{fig:bike} 當例子：
+
+\begin{itemize}
+\item 邊沒有方向的圖叫\textbf{無向圖}（undirected graph），自行車道兩個方向都
+能騎，就是無向的。 邊有方向的叫\textbf{有向圖}（directed graph），畫成箭頭，
+例如單行道、單向的通道。 第~9~章的有向無環圖，就是沒有環的有向圖。
+\item 有邊直接相連的兩點互為\textbf{鄰居}（neighbor）。 站 3 的鄰居是 1、4、
+5。 一個點有幾個鄰居（更精確地說，接了幾條邊），叫它的\textbf{度數}
+（degree），站 3 的度數是 $3$。
+\item 沿著邊一步一步走的一串點叫\textbf{路徑}（path），經過幾條邊就是路徑的
+長度。 $1 \to 3 \to 5 \to 6$ 長度是 $3$。 兩點之間最短的路徑長度，叫它們的
+\textbf{距離}。
+\item 兩點之間有路徑，就說它們\textbf{連通}（connected）。 彼此連通的點聚成
+一群，叫\textbf{連通元件}（connected component）。 圖~\ref{fig:bike} 有兩個
+連通元件：$\{1, 2, 3, 4, 5, 6\}$ 和 $\{7, 8\}$。
+\item 同一對點之間有兩條以上的邊，叫\textbf{重邊}（multiple edges）；一條邊的
+兩端是同一個點，叫\textbf{自環}（self-loop）。 輸入整理得不乾淨時兩者都會出
+現，題目通常會寫明有沒有。
+\item 本章的邊都沒有長度，每走一條算一步，這種圖叫\textbf{無權圖}
+（unweighted graph）。 邊有不同長度的有權圖，要用續集的 Dijkstra 演算法。
+\end{itemize}
+
+題目很少直接說「圖」。 讀題時先決定點是什麼、邊是什麼、有沒有方向：
+
+\begin{center}
+\begin{tabular}{llll}
+\toprule
+題目的說法 & 點 & 邊 & 方向 \\
+\midrule
+兩人互加好友 & 人 & 好友關係 & 無向 \\
+單向的通道 & 房間 & 通道，從入口指向出口 & 有向 \\
+帳號 $v$ 追蹤帳號 $u$ & 帳號 & 從 $u$ 指向 $v$ & 有向 \\
+計數器的 $+5$、$-3$ 按鈕（第~9~章）& 顯示的數 & 按一下，從 $x$ 指到 $x + 5$、$x - 3$ & 有向 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+第三列要小心：輸入寫的是「$v$ 追蹤 $u$」，可是貼文是從 $u$ 流向 $v$。 有向邊
+的方向要照題目在問的那樣東西（消息、貨物、人）怎麼移動來定，輸入的書寫順序可
+能剛好相反。 第四列的圖沒有寫在輸入裡，點和邊要自己從規則推出來，第~12~章會常常遇到
+這種圖。
+
+\section{把圖存進程式}
+\label{sec:graph-store}
+
+常見的存法有三種。 下面用圖~\ref{fig:bike} 說明，左邊是\textbf{鄰接矩陣}
+（adjacency matrix），右邊是\textbf{鄰接串列}（adjacency list）：
+
+\begin{center}
+\begin{minipage}{0.48\linewidth}
+\centering
+\small
+\begin{tabular}{c|cccccccc}
+ & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
+\hline
+1 & 0 & 1 & 1 & 0 & 0 & 0 & 0 & 0 \\
+2 & 1 & 0 & 0 & 1 & 0 & 0 & 0 & 0 \\
+3 & 1 & 0 & 0 & 1 & 1 & 0 & 0 & 0 \\
+4 & 0 & 1 & 1 & 0 & 0 & 1 & 0 & 0 \\
+5 & 0 & 0 & 1 & 0 & 0 & 1 & 0 & 0 \\
+6 & 0 & 0 & 0 & 1 & 1 & 0 & 0 & 0 \\
+7 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 1 \\
+8 & 0 & 0 & 0 & 0 & 0 & 0 & 1 & 0 \\
+\end{tabular}
+\end{minipage}
+\hfill
+\begin{minipage}{0.48\linewidth}
+\centering
+\small
+\begin{tabular}{c|l}
+點 & 鄰居 \\
+\hline
+1 & 2, 3 \\
+2 & 1, 4 \\
+3 & 1, 4, 5 \\
+4 & 2, 3, 6 \\
+5 & 3, 6 \\
+6 & 4, 5 \\
+7 & 8 \\
+8 & 7 \\
+\end{tabular}
+\end{minipage}
+\diagcaption{同一張圖的兩種存法。 矩陣第 $u$ 列第 $v$ 行是 $1$，表示 $u$、$v$
+之間有邊；串列的第 $u$ 列只列出 $u$ 的鄰居。}
+\label{fig:matrix-list}
+\end{center}
+
+\begin{itemize}
+\item \textbf{邊列表}（edge list）：照輸入的樣子，把 $m$ 條邊存在一個
+\texttt{vector<pair<int, int>>} 裡。 什麼都不用整理，但想知道「點 $u$ 的鄰居
+有誰」就得把 $m$ 條邊全部翻一遍。
+\item \textbf{鄰接矩陣}：開一個 $n \times n$ 的二維陣列 \texttt{a}，有邊就把
+\texttt{a[u][v]} 設成 $1$。 無向圖的矩陣左右對稱。 問「$u$ 和 $v$ 相不相鄰」
+只要看一格；列出 $u$ 的鄰居卻要掃完整列 $n$ 格，不管它其實只有幾個鄰居。
+\item \textbf{鄰接串列}：每個點各有一個 \texttt{vector}，只放它的鄰居。 所有
+串列加起來，無向圖是 $2m$ 個數（每條邊在兩端各記一次），有向圖是 $m$ 個。
+\end{itemize}
+
+三種存法的成本：
+
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+ & 邊列表 & 鄰接矩陣 & 鄰接串列 \\
+\midrule
+記憶體 & $O(m)$ & $O(n^2)$ & $O(n + m)$ \\
+$u$、$v$ 相不相鄰 & $O(m)$ & $O(1)$ & $O(u \text{ 的度數})$ \\
+列出 $u$ 的所有鄰居 & $O(m)$ & $O(n)$ & $O(u \text{ 的度數})$ \\
+走遍整張圖（BFS、DFS）& $O(nm)$ & $O(n^2)$ & $O(n + m)$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+算一下實際的大小。 $n = 2 \times 10^5$ 時，鄰接矩陣有 $4 \times 10^{10}$ 格，
+每格只用一個位元組也要 $40$ GB，完全開不出來；這種題目的 $m$ 通常也只有
+$2 \times 10^5$ 左右，鄰接串列只要幾 MB。 $n = 1000$ 時矩陣是 $10^6$ 格，用
+\texttt{int} 也只要 $4$ MB，就沒有問題。
+
+實用的選法：
+
+\begin{itemize}
+\item 預設用鄰接串列。 本章所有的走訪都用它。
+\item $n$ 在幾千以內，而且要大量查詢「兩點相不相鄰」，或是輸入本身就給一個
+$n \times n$ 的表，用鄰接矩陣。
+\item 只需要一條一條處理邊，例如算每個點的度數、依邊的長度排序，用邊列表就
+夠了。 第~19~章的並查集也是一條一條讀邊。
+\end{itemize}
+
+下面的程式讀入一張無向圖，建好鄰接串列，去掉自環和重邊，印出每個點的鄰居，
+最後印出整理後還剩幾條邊。 輸入就是圖~\ref{fig:bike}，但故意多給了一條重複的 \texttt{2 1} 和一
+個自環 \texttt{5 5}：
+
+\begin{example}[label=ex:build]{cpp}{(build.cpp) 建鄰接串列，去掉自環和重邊}
+#include <algorithm>
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    int n, m;
+    cin >> n >> m;
+    vector<vector<int>> adj(n + 1);          // 點從 1 編號，第 0 格不用
+    for (int i = 0; i < m; i++) {
+        int u, v;
+        cin >> u >> v;
+        if (u == v) {                        // 自環：這題沒有意義，丟掉
+            continue;
+        }
+        adj[u].push_back(v);                 // 無向邊，兩個方向都要加
+        adj[v].push_back(u);
+    }
+    for (int u = 1; u <= n; u++) {
+        sort(adj[u].begin(), adj[u].end());
+        adj[u].erase(unique(adj[u].begin(), adj[u].end()), adj[u].end());
+    }
+    long long total = 0;                     // 所有串列的總長是邊數的兩倍
+    for (int u = 1; u <= n; u++) {
+        cout << u << ':';
+        for (int v : adj[u]) {
+            cout << ' ' << v;
+        }
+        cout << '\n';
+        total += adj[u].size();
+    }
+    cout << "edges: " << total / 2 << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+8 10 \\
+1 2 \\
+3 1 \\
+4 2 \\
+3 4 \\
+5 3 \\
+4 6 \\
+6 5 \\
+7 8 \\
+2 1 \\
+5 5 \\
+}{
+1: 2 3 \\
+2: 1 4 \\
+3: 1 4 5 \\
+4: 2 3 6 \\
+5: 3 6 \\
+6: 4 5 \\
+7: 8 \\
+8: 7 \\
+edges: 8 \\
+}
+
+\begin{itemize}
+\item 點從 $1$ 編號，所以開 $n + 1$ 個串列，第 $0$ 個不用。 開成 $n$ 個時，
+\texttt{adj[n]} 已經在陣列外面。
+\item 邊 \texttt{3 1} 和 \texttt{1 3} 是同一條，加的時候兩個方向都放，就不用
+管輸入寫的順序。
+\item 重複的 \texttt{2 1} 讓 \texttt{adj[1]} 一開始是 $2, 3, 2$。 排序後重複
+的值會排在一起，\texttt{unique} 把它們擠到尾端，\texttt{erase} 再刪掉，見下
+面的框。
+\item 去重之後，每個串列也由小到大排好了。 有些題目規定「有好幾個鄰居時，先
+走編號小的」，這時排序本來就省不掉。
+\end{itemize}
+
+重邊和自環要不要去掉，看題目在算什麼。 只問「走不走得到」或「最少幾步」時，
+留著它們答案也不會錯，BFS 只是多看幾次已經到過的點；要算度數、數有幾個不同的
+鄰居時，就一定要先去掉。
+
+\begin{bridgerecap}[\texttt{unique} 加 \texttt{erase}]
+\texttt{unique(b, e)} 只把「相鄰而且相同」的元素擠成一個，所以要先排序。 它
+不會改變 \texttt{vector} 的長度，只把留下來的元素搬到前面，回傳新結尾的位置；
+後面那一段要自己用 \texttt{erase} 刪掉（銜接書第~9~章）。 兩者合起來是去重
+的固定寫法。
+\end{bridgerecap}
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{編號從 $1$ 開始卻只開 $n$ 個}：\texttt{vector<vector<int>>
+adj(n)} 在讀到編號 $n$ 的邊時就寫到陣列外面。 用 ASan 編譯時會直接報
+\texttt{heap-buffer-overflow}；沒加的話可能看起來正常，也可能在別的地方當掉。
+\item \textbf{無向邊只加一個方向}：只寫 \texttt{adj[u].push\_back(v)}。 輸入
+寫成 \texttt{1 2}、\texttt{2 3} 時，從點 $2$ 出發走不回點 $1$。 第
+~\ref{sec:ex-ttl}~小節會看到這個錯誤在例題上的輸出。
+\item \textbf{$n$ 很大還開鄰接矩陣}：$n = 2 \times 10^5$ 時寫 \texttt{vector<vector<int>>
+a(n + 1, vector<int>(n + 1))}，要 $160$ GB，根本配置不出來。 $n$ 到 $10^5$ 以上，就不要考慮矩陣。
+\end{itemize}
+
+\section{廣度優先搜尋：一層一層往外}
+\label{sec:bfs}
+
+章首的算法寫成程式，就是\textbf{廣度優先搜尋}（breadth-first search，
+BFS）：從起點出發，先找出距離 $1$ 的所有點，再從它們找出距離 $2$ 的，一層一
+層往外。 銜接書 8.5 節已經有完整的程式，固定的寫法是：
+
+\begin{itemize}
+\item \texttt{dist} 全部設成 $-1$，表示還沒到過；起點的 \texttt{dist} 設成
+$0$，放進佇列。
+\item 佇列不空時，從前端拿出一個點 \texttt{u}，看它的每個鄰居 \texttt{v}；
+\texttt{v} 還沒到過，就設 \texttt{dist[v] = dist[u] + 1}，放到佇列尾端。
+\end{itemize}
+
+這一節補三件事：佇列裡實際發生了什麼、為什麼求出的是最短距離，以及為什麼
+「到過」要在放進佇列時就記下來。
+
+\subsection{佇列裡發生了什麼}
+
+在圖~\ref{fig:bike} 上從站 1 出發，鄰居照圖~\ref{fig:matrix-list} 的串列順序
+看，每一步的狀況：
+
+\begin{center}
+\begin{tabular}{cclll}
+\toprule
+步 & 拿出 & 看到的鄰居 & 新放進去（距離）& 佇列（前端在左）\\
+\midrule
+0 & --- & --- & 1 (0) & 1 \\
+1 & 1 & 2, 3 & 2 (1)、3 (1) & 2 3 \\
+2 & 2 & 1, 4 & 4 (2) & 3 4 \\
+3 & 3 & 1, 4, 5 & 5 (2) & 4 5 \\
+4 & 4 & 2, 3, 6 & 6 (3) & 5 6 \\
+5 & 5 & 3, 6 & --- & 6 \\
+6 & 6 & 4, 5 & --- & （空）\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+看最後一欄：任何時候，佇列前面是距離 $d$ 的點，後面是距離 $d + 1$ 的點，不會
+混進第三種距離。 第 2 步之後佇列是「3 4」，距離是 $1, 2$；第 4 步之後是「5
+6」，距離是 $2, 3$。 所以點是照距離由近到遠被拿出來的，這就是「一層一層」。
+
+第 3 步拿出站 3 時，它的鄰居 4 已經在第 2 步從站 2 放進去了，距離記成 $2$，這
+次就跳過。 站 7、8 從頭到尾沒有進過佇列，\texttt{dist} 維持 $-1$，表示從站 1
+到不了。
+
+每個點最多進出佇列一次，拿出來時把它的串列看一遍。 所有串列的總長是 $2m$，所
+以整個 BFS 是 $O(n + m)$。
+
+\subsection{為什麼是最短距離}
+
+直覺：距離 $d + 1$ 的點，一定和某個距離 $d$ 的點相鄰（最短路徑上的前一站）。
+BFS 把距離 $d$ 的點全部拿出來處理完，才輪到距離 $d + 1$ 的點，所以每個點第一
+次被看到的時候，就是從離起點最近的那一層看到的，之後再從別的點看到它，只會更
+遠。 完整的說明在下面的框裡，第一次讀可以跳過。
+
+\begin{whybox}[BFS 求出的是最短距離]
+設 $\delta(v)$ 是起點到 $v$ 真正的距離。 先說兩件事：
+
+\begin{itemize}
+\item \texttt{dist[v]} 不會小於 $\delta(v)$：\texttt{dist[v]} 是從
+\texttt{dist[u]} 加 $1$ 得來，順著「是誰把我放進佇列」一路往回找，就是一條長
+度剛好 \texttt{dist[v]} 的真實路徑。 最短的路徑不會比它長。
+\item 佇列裡的 \texttt{dist} 由前往後不會變小，而且頭尾最多差 $1$：拿出前端的
+\texttt{u}（值 $d$）時，新放到尾端的都是 $d + 1$；原本佇列裡的值都在 $d$ 和
+$d + 1$ 之間，放完之後仍然是。 所以點被拿出來的順序，\texttt{dist} 由小到大。
+\end{itemize}
+
+接著對 $\delta$ 做歸納，說明 \texttt{dist[v]} $= \delta(v)$。 起點是 $0$。 設
+$\delta(v) = d + 1$，最短路徑上 $v$ 的前一站是 $u$，$\delta(u) = d$，依歸納
+\texttt{dist[u]} $= d$。 拿出 \texttt{u} 的時候，如果 \texttt{v} 還沒到過，
+\texttt{dist[v]} 就設成 $d + 1$。 如果已經到過，把它放進佇列的那個點在
+\texttt{u} 之前就被拿出來了，依第二點，它的 \texttt{dist} 不超過 $d$，所以
+\texttt{dist[v]} $\le d + 1$。 再配上第一點的 $\ge$，兩種情況都是 $d + 1$。
+\end{whybox}
+
+這個說明用到「每走一條邊都算一步」。 邊有不同長度時，近的點不一定步數少，BFS
+就不對了，這是續集 Dijkstra 演算法要處理的問題。
+
+\subsection{回到第 9 章：有環也能做}
+
+第~9~章說過，狀態圖有環時，動態規劃找不到計算順序：計數器上的 $+5$、$-3$ 可
+以讓 $0 \to 5 \to 2 \to 7 \to 4 \to 1 \to \cdots$ 繞回原地，照轉移式寫遞迴會
+一直呼叫下去。 動態規劃需要事先排好的順序，每個點都排在它依賴的點後面。
+
+BFS 不需要事先排好。 它邊做邊排：先處理距離 $0$ 的，再處理距離 $1$ 的。 而
+「最少幾步」剛好只依賴距離更小的點，正是上面歸納用到的那件事。 所以 BFS 可以
+看成照答案本身由小到大填表：每一層填完，下一層要用的值都已經確定了。 環不影
+響這件事，因為繞回去的點早就有答案，\texttt{dist} 不是 $-1$，不會再被處理。
+
+停下來想一想：計數器從 $0$ 按到 $1$ 最少要幾下？ 先在紙上一層一層往外列，再看
+本章練習第~\ref{drill:counter}~題。
+
+\subsection{例題：封包存活時間}
+\label{sec:ex-ttl}
+
+\textbf{題意}（\akiref{packet-time-to-live}{封包存活時間}）
+
+\begin{itemize}
+\item 校園網路有 $n$ 台設備、$m$ 條雙向線路，網管從設備 $s$ 發出廣播封包，封
+包帶著存活時間 $k$。
+\item 封包每經過一條線路，存活時間減 $1$，減到 $0$ 就不再往外傳。 所以一台設
+備收得到，剛好是它和 $s$ 之間有一條不超過 $k$ 條線路的路徑；$s$ 自己一定收
+得到。
+\item 有 $q$ 筆詢問，每筆給一個 $k$，各自獨立，輸出收不到封包的設備有幾台。
+\item $n, m, q \le 2 \times 10^5$，$0 \le k \le 10^9$，沒有重邊和自環。
+\end{itemize}
+
+拿圖~\ref{fig:bike} 當網路，從設備 $1$ 發出。 $k = 1$ 時收得到的是 1、2、3，
+收不到 $5$ 台；$k = 2$ 時多了 4、5，收不到 $3$ 台；$k$ 很大時，連通的 6 台都收
+得到，只剩 7、8 收不到。
+
+\textbf{想法}
+
+最直接的做法：每筆詢問都從 $s$ 做一次 BFS，只走到第 $k$ 層，數有幾台沒到。
+一次 BFS 最多 $O(n + m)$，$q$ 筆詢問最壞是 $2 \times 10^5 \times 4 \times 10^5
+= 8 \times 10^{10}$，來不及。 不過這個寫法在 $n, q$ 很小時一定對，可以拿來和
+正式的程式對拍。
+
+觀察：$k$ 不管是多少，收得到的設備都是「離 $s$ 的距離不超過 $k$」的那些。 起
+點、圖都沒變，距離也就不會變，只要做一次 BFS 把每台設備的距離算好，每筆詢問
+就變成數「距離 $\le k$ 的有幾台」。
+
+數法用第~5~章的前綴和：先數每一層有幾台，再由小到大累加，\texttt{within[d]}
+就是距離不超過 $d$ 的台數，答案是 $n - $ \texttt{within[k]}。 剩下一個細節：
+$k$ 可能到 $10^9$，不能直接當索引。 最遠的那一層設為 \texttt{far}，$k$ 超過
+它時收得到的設備和 $k = $ \texttt{far} 一樣，把 $k$ 換成 \texttt{far} 即可。
+到不了的設備距離是 $-1$，從來沒有算進 \texttt{within}，自然算在收不到的那邊。
+
+同樣的模型也出現在別的地方：社群網站上「三度以內的朋友」有幾人；轉乘不超過
+$k$ 次能到的捷運站有幾站。 問題都是「距離不超過 $k$」，只要一次 BFS。
+
+\textbf{程式}
+
+\begin{example}[label=ex:ttl]{cpp}{(ttl.cpp) 封包存活時間}
+#include <iostream>
+#include <queue>
+#include <vector>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n, m, s;
+    cin >> n >> m >> s;
+    vector<vector<int>> adj(n + 1);
+    for (int i = 0; i < m; i++) {
+        int u, v;
+        cin >> u >> v;
+        adj[u].push_back(v);
+        adj[v].push_back(u);
+    }
+
+    vector<int> dist(n + 1, -1);             // -1：還沒到過
+    queue<int> q;
+    dist[s] = 0;
+    q.push(s);
+    while (!q.empty()) {
+        int u = q.front();
+        q.pop();
+        for (int v : adj[u]) {
+            if (dist[v] == -1) {             // 放進佇列的同時就標記
+                dist[v] = dist[u] + 1;
+                q.push(v);
+            }
+        }
+    }
+
+    // within[d]：距離不超過 d 的設備有幾台
+    int far = 0;
+    for (int v = 1; v <= n; v++) {
+        far = max(far, dist[v]);
+    }
+    vector<int> within(far + 1, 0);
+    for (int v = 1; v <= n; v++) {
+        if (dist[v] != -1) {
+            within[dist[v]]++;
+        }
+    }
+    for (int d = 1; d <= far; d++) {
+        within[d] += within[d - 1];
+    }
+
+    int queries;
+    cin >> queries;
+    while (queries--) {
+        int k;
+        cin >> k;
+        if (k > far) {
+            k = far;                         // 再大也只收得到這些
+        }
+        cout << n - within[k] << '\n';
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+8 8 1 \\
+1 2 \\
+1 3 \\
+2 4 \\
+3 4 \\
+3 5 \\
+4 6 \\
+5 6 \\
+7 8 \\
+4 \\
+0 \\
+1 \\
+2 \\
+1000000000 \\
+}{
+7 \\
+5 \\
+3 \\
+2 \\
+}
+
+\begin{itemize}
+\item 前半段就是 BFS 的固定寫法，\texttt{dist} 同時當作「到過了沒」的記號。
+\item 範例的距離是 $0, 1, 1, 2, 2, 3, -1, -1$，\texttt{far} $= 3$，每層的台數
+是 $1, 2, 2, 1$，累加成 \texttt{within} $= 1, 3, 5, 6$。 $k = 1$ 時答案是
+$8 - 3 = 5$；$k = 10^9$ 先換成 $3$，答案是 $8 - 6 = 2$。
+\item 起點自己的距離是 $0$，所以 \texttt{within[0]} 是 $1$，$k = 0$ 的答案是
+$n - 1$，和題意相符。
+\item 輸入的 $k$ 最大 $10^9$，還放得進 \texttt{int}；答案不超過 $n$，也不用
+\texttt{long long}。
+\end{itemize}
+
+\textbf{複雜度}
+
+BFS 是 $O(n + m)$，前綴和 $O(n)$，每筆詢問 $O(1)$，總共 $O(n + m + q)$。 最大
+的測試資料在本書測試的環境下，CPU 時間不到 $0.1$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{拿出佇列時才標記}：有人把「到過了」改成拿出來的時候才記：
+\begin{code}{cpp}{拿出來才標記（錯誤）}
+while (!q.empty()) {
+    int u = q.front();
+    q.pop();
+    if (done[u]) {
+        continue;
+    }
+    done[u] = true;
+    for (int v : adj[u]) {
+        if (!done[v]) {
+            dist[v] = dist[u] + 1;
+            q.push(v);
+        }
+    }
+}
+\end{code}
+範例的輸出仍然正確。 輸入三台設備兩兩相連（\texttt{3 3 1}、\texttt{1 2}、
+\texttt{1 3}、\texttt{2 3}），問 $k = 1$，正確答案是 \texttt{0}，這樣寫會印出
+\texttt{1}。 拿出 $1$ 時把 $2$、$3$ 都放進去，距離 $1$；接著拿出 $2$，這時 $3$
+還沒拿出來，\texttt{done[3]} 是 \texttt{false}，距離被改寫成 $2$。 同一個點也
+會被放進佇列好幾次。 放進去的那一刻就標記，這兩個問題都不會發生。
+\item \textbf{沒有把 $k$ 夾住}：拿掉 \texttt{if (k > far)} 那段。 範例的最後
+一筆 $k = 10^9$ 讀到 \texttt{within} 外面很遠的地方，在本書測試的環境下程式直
+接 \texttt{Segmentation fault}。
+\item \textbf{無向邊只加一個方向}：拿掉 \texttt{adj[v].push\_back(u)}。 範例
+的邊剛好都從小編號寫到大編號，從 $1$ 出發仍然全部走得到，輸出也對。 換成輸入
+\texttt{3 2 2}、\texttt{1 2}、\texttt{2 3}、問 $k = 1$，正確答案是
+\texttt{0}，這樣寫會印出 \texttt{1}：從 $2$ 走不回 $1$。
+\item \textbf{用 DFS 走到的深度當距離}：下一節會看到，DFS 第一次走到某個點時
+經過的邊數，不一定是最短的。 求最短距離一定用 BFS。
+\end{itemize}
+
+\section{深度優先搜尋與連通元件}
+\label{sec:dfs}
+
+另一種走遍整張圖的方法是\textbf{深度優先搜尋}（depth-first search，DFS）：
+從起點出發，只要還有沒去過的鄰居就往那裡走，走到底再退回上一個點，看它還有
+沒有別的鄰居可以走。 第~4~章的回溯就是這種走法，只是那裡的點是「填到一半的答
+案」。 用遞迴寫最短：
+
+\begin{code}{cpp}{遞迴的 DFS}
+void dfs(int u) {
+    seen[u] = true;
+    for (int v : adj[u]) {
+        if (!seen[v]) {
+            dfs(v);
+        }
+    }
+}
+\end{code}
+
+在圖~\ref{fig:bike} 上從站 1 呼叫 \texttt{dfs(1)}，鄰居照串列的順序看。 下表
+每一列是「進入一個新的點」那一刻，右欄是當時還沒結束的呼叫，也就是第~8~章的
+呼叫堆疊：
+
+\begin{center}
+\begin{tabular}{clll}
+\toprule
+步 & 進入 & 怎麼來的 & 呼叫堆疊（底在左）\\
+\midrule
+1 & 1 & 起點 & 1 \\
+2 & 2 & 1 的第一個鄰居 & 1 2 \\
+3 & 4 & 2 的鄰居 1 已去過，換 4 & 1 2 4 \\
+4 & 3 & 4 的鄰居 2 已去過，換 3 & 1 2 4 3 \\
+5 & 5 & 3 的鄰居 1、4 已去過，換 5 & 1 2 4 3 5 \\
+6 & 6 & 5 的鄰居 3 已去過，換 6 & 1 2 4 3 5 6 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+到了站 6，鄰居 4、5 都去過了，\texttt{dfs(6)} 結束，退回 5；5 也看完了，再退回
+3、4、2、1，每一層都發現沒有新的鄰居，全部結束。 拜訪的順序是 1、2、4、3、5、
+6。
+
+注意站 3：它離起點只有一段，DFS 卻是繞了 $1 \to 2 \to 4 \to 3$ 三段才第一次
+走到。 DFS 只保證「走得到的都會走到」，不保證走的是最短的路。 每個點一樣只進
+入一次，每個串列看一遍，時間也是 $O(n + m)$。
+
+\subsection{連通元件}
+
+從一個點出發做一次 BFS 或 DFS，走到的就是它所在的連通元件。 要找出所有連通元
+件，就把每個點掃一遍，遇到還沒走過的，從它出發再走一次：
+
+\begin{code}{cpp}{數連通元件}
+int count = 0;
+for (int u = 1; u <= n; u++) {
+    if (!seen[u]) {          // 還沒被前面任何一次走到：新的一群
+        count++;
+        dfs(u);
+    }
+}
+\end{code}
+
+每個點只會被走到一次，所以不管呼叫幾次 \texttt{dfs}，加起來仍然是 $O(n + m)$。
+在圖~\ref{fig:bike} 上，\texttt{u = 1} 時走完 1 到 6，\texttt{u = 7} 時走完
+7、8，\texttt{count} 是 $2$。 沒有任何邊的點，自己就是一個連通元件，迴圈掃到
+它時 \texttt{count} 也會加一。
+
+\subsection{BFS 還是 DFS}
+
+\begin{itemize}
+\item 要最短距離、要「第幾層」：只能用 BFS。
+\item 只問走不走得到、有幾群、每群有多大：兩種都可以，拜訪順序不影響答案。
+\item 需要「進入」和「離開」一個點的時機，例如第~13~章在樹上由下往上彙整子
+樹的資料：用 DFS，遞迴回傳的那一刻就是離開。
+\end{itemize}
+
+\section{遞迴太深的時候}
+\label{sec:dfs-iterative}
+
+第~8~章量過：本書測試的環境預設堆疊是 $8$ MB，簡單的遞迴函式可以到十幾萬層，
+再深就 \texttt{Segmentation fault}。 DFS 的遞迴深度最多是「同時還沒結束的點
+有幾個」，在一條 $1 - 2 - 3 - \cdots - n$ 的長鏈上，從 $1$ 出發會一路疊到 $n$
+層。
+
+實際量一量。 把上一節的 \texttt{dfs} 加上一個小組編號的參數，用來解下一小節
+的例題，在長鏈上執行：鏈長 $17$ 萬 $4$ 千個點左右還正常，再長就當掉。 例題的
+$n$ 到 $2 \times 10^5$，測試資料裡剛好有這樣一條鏈。 照第~8~章的判斷，深度可
+能和 $n$ 一樣大、$n$ 又到 $10^5$ 以上，就要改寫。
+
+\subsection{兩種改法}
+
+遞迴其實是系統替你維護了一個堆疊。 改成迴圈，就是自己用一個
+\texttt{vector} 當堆疊。 它放在 heap 上，大小只受總記憶體限制。
+
+\textbf{改法一：放進去時就標記。} 寫法和 BFS 幾乎一樣，只是把佇列換成堆疊，從
+尾端拿：
+
+\begin{itemize}
+\item 起點標記、放進堆疊。
+\item 堆疊不空時，拿出最上面的 \texttt{u}；它還沒標記的鄰居，標記後放進堆疊。
+\end{itemize}
+
+和 BFS 一樣，每個點只進堆疊一次。 但它的拜訪順序和遞迴的 DFS 不同：拿出 1 之
+後同時放進 2、3，接著先拿出最後放進去的 3，而遞迴版會先走 2。 只要求「走到哪
+些點」時，這個差別沒有影響，連通元件、可達性都可以直接用它。
+
+\textbf{改法二：照遞迴的順序。} 如果順序重要（例如要模擬遞迴的「離開」時機），
+就讓堆疊裡的每一格記住兩件事：哪一個點，以及它的鄰居看到第幾個了。 這正是
+遞迴版每一層的區域變數：\texttt{u} 和 \texttt{for} 迴圈走到哪裡。 每一輪看堆
+疊最上面那一格：鄰居看完了就彈出（等於函式回傳）；還沒看完，就看下一個鄰
+居，沒去過的話標記、推進去（等於遞迴呼叫）。
+
+下面的程式把三種寫法放在一起，在圖~\ref{fig:bike} 上從站 1 出發，各印出拜訪
+順序：
+
+\begin{example}[label=ex:dfs-order]{cpp}{(dfs\_order.cpp) 遞迴與兩種堆疊寫法的拜訪順序}
+#include <iostream>
+#include <utility>
+#include <vector>
+using namespace std;
+
+vector<vector<int>> adj;
+vector<bool> seen;
+
+void dfs(int u) {                            // 遞迴版
+    seen[u] = true;
+    cout << ' ' << u;
+    for (int v : adj[u]) {
+        if (!seen[v]) {
+            dfs(v);
+        }
+    }
+}
+
+void stackSimple(int s) {                    // 改法一：放進去時就標記
+    vector<int> st = {s};
+    seen[s] = true;
+    while (!st.empty()) {
+        int u = st.back();
+        st.pop_back();
+        cout << ' ' << u;
+        for (int v : adj[u]) {
+            if (!seen[v]) {
+                seen[v] = true;
+                st.push_back(v);
+            }
+        }
+    }
+}
+
+void stackSameOrder(int s) {                 // 改法二：和遞迴同樣的順序
+    vector<pair<int, int>> st = {{s, 0}};    // （點, 下一個要看的鄰居位置）
+    seen[s] = true;
+    cout << ' ' << s;
+    while (!st.empty()) {
+        int u = st.back().first;
+        int i = st.back().second;
+        if (i == (int)adj[u].size()) {       // 鄰居都看完了：回傳
+            st.pop_back();
+            continue;
+        }
+        st.back().second++;                  // 下次從下一個鄰居看起
+        int v = adj[u][i];
+        if (!seen[v]) {                      // 遞迴呼叫
+            seen[v] = true;
+            cout << ' ' << v;
+            st.push_back({v, 0});
+        }
+    }
+}
+
+int main() {
+    int n, m;
+    cin >> n >> m;
+    adj.assign(n + 1, {});
+    for (int i = 0; i < m; i++) {
+        int u, v;
+        cin >> u >> v;
+        adj[u].push_back(v);
+        adj[v].push_back(u);
+    }
+    seen.assign(n + 1, false);
+    cout << "recursive:";
+    dfs(1);
+    seen.assign(n + 1, false);
+    cout << "\nsimple:";
+    stackSimple(1);
+    seen.assign(n + 1, false);
+    cout << "\nsame:";
+    stackSameOrder(1);
+    cout << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+8 8 \\
+1 2 \\
+1 3 \\
+2 4 \\
+3 4 \\
+3 5 \\
+4 6 \\
+5 6 \\
+7 8 \\
+}{
+recursive: 1 2 4 3 5 6 \\
+simple: 1 3 5 6 4 2 \\
+same: 1 2 4 3 5 6 \\
+}
+
+改法一的堆疊每一步長這樣（頂端在右）：
+
+\begin{center}
+\begin{tabular}{clll}
+\toprule
+步 & 拿出 & 新放進去 & 堆疊 \\
+\midrule
+0 & --- & 1 & 1 \\
+1 & 1 & 2、3 & 2 3 \\
+2 & 3 & 4、5 & 2 4 5 \\
+3 & 5 & 6 & 2 4 6 \\
+4 & 6 & --- & 2 4 \\
+5 & 4 & --- & 2 \\
+6 & 2 & --- & （空）\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{itemize}
+\item 第 2 步拿出 3 時，4 還沒被標記，所以由 3 放進去；遞迴版的 4 是從 2 走到
+的。 兩者都走遍了 1 到 6，只是路線不同。
+\item 改法二裡先把 \texttt{st.back()} 的兩個值複製到 \texttt{u}、\texttt{i}，
+再改 \texttt{st.back().second}。 不要寫成 \texttt{auto \&top = st.back();} 之
+後又 \texttt{push\_back}：\texttt{vector} 長大時可能整個搬到別的地方，先前的
+參考就失效了（銜接書第~9~章的迭代器失效）。
+\item \texttt{seen} 用 \texttt{assign} 重設，三種寫法各自從乾淨的狀態開始。
+\end{itemize}
+
+\begin{apcsnote}
+評分環境的堆疊大小不一定和自己的電腦一樣，自己電腦上沒當掉不代表交出去也不會。
+圖的題目只要 $n$ 到 $10^5$ 以上、題目又沒有保證圖的形狀，就直接用 BFS 或改法
+一，不必去賭遞迴有多深。 交出去之前，用一條 $n$ 個點的長鏈自己跑一次。
+\end{apcsnote}
+
+\subsection{例題：每個人的小組代表}
+\label{sec:ex-group}
+
+\textbf{題意}（\akiref{every-students-group-representative}{每個人的小組代表}）
+
+\begin{itemize}
+\item 班上有 $n$ 位同學，座號 $1$ 到 $n$，有 $m$ 對同學互加好友。 能經由一連串
+好友關係聯絡到的同學屬於同一個小組；沒有任何好友的同學自己一組。
+\item 每組的代表是組內座號最小的同學。 依座號順序，輸出每位同學所屬小組的代
+表。
+\item $n, m \le 2 \times 10^5$，沒有重複的好友關係。
+\end{itemize}
+
+例如 $n = 8$，好友關係是 7--5、5--2、8--6、6--3、8--3。 小組是 $\{1\}$、
+$\{2, 5, 7\}$、$\{3, 6, 8\}$、$\{4\}$，輸出 \texttt{1 2 3 4 2 3 2 3}。 座號 7
+沒有直接和 2 加好友，代表仍然是 2。
+
+\textbf{想法}
+
+小組就是連通元件，代表是元件裡最小的編號。 最直接的做法是替每位同學各做一次
+DFS，看他走得到的人裡誰最小。 每次最多走遍整張圖，總共 $O(n(n + m))$；在一條
+$2 \times 10^5$ 個點的鏈上大約 $4 \times 10^{10}$ 步，來不及。
+
+同一個小組走一次就夠了。 用上一節數連通元件的迴圈，座號由 $1$ 掃到 $n$，遇到
+還沒走過的 $i$，從 $i$ 出發把整組都標成 $i$。 為什麼 $i$ 一定是這組最小的？
+如果組裡有更小的 $j < i$，迴圈先掃到 $j$，那時就會把整組（包含 $i$）標掉，輪
+不到 $i$。 所以不用另外取最小值。
+
+鏈長到 $2 \times 10^5$，照前面量的結果，遞迴版會當掉，這裡用改法一。
+
+同樣的模型也出現在別的地方：電力公司要知道停電時哪些用戶會一起斷電；倉庫要
+把可以互相替代的料號歸成一類，每類用編號最小的料號當代表。
+
+\textbf{程式}
+
+\begin{example}[label=ex:group]{cpp}{(group.cpp) 每個人的小組代表}
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n, m;
+    cin >> n >> m;
+    vector<vector<int>> adj(n + 1);
+    for (int i = 0; i < m; i++) {
+        int u, v;
+        cin >> u >> v;
+        adj[u].push_back(v);
+        adj[v].push_back(u);
+    }
+
+    vector<int> leader(n + 1, 0);            // 0：還沒走到
+    vector<int> todo;                        // 自己管理的堆疊
+    for (int i = 1; i <= n; i++) {
+        if (leader[i] != 0) {                // 已經在前面的小組裡
+            continue;
+        }
+        leader[i] = i;                       // i 是這一組最小的座號
+        todo.push_back(i);
+        while (!todo.empty()) {
+            int u = todo.back();
+            todo.pop_back();
+            for (int v : adj[u]) {
+                if (leader[v] == 0) {
+                    leader[v] = i;
+                    todo.push_back(v);
+                }
+            }
+        }
+    }
+
+    for (int i = 1; i <= n; i++) {
+        cout << leader[i] << (i == n ? '\n' : ' ');
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+8 5 \\
+7 5 \\
+5 2 \\
+8 6 \\
+6 3 \\
+8 3 \\
+}{
+1 2 3 4 2 3 2 3 \\
+}
+
+\begin{itemize}
+\item \texttt{leader} 同時是答案和「走過了沒」的記號：座號從 $1$ 開始，代表一
+定不是 $0$，所以用 $0$ 表示還沒走到。
+\item \texttt{todo} 在外層迴圈的每一輪結束時都是空的，可以一直重複使用。
+\item 範例裡 $i = 1$ 沒有好友，自己一組；$i = 2$ 走到 5、7；$i = 3$ 走到 6、
+8；$i = 4$ 自己一組；之後的 5 到 8 都已經有代表，直接跳過。
+\end{itemize}
+
+\textbf{複雜度}
+
+每個點進堆疊一次，每條邊從兩端各看一次，$O(n + m)$。 最大的測試資料在本書測試
+的環境下，CPU 時間不到 $0.1$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{遞迴版在長鏈上當掉}：把迴圈換成遞迴的 \texttt{dfs(u, i)}，其他
+不變。 範例和一般的隨機資料都正確，$2 \times 10^5$ 個點的鏈在本書測試的環境
+下 \texttt{Segmentation fault}。 加 \texttt{-O2} 也一樣。
+\item \textbf{拿出來才標記}：改成拿出堆疊時才設 \texttt{leader}。 一個點在被
+拿出來之前，可能被好幾個鄰居各放進去一次，堆疊最大會到 $2m$ 而不是 $n$；拿出
+來時如果又沒有先檢查「已經設過了」，同一個點的鄰居會被重複處理很多次。 和 BFS
+一樣，放進去時就標記。
+\item \textbf{代表取直接好友裡最小的}：只看 \texttt{adj[i]} 不往下走，範例裡
+的座號 7 會印出 \texttt{5}。 小組是一路連下去的，要走完整個連通元件。
+\end{itemize}
+
+\section{反向圖與多個起點}
+\label{sec:reverse}
+
+前面的 BFS、DFS 都在回答「從 $s$ 出發，走得到哪裡」。 有向圖的題目常常反過來
+問：「哪些點走得到 $t$」「每個點到 $t$ 最少幾步」。 這一節的例題就是這種問法，
+而且終點不只一個。
+
+\subsection{例題：走不到出口的展間}
+\label{sec:ex-trapped}
+
+\textbf{題意}（\akiref{rooms-with-no-way-out}{走不到出口的展間}）
+
+\begin{itemize}
+\item 美術館有 $n$ 個展間、$m$ 條單向通道，通道 $u \to v$ 只能從 $u$ 走到
+$v$。 其中 $k$ 個展間設有出口。
+\item 從展間 $x$ 出發，只要有某種走法能到任何一個出口，$x$ 就不需要引導員；
+出口所在的展間也不需要。 其餘的展間需要引導員。
+\item 通道可能繞成環，也可能有重複的通道。 輸出需要引導員的展間數，以及由小
+到大的編號；一個都沒有時，第二行輸出 \texttt{-1}。
+\item $n \le 2 \times 10^5$，$m \le 4 \times 10^5$。
+\end{itemize}
+
+下圖左邊是一個 $8$ 個展間的例子，出口在 3 和 8。 1 可以走 $1 \to 2 \to 3$；
+4 直接走到 8。 5、6 只能在彼此之間繞圈，7 沒有任何往外的通道，這三間需要引導
+員。
+
+\begin{center}
+\begin{tikzpicture}[x=1.45cm, y=1.1cm]
+\begin{scope}
+\node[font=\small] at (1,2.9) {原來的通道};
+\node[gv] (1) at (0,2) {1};
+\node[gv] (2) at (1,2) {2};
+\node[gvex] (3) at (2,2) {3};
+\node[gv] (4) at (0,0.6) {4};
+\node[gvbad] (5) at (1,0.6) {5};
+\node[gvbad] (6) at (2,0.6) {6};
+\node[gvex] (8) at (1,-0.8) {8};
+\node[gvbad] (7) at (2,-0.8) {7};
+\draw[gd] (1) -- (2);
+\draw[gd] (2) -- (3);
+\draw[gd] (4) -- (1);
+\draw[gd] (4) -- (8);
+\draw[gd] (2) -- (5);
+\draw[gd] (5) to[bend left=20] (6);
+\draw[gd] (6) to[bend left=20] (5);
+\draw[gd] (3) -- (6);
+\draw[gd] (8) -- (7);
+\end{scope}
+\begin{scope}[xshift=4.6cm]
+\node[font=\small] at (1,2.9) {反向圖};
+\node[gv] (1) at (0,2) {1};
+\node[gv] (2) at (1,2) {2};
+\node[gvex] (3) at (2,2) {3};
+\node[gv] (4) at (0,0.6) {4};
+\node[gvbad] (5) at (1,0.6) {5};
+\node[gvbad] (6) at (2,0.6) {6};
+\node[gvex] (8) at (1,-0.8) {8};
+\node[gvbad] (7) at (2,-0.8) {7};
+\draw[gd] (2) -- (1);
+\draw[gd] (3) -- (2);
+\draw[gd] (1) -- (4);
+\draw[gd] (8) -- (4);
+\draw[gd] (5) -- (2);
+\draw[gd] (5) to[bend left=20] (6);
+\draw[gd] (6) to[bend left=20] (5);
+\draw[gd] (6) -- (3);
+\draw[gd] (7) -- (8);
+\end{scope}
+\end{tikzpicture}
+\diagcaption{綠色是出口，粉色是需要引導員的展間。 右邊把每條通道反過來；從兩
+個出口沿著箭頭走得到的，剛好是左邊走得到出口的展間。}
+\label{fig:museum}
+\end{center}
+
+\textbf{想法}
+
+最直接的做法：對每個展間各做一次 BFS，碰到出口就停。 一次最多 $O(n + m)$，
+$n$ 次就是 $O(n(n + m))$。 所有展間排成一條長鏈、出口在最尾端時，從第 $i$ 間
+出發要走 $n - i$ 步，加起來大約 $n^2 / 2 = 2 \times 10^{10}$，來不及。
+
+停下來想一想：從出口出發，沿著通道走，能不能找出答案？ 在圖
+~\ref{fig:museum} 左邊試試看，從 3 和 8 出發分別走得到哪些展間？
+
+從 3 走得到 6、5，從 8 走得到 7，剛好是需要引導員的那三間，方向整個反了。 通
+道是單向的，「出口走得到 $x$」和「$x$ 走得到出口」是兩回事，題目要的是後者。
+
+\textbf{觀察一：把每條通道反過來。} $x$ 沿著通道走到出口 $e$ 的一條路徑，整條
+倒過來看，就是在「每條通道都反向」的圖上，從 $e$ 走到 $x$ 的路徑；反過來也一
+樣。 所以只要建\textbf{反向圖}（reverse graph）：每條 $u \to v$ 存成
+$v \to u$，再從出口出發走一遍，走得到的展間就是走得到出口的。 圖
+~\ref{fig:museum} 右邊從 3 出發走到 2、1、4，從 8 出發走到 4。
+
+\textbf{觀察二：所有出口一起出發。} 出口有 $k$ 個，各走一次又變成 $O(k(n +
+m))$。 但這題只問走不走得到，不在乎是從哪一個出口走來的，所以一開始就把 $k$
+個出口全部標記、全部放進佇列，再照常做一次 BFS。 每個展間一樣只進佇列一次，總
+共 $O(n + m)$。
+
+同樣的模型也出現在別的地方：網站上哪些頁面點得到首頁；城市的單行道路網裡，
+哪些路口開得到任何一家醫院。 有方向、問「走不走得到這些終點」，就把邊反過來，
+從終點出發。
+
+\textbf{程式}
+
+\begin{example}[label=ex:trapped]{cpp}{(trapped.cpp) 走不到出口的展間}
+#include <iostream>
+#include <queue>
+#include <vector>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n, m, k;
+    cin >> n >> m >> k;
+    vector<int> exits(k);
+    for (int &e : exits) {
+        cin >> e;
+    }
+    vector<vector<int>> rev(n + 1);          // 反向圖
+    for (int i = 0; i < m; i++) {
+        int u, v;
+        cin >> u >> v;
+        rev[v].push_back(u);                 // 通道 u -> v，反向存成 v -> u
+    }
+
+    vector<bool> ok(n + 1, false);           // ok[x]：x 走得到某個出口
+    queue<int> q;
+    for (int e : exits) {                    // 所有出口一起當起點
+        ok[e] = true;
+        q.push(e);
+    }
+    while (!q.empty()) {
+        int v = q.front();
+        q.pop();
+        for (int u : rev[v]) {
+            if (!ok[u]) {
+                ok[u] = true;
+                q.push(u);
+            }
+        }
+    }
+
+    vector<int> stuck;
+    for (int x = 1; x <= n; x++) {
+        if (!ok[x]) {
+            stuck.push_back(x);
+        }
+    }
+    cout << stuck.size() << '\n';
+    if (stuck.empty()) {
+        cout << -1 << '\n';
+    } else {
+        for (size_t i = 0; i < stuck.size(); i++) {
+            cout << stuck[i] << (i + 1 == stuck.size() ? '\n' : ' ');
+        }
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+8 9 2 \\
+3 8 \\
+1 2 \\
+2 3 \\
+4 1 \\
+4 8 \\
+2 5 \\
+5 6 \\
+6 5 \\
+3 6 \\
+8 7 \\
+}{
+3 \\
+5 6 7 \\
+}
+
+\begin{itemize}
+\item 整支程式只用到反向圖，原來的方向不用存。 讀入 $u \to v$ 時放進
+\texttt{rev[v]}，意思是「$v$ 可以倒著走回 $u$」。
+\item 迴圈裡的變數故意取名 \texttt{v}、\texttt{u}，和讀入時一樣：從 \texttt{v}
+倒著走到 \texttt{u}，表示原圖上有 $u \to v$。
+\item 出口本身一開始就標記了，自然不會算進答案。 重複的通道只會讓同一個點多被
+看幾次，不影響結果。
+\item 這裡用 BFS，用改法一的堆疊也可以，因為只問走不走得到。 用 BFS 的好處是
+下一小節只要多記一個距離。
+\end{itemize}
+
+\textbf{複雜度}
+
+建圖 $O(n + m)$，一次 BFS $O(n + m)$。 最大的測試資料在本書測試的環境下，CPU
+時間不到 $0.1$ 秒。
+
+\subsection{多源 BFS}
+\label{sec:multi-source}
+
+例題的程式一開始把好幾個點同時放進佇列。 如果同時記下距離，每個出口都設成
+$0$，BFS 算出來的 \texttt{dist[x]} 就是 $x$ 到最近的那個出口要走幾步。 這種做
+法叫\textbf{多源 BFS}（multi-source BFS）。 把例題改成輸出每個展間到出口的最
+少步數（走不到印 $-1$）：
+
+\begin{example}[label=ex:exitdist]{cpp}{(exitdist.cpp) 每個展間到最近出口的步數}
+#include <iostream>
+#include <queue>
+#include <vector>
+using namespace std;
+
+int main() {
+    int n, m, k;
+    cin >> n >> m >> k;
+    vector<vector<int>> rev(n + 1);
+    vector<int> dist(n + 1, -1);
+    queue<int> q;
+    for (int i = 0; i < k; i++) {
+        int e;
+        cin >> e;
+        dist[e] = 0;                         // 每個出口都是第 0 層
+        q.push(e);
+    }
+    for (int i = 0; i < m; i++) {
+        int u, v;
+        cin >> u >> v;
+        rev[v].push_back(u);
+    }
+    while (!q.empty()) {
+        int v = q.front();
+        q.pop();
+        for (int u : rev[v]) {
+            if (dist[u] == -1) {
+                dist[u] = dist[v] + 1;
+                q.push(u);
+            }
+        }
+    }
+    for (int x = 1; x <= n; x++) {
+        cout << dist[x] << (x == n ? '\n' : ' ');
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+8 9 2 \\
+3 8 \\
+1 2 \\
+2 3 \\
+4 1 \\
+4 8 \\
+2 5 \\
+5 6 \\
+6 5 \\
+3 6 \\
+8 7 \\
+}{
+2 1 0 1 -1 -1 -1 0 \\
+}
+
+展間 4 經過 1、2 也能走到出口 3，要 $3$ 步；直接走到出口 8 只要 $1$ 步，印出
+的是 $1$。 佇列一開始是「3 8」，第 1 層是 2（從 3 來）和 4（從 8 來），第 2
+層是 1。 拿出 1 時，它倒著能走到的 4 已經在第 1 層，不會再被改成 $3$。
+
+為什麼這樣算出來的是到「最近」出口的距離？ 想像多加一個虛擬的點 $0$，從它到
+每個出口各接一條邊，然後從 $0$ 做普通的 BFS。 第 1 層剛好是所有出口，之後的
+過程和多源 BFS 一模一樣，只是每個距離都多了 $1$。 普通 BFS 求的是到 $0$ 的最
+短距離，而從 $0$ 出發的路一定先經過某個出口，所以扣掉那一步，就是到最近出口
+的距離。
+
+多源 BFS 只做一次，$O(n + m)$；每個出口各做一次 BFS 再取最小值，是
+$O(k(n + m))$。
+
+什麼時候想到這兩個技巧：
+
+\begin{itemize}
+\item 有向圖上問「哪些點走得到 $t$」「每個點到 $t$ 最少幾步」，就在反向圖上從
+$t$ 出發。 無向圖不用反向，反過來的圖就是自己。
+\item 問「離最近的某一種點有多遠」「被最先傳到是第幾分鐘」，起點有好幾個，就
+用多源 BFS。 第~12~章會在格子地圖上大量使用，例如好幾處同時起火，每一格最早
+什麼時候燒到。
+\item 不能用的情況：要的是「離最遠的那個起點多遠」，或者每個起點的距離都要分
+開知道，多源 BFS 會把它們混在一起，只能各做一次。
+\end{itemize}
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{方向弄反}：在原圖上從出口出發，也就是把 \texttt{rev[v].push\_back(u)}
+寫成 \texttt{rev[u].push\_back(v)}。 範例會印出 \texttt{3} 和 \texttt{1 2 4}，
+剛好和正確答案顛倒。 寫之前先用一句話確認：從誰出發、沿著哪個方向走。
+\item \textbf{每個出口各做一次，標記卻沒有重設}：想把多源寫成迴圈，每個出口
+各跑一次 BFS，又共用同一個 \texttt{dist}。 第二個出口走到第一個出口已經標過
+的點時就停下來，那些點記到的是「先跑的那個出口」的距離，不一定是最近的。 直接
+把所有起點一起放進佇列最簡單。
+\item \textbf{忘了 \texttt{-1}}：沒有展間需要引導員時，第二行要印
+\texttt{-1}。 輸出格式裡的特例，最好在讀題時就圈起來。
+\end{itemize}
+
+\begin{apcsnote}
+圖的題目，題目給的範例常常只有一個連通元件，也很少有長鏈。 交出去之前，自己
+補三種小輸入：有點完全沒有邊、圖分成好幾塊、一條長鏈。 這三種分別會抓到「到
+不了的點沒處理」「只從一個點出發」「遞迴太深」三類錯誤。
+\end{apcsnote}
+
+\section{本章常見錯誤}
+\label{sec:graph-pitfalls}
+
+前面各節的錯誤，歸納起來是五類。 寫圖的題目時，交出去之前逐項檢查一次。
+
+\begin{center}
+\begin{tabular}{p{0.2\linewidth}p{0.48\linewidth}p{0.2\linewidth}}
+\toprule
+錯誤 & 例子 & 見 \\
+\midrule
+建圖 & 編號從 $1$ 開始只開 $n$ 格；無向邊只加一邊；$n$ 很大還開矩陣 &
+第~\ref{sec:graph-store}、\ref{sec:ex-ttl}~節 \\
+標記的時機 & 拿出佇列或堆疊時才標記，距離被改寫、同一點重複進出 &
+第~\ref{sec:ex-ttl}、\ref{sec:ex-group}~節 \\
+方向 & 問「走得到終點」卻在原圖上從終點出發；追蹤關係的方向寫反 &
+第~\ref{sec:graph-terms}、\ref{sec:ex-trapped}~節 \\
+到不了的點 & \texttt{dist} 是 $-1$ 的點沒處理；$k$ 超過最遠距離時沒夾住 &
+第~\ref{sec:ex-ttl}~節 \\
+遞迴深度 & $n$ 到 $10^5$ 以上的圖用遞迴 DFS，長鏈上當掉 &
+第~\ref{sec:dfs-iterative}~節 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+另一個和圖無關、但很常見的錯誤是只用範例測試。 範例的圖通常很小、很整齊，邊
+也剛好從小編號寫到大編號，上面好幾個錯誤都能通過範例。
+
+\section{本章練習}
+\label{sec:ch11-exercises}
+
+\begin{drills}[label=drills:ch11]
+\item 一張無向圖的鄰接串列如下（照這個順序看鄰居）：
+\begin{center}
+\begin{tabular}{c|l}
+點 & 鄰居 \\
+\hline
+1 & 2, 5 \\
+2 & 1, 3, 4 \\
+3 & 2, 6 \\
+4 & 2, 5 \\
+5 & 1, 4, 6 \\
+6 & 3, 5 \\
+\end{tabular}
+\end{center}
+從點 $1$ 出發，寫出：
+\begin{enumerate}
+\item BFS 拿出佇列的順序，以及每個點的距離。
+\item 遞迴 DFS 進入各點的順序，以及呼叫堆疊最深有幾層。
+\item 第~\ref{sec:dfs-iterative}~節改法一（放進去時就標記的堆疊）拿出各點的順
+序。
+\end{enumerate}
+
+\item 下面三種情況各用哪一種存圖方法？ 算出記憶體大約多少。
+\begin{enumerate}
+\item $n = 1500$，接著有 $10^6$ 筆詢問，每筆問兩個點之間有沒有邊。
+\item $n = 2 \times 10^5$、$m = 3 \times 10^5$ 的無向圖，要從某一點做 BFS。
+\item $n = 2 \times 10^5$、$m = 3 \times 10^5$，只要輸出度數最大的點。
+\end{enumerate}
+
+\item \label{drill:counter} 第~9~章練習的計數器：顯示 $0$，按 $+5$ 或 $-3$，
+要讓它顯示 $n$（$n \ge 0$），最少按幾下？
+\begin{enumerate}
+\item 把它看成一張圖：點是什麼、邊是什麼？ 用 BFS 手算 $n = 1$ 的答案。
+\item 數線無限長，BFS 不知道何時該停。 說明只要考慮
+$\min(0, n - 3)$ 到 $n + 4$ 之間的數就夠了。（提示：按鈕的先後順序可以任意調
+換，結果不變。）
+\end{enumerate}
+
+\item 有人把範例~\ref{ex:ttl} 的 BFS 改成拿出佇列時才標記（第
+~\ref{sec:ex-ttl}~小節的常見錯誤）。 在圖~\ref{fig:bike} 上從站 1 出發，寫出
+每一步的佇列內容，說明為什麼範例的答案沒有出錯。 再加一條邊，讓 $k = 1$ 的答
+案出錯。
+
+\item 圖~\ref{fig:museum} 左邊的有向圖裡，有哪些展間 $x$ 滿足「從 5 走得到 $x$，
+而且從 $x$ 也走得回 5」？ 寫出用兩次 BFS 找出這些點的方法，一般的 $n$、$m$ 下
+是什麼複雜度。
+
+\item 比較三種 DFS 寫法用到的堆疊大小。 對下面兩張 $n$ 個點的圖，從點 $1$ 出
+發，分別寫出遞迴的最大深度、改法一堆疊裡最多同時有幾個點、改法二堆疊最多有幾
+格。
+\begin{enumerate}
+\item 一條鏈：$1 - 2 - 3 - \cdots - n$。
+\item 一顆星：點 $1$ 和其他每個點各有一條邊，其他點之間沒有邊。
+\end{enumerate}
+
+\item 一張 $n$ 個點的無向圖上有 $k$ 個「補給站」。 甲說：「對每個補給站各做一
+次 BFS，每個點取最小的距離。」 乙說：「把 $k$ 個補給站一起放進佇列，做一次
+BFS。」
+\begin{enumerate}
+\item 兩人的時間複雜度各是多少？ $n = m = 2 \times 10^5$、$k = 1000$ 時差多少？
+\item 題目改成問「每個點離最遠的補給站多遠」，誰的方法還能用？
+\end{enumerate}
+\end{drills}
+
+\section{實作練習}
+\label{sec:ch11-practice}
+
+下面是 Aki-Judge 上和本章相關的題目，依小節分組。 難度分四階：暖身是直接套用
+本章的寫法；基本要自己決定點、邊和從哪裡出發；實戰的題敘比較長，要先把題目轉
+換成本章的形狀；挑戰會和其他章的技巧合在一起。
+
+\begin{center}
+\begin{tabular}{llc}
+\toprule
+小節 & 題目 & 難度 \\
+\midrule
+存圖與建圖 & \akiref{saved-both-ways}{互存的聯絡人} & 暖身 \\
+ & \akiref{most-distinct-contacts}{通話紀錄裡的聯絡對象} & 暖身 \\
+ & \akiref{the-k-th-adjacent-stop}{站牌的第 k 個相鄰站} & 暖身 \\
+ & \akiref{cleaning-up-trail-records}{整理步道紀錄} & 基本 \\
+ & \akiref{impressions-from-reposts}{轉貼的曝光次數} & 實戰 \\
+ & \akiref{reach-within-two-relays}{兩步之內的傳達範圍} & 挑戰 \\
+\midrule
+BFS 與最短距離 & \akiref{villages-farthest-from-the-clinic}{路程最遠的村莊} & 暖身 \\
+ & \akiref{which-cafe-to-meet-at}{約在哪家店碰面} & 暖身 \\
+ & \akiref{notices-arriving-together}{同一分鐘傳來的通知} & 基本 \\
+ & \akiref{stamp-rally-in-order}{照順序蓋完紀念章} & 基本 \\
+ & \akiref{a-calculator-with-few-buttons-left}{只剩幾顆按鈕的計算機} & 基本 \\
+ & \akiref{smallest-station-list-among-shortest-routes}{編號最小的最短路線} & 基本 \\
+\midrule
+DFS 與連通元件 & \akiref{cross-class-contacts}{跨班能聯絡的組數} & 暖身 \\
+ & \akiref{villages-without-a-generator}{沒有發電機的村落群} & 基本 \\
+ & \akiref{server-room-clusters-with-loops}{有繞圈線路的機房群} & 基本 \\
+ & \akiref{biggest-region-after-new-roads}{加修道路後的最大聯絡區} & 基本 \\
+ & \akiref{tables-for-the-class-dinner}{謝師宴怎麼分桌} & 實戰 \\
+ & \akiref{fewest-extra-cables}{最少補幾條網路線} & 實戰 \\
+\midrule
+反向圖與多源 & \akiref{who-needs-a-private-correction}{更正公告要私訊誰} & 暖身 \\
+ & \akiref{there-and-back-on-one-way-buses}{去得了也回得來嗎} & 暖身 \\
+ & \akiref{one-way-paths-to-the-exit}{沿單行步道走回出口} & 基本 \\
+ & \akiref{slowest-report-to-the-leader}{最晚傳到組長的回報} & 基本 \\
+ & \akiref{breakfast-on-the-way}{順路買早餐} & 實戰 \\
+ & \akiref{service-areas-of-delivery-stations}{各分站的服務範圍} & 實戰 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+本章的三題例題也在 Aki-Judge 上，讀完各節之後可以先自己寫一次再對照。
+
+\section{讀完你應該會}
+\label{sec:ch11-checklist}
+
+\begin{itemize}
+\item 讀完題目能說出點是什麼、邊是什麼、有沒有方向，並依 $n$、$m$ 的大小選鄰
+接串列或鄰接矩陣，處理好從 $1$ 編號、無向邊加兩次、重邊和自環。
+\item 能寫出 BFS 求無權圖上每個點的最短距離，手動列出每一步的佇列內容，並說
+明為什麼要在放進佇列時就標記。
+\item 能用 DFS 或 BFS 找出所有連通元件，並在 $n$ 到 $10^5$ 以上時改用自己管理
+的堆疊，不依賴遞迴。
+\item 看到有向圖上「哪些點走得到終點」的問法，會建反向圖從終點出發；看到「離
+最近的某種點多遠」，會把所有起點一起放進佇列。
+\end{itemize}
+
+\textbf{延伸閱讀}（書末會整理完整的參考資料）
+
+\begin{itemize}
+\item Antti Laaksonen，\textit{Competitive Programmer's Handbook}，第 11、12 章：
+篇幅短，三種存圖方法和兩種走訪都有，還順帶介紹了找環、判斷二分圖（本書第~19
+~章）。
+\item Steven S. Skiena，\textit{The Algorithm Design Manual}，第 3 版，第 7 章：
+用很多實際問題說明「先把問題畫成圖」，適合想練習建模的讀者。
+\item Thomas H. Cormen 等，\textit{Introduction to Algorithms}，第 4 版，20.1
+到 20.3 節：BFS 最短距離和 DFS 性質的嚴謹證明。
+\end{itemize}
+
+\addcontentsline{toc}{section}{練習解答}
+\section*{練習解答}
+
+\begin{enumerate}
+\item
+\begin{enumerate}
+\item BFS 拿出的順序是 1、2、5、3、4、6。 距離：1 是 $0$；2、5 是 $1$；3、4、
+6 是 $2$。 拿出 5 時，它的鄰居 4 已經由 2 放進佇列，所以只放進 6。
+\item 遞迴 DFS 進入的順序是 1、2、3、6、5、4。 進入 4 的時候，呼叫堆疊是 1、
+2、3、6、5、4，最深 $6$ 層。 路線是 $1 \to 2 \to 3 \to 6 \to 5 \to 4$，2 的
+另一個鄰居 4 等到最後才從 5 走到。
+\item 1、5、6、3、4、2。 拿出 1 放進 2、5；拿出 5 放進 4、6（1 已標記）；拿出
+6 放進 3；接著依序拿出 3、4、2，它們的鄰居都已標記。 把這張圖照範例
+~\ref{ex:dfs-order} 的格式輸入（邊依序是 \texttt{1 2}、\texttt{1 5}、
+\texttt{2 3}、\texttt{2 4}、\texttt{3 6}、\texttt{4 5}、\texttt{5 6}），三行
+分別印出 \texttt{1 2 3 6 5 4}、\texttt{1 5 6 3 4 2}、\texttt{1 2 3 6 5 4}。
+\end{enumerate}
+
+\item
+\begin{enumerate}
+\item 鄰接矩陣，$1500 \times 1500 = 2.25 \times 10^6$ 格，用 \texttt{bool} 或
+\texttt{char} 約 $2$ MB，每筆詢問 $O(1)$。 用鄰接串列的話，每筆詢問要掃一個
+點的串列，度數大時會慢。
+\item 鄰接串列，總共 $2m = 6 \times 10^5$ 個 \texttt{int}，約 $2.4$ MB，加上
+$n$ 個 \texttt{vector} 本身。 矩陣要 $4 \times 10^{10}$ 格，開不出來。
+\item 邊列表，甚至不用存：讀一條邊就把兩端的度數各加一，只要一個長度 $n + 1$
+的陣列。
+\end{enumerate}
+
+\item
+\begin{enumerate}
+\item 點是計數器上可能出現的整數，從 $x$ 到 $x + 5$、$x - 3$ 各有一條有向邊，
+每條邊是按一下。 從 $0$ 做 BFS：第 1 層 $5, -3$；第 2 層 $10, 2, -6$（$5 - 3$
+和 $-3 + 5$ 都是 $2$）；第 3 層 $15, 7, -1, -9$；第 4 層 $20, 12, 4, -4,
+-12$；第 5 層出現 $4 - 3 = 1$。 答案是 $5$，例如
+$0 \to 5 \to 2 \to 7 \to 4 \to 1$。
+\item 設某種按法用了 $a$ 次 $+5$、$b$ 次 $-3$，最後是 $n$。 按鈕的先後不影響
+最後的數，所以可以重排成：目前的數小於 $n$ 就按 $+5$，否則按 $-3$。 這樣排
+一定按得下去：數小於 $n$ 卻沒有 $+5$ 可按，剩下全是 $-3$，最後會小於 $n$，
+矛盾；不小於 $n$ 卻沒有 $-3$ 可按，同理。 照這個規則，數從 $0$ 出發，小於
+$n$ 時只會往上加 $5$，所以不超過 $n + 4$；不小於 $n$ 時只會減 $3$，所以不低
+於 $n - 3$。 總次數 $a + b$ 沒變，所以最少的按法也能只用 $\min(0, n - 3)$ 到
+$n + 4$ 之間的數。 BFS 時超出這個範圍的點直接不放進佇列，點數只有大約
+$n + 8$ 個。
+\end{enumerate}
+
+\item 圖~\ref{fig:bike} 從 1 出發，佇列依序是：\{1\}、\{2, 3\}、\{3, 4\}、
+\{4, 4, 5\}、\{4, 5, 6\}、\{5, 6\}、\{6, 6\}、\{6\}、空。 4 被 2 和 3 各放
+進去一次，6 被 4 和 5 各放進去一次，但每次放進去時算出的距離都一樣（4 都是
+$2$，6 都是 $3$），所以答案沒錯。 出錯需要兩個同一層的點互為鄰居：加一條
+\texttt{2 3}，拿出 2 時 3 還沒拿出來，距離被改成 $2$；$k = 1$ 時程式印出
+\texttt{6}，正確答案是 \texttt{5}。
+
+\item 5 和 6。 從 5 出發在原圖上做 BFS，走得到 5、6；在反向圖上從 5 出發，走
+得到 5、6、2、3、1、4，也就是原圖上走得到 5 的點。 兩邊都有的點就是答案。 兩
+次 BFS 各 $O(n + m)$，總共 $O(n + m)$。
+
+\item
+\begin{enumerate}
+\item 鏈：遞迴最深 $n$ 層；改法一的堆疊每次拿出一個點只會放進下一個點，最多
+$1$ 個；改法二要記住整條路上每一層看到哪裡，最多 $n$ 格。 改法二的 $n$ 格在
+heap 上，$2 \times 10^5$ 格只要 $1.6$ MB，沒有問題。
+\item 星：遞迴最深 $2$ 層（1 和某一片葉子）；改法一拿出 1 時一次放進 $n - 1$
+個點；改法二最多 $2$ 格。 所以改法一的堆疊不一定比較小，但它和 BFS 的佇列一
+樣，每個點最多放一次，總大小不超過 $n$。
+\end{enumerate}
+
+\item
+\begin{enumerate}
+\item 甲是 $O(k(n + m))$，乙是 $O(n + m)$。 $k = 1000$ 時甲大約
+$1000 \times 4 \times 10^5 = 4 \times 10^8$，乙大約 $4 \times 10^5$，差
+$1000$ 倍。
+\item 只有甲的方法能用（把取最小值改成取最大值）。 多源 BFS 把所有補給站當成同
+一個起點，每個點只會被最近的那一個先走到，算不出離最遠的有多遠。
+\end{enumerate}
+\end{enumerate}

@@ -1,4 +1,1420 @@
-% 佔位：本章尚未開始。book.tex 裡先註解掉。
 \chapter{動態規劃（二）：二維格子}
+\label{ch:dp2d}
 
-本章尚未開始。
+住處在一片棋盤狀街區的西北角路口，捷運站在東南角路口：往東要走過 $4$ 個街
+口，往南要走過 $3$ 個街口。 不想繞遠路，所以每一步只往東或往南走一個街口。
+有幾條不同的走法？ 如果其中兩個路口在施工、不能通過呢？ 往下讀之前先想一
+想：不要一條一條列，走到某一個路口的走法數，和它西邊、北邊那兩個路口的走法
+數有什麼關係？
+
+第~9~章的狀態是一個數字：金額 $x$、第 $i$ 天、第 $i$ 盞燈。 這一章的狀態是
+兩個數字，列和行，表格也從一排變成一整張。 第~9~章整理的四件事（狀態、轉
+移、初始值、計算順序）、記憶化和填表的關係、把狀態畫成圖，在這一章都照用，
+不再重講。 這一章只處理二維多出來的問題：邊界怎麼處理、走不過去的格子、只
+留一列以節省記憶體、一格要記不只一個數字，以及正方形和矩形這兩種常見的題
+型。
+
+三題例題分別練最小成本、一格兩種狀態、最大正方形。 計數和障礙格的基本寫法
+在第一節用章首的街區示範。 用到的語法只有二維的 \texttt{vector} 和
+\texttt{vector<string>}（銜接書第~3~章 3.6 節）。 沒讀過銜接書的讀者，只要知
+道 \texttt{vector<vector<long long>> f(r, vector<long long>(c, 0))} 會建出一
+張 $r$ 列 $c$ 行、全部是 $0$ 的表格，\texttt{f[i][j]} 是第 $i$ 列第 $j$ 行，
+就能讀這一章。
+
+\section{格子上的路徑}
+\label{sec:dp2-paths}
+
+\subsection{一格只看兩個鄰居}
+\label{sec:dp2-two}
+
+把路口排成 $4$ 列 $5$ 行的格子，第 $i$ 列第 $j$ 行的路口記為 $(i, j)$。 住
+處是 $(1, 1)$，捷運站是 $(4, 5)$，往東是 $j$ 加 $1$，往南是 $i$ 加 $1$。 用
+$f(i, j)$ 表示從住處走到 $(i, j)$ 有幾條路線。
+
+回答章首的問題。 走到 $(i, j)$ 的路線，最後一步只有兩種可能：從西邊的
+$(i, j - 1)$ 往東走過來，或從北邊的 $(i - 1, j)$ 往南走下來。 這兩組路線最後
+一步不同，不會重複；任何一條路線都屬於其中一組，也不會漏掉。 所以
+\[
+f(i, j) = f(i - 1, j) + f(i, j - 1).
+\]
+照第~9~章的四件事寫下來：
+
+\begin{itemize}
+\item \textbf{狀態}：$f(i, j)$ 是從 $(1, 1)$ 走到 $(i, j)$ 的路線數。
+\item \textbf{轉移}：上面的式子。 第一列沒有北邊、第一行沒有西邊，不存在的那
+一邊當成 $0$ 條。
+\item \textbf{初始值}：$f(1, 1) = 1$，原地不動算一條。
+\item \textbf{計算順序}：算 $(i, j)$ 時，北邊和西邊必須已經算好。 一列一列由
+上往下，每一列由左往右，就滿足這個條件。
+\end{itemize}
+
+計算順序也可以從狀態圖看出來。 把每一格畫成一個點，箭頭從每一格指向它東邊
+和南邊的格子（下圖）。 箭頭只往右、往下，沿著箭頭走永遠回不到走過的點，所以
+這是一張有向無環圖，第~9~章說過的事都成立。 只要每一格排在它的北邊和西邊之
+後，什麼順序都可以：一列一列填可以，一行一行填也可以，沿著斜線
+（$i + j$ 相同的格子）一條一條填也可以。 最常用的是一列一列填，因為輸入也是
+一列一列給的。
+
+\begin{center}
+\begin{tikzpicture}[x=1.15cm, y=0.95cm,
+    st/.style={circle, draw=black!60, thick, minimum size=0.62cm, inner sep=0pt,
+               font=\ttfamily\small},
+    hst/.style={st, draw=memStroke, fill=memFill},
+    ar/.style={-{Stealth[length=1.6mm]}, draw=black!40},
+    har/.style={-{Stealth[length=2mm]}, very thick, draw=memStroke}]
+\foreach \i in {1,...,3} {
+  \foreach \j in {1,...,4} {
+    \node[st] (p\i\j) at (\j,-\i) {};
+  }
+}
+\node[hst] (q) at (3,-2) {};
+\foreach \i in {1,...,3} {
+  \foreach \j [evaluate=\j as \k using int(\j+1)] in {1,...,3} {
+    \draw[ar] (p\i\j) -- (p\i\k);
+  }
+}
+\foreach \i [evaluate=\i as \k using int(\i+1)] in {1,2} {
+  \foreach \j in {1,...,4} {
+    \draw[ar] (p\i\j) -- (p\k\j);
+  }
+}
+\draw[har] (p22) -- (q);
+\draw[har] (p13) -- (q);
+\node[font=\small, right] at (4.4,-1) {$(1, 1)$ 在左上角};
+\node[font=\small, right] at (4.4,-2) {每個點只有兩個箭頭進來};
+\end{tikzpicture}
+\diagcaption{$3$ 列 $4$ 行格子的狀態圖。 橘色的點是 $(2, 3)$，只有從 $(2, 2)$
+和 $(1, 3)$ 進來的兩個箭頭，所以它的答案只跟這兩格有關。}
+\label{fig:dp2-dag}
+\end{center}
+
+下圖左邊是 $4 \times 5$ 的路口全部都能走時填好的表。 第一列和第一行都是
+$1$，因為只有一種走法：一路往東或一路往南。 右下角是 $35$。
+
+\begin{center}
+\begin{tikzpicture}[x=0.62cm, y=0.62cm,
+    g/.style={draw=black!55, minimum size=0.62cm, inner sep=0pt, font=\small\ttfamily},
+    blk/.style={g, fill=black!28},
+    end/.style={g, draw=memStroke, thick, fill=memFill}]
+\begin{scope}
+\node[font=\small] at (2,1) {全部能走};
+\foreach \row [count=\r from 0] in {{1,1,1,1,1},{1,2,3,4,5},{1,3,6,10,15},{1,4,10,20,35}} {
+  \foreach \v [count=\c from 0] in \row {
+    \node[g] at (\c,-\r) {\v};
+  }
+}
+\node[end] at (4,-3) {35};
+\end{scope}
+\begin{scope}[xshift=4.6cm]
+\node[font=\small] at (2,1) {$(1, 3)$、$(3, 4)$ 施工};
+\foreach \row [count=\r from 0] in {{1,1,0,0,0},{1,2,2,2,2},{1,3,5,0,2},{1,4,9,9,11}} {
+  \foreach \v [count=\c from 0] in \row {
+    \node[g] at (\c,-\r) {\v};
+  }
+}
+\node[blk] at (2,0) {x};
+\node[blk] at (3,-2) {x};
+\node[end] at (4,-3) {11};
+\end{scope}
+\end{tikzpicture}
+\diagcaption{兩張填好的表，格子裡是 $f(i, j)$。 灰色的 \texttt{x} 是施工中的
+路口，$f = 0$。}
+\label{fig:dp2-count}
+\end{center}
+
+全部能走的時候，其實有公式：$7$ 步裡挑哪 $3$ 步往南，$\binom{7}{3} = 35$。
+可是只要有一個路口不能走，公式就不能直接用了，填表的做法卻完全不受影響。
+
+最直接的暴力解是把路線一條一條列出來。 列出來的條數就是答案本身，$500 \times
+500$ 的格子沒有障礙時有 $\binom{998}{499}$ 條，大約是 $10^{299}$，一條一條列
+是不可能的。 照轉移式直接寫成遞迴、不加記憶化，呼叫次數也和路線數同一個數量
+級（本章練習第~4~題）。 填表只要每一格做一次加法，$O(rc)$。
+
+\subsection{走不過去的格子}
+\label{sec:dp2-blocked}
+
+章首的第二個問題：$(1, 3)$ 和 $(3, 4)$ 兩個路口在施工。 施工的路口走不進去，
+所以 $f = 0$。 它的東邊和南邊在加總時，從它那裡拿到的是 $0$，等於那個方向沒
+有路，不用另外處理。 圖~\ref{fig:dp2-count} 右邊是填好的表，答案是 $11$。
+
+注意第一列：$(1, 3)$ 擋住之後，$(1, 4)$ 和 $(1, 5)$ 都是 $0$。 第一列只能從
+西邊過來，西邊被擋，後面整段都到不了。 第一行也一樣。
+
+\begin{example}[label=ex:dp2-streets]{cpp}{(streets.cpp) 避開施工路口的路線數}
+#include <iostream>
+#include <string>
+#include <vector>
+using namespace std;
+
+int main() {
+    int r, c;
+    cin >> r >> c;
+    vector<string> g(r);
+    for (string &row : g) {
+        cin >> row;
+    }
+    // f[i][j]：走到第 i 列第 j 行的路口有幾條路線
+    // 列、行從 1 編號；第 0 列、第 0 行是多開的一圈，永遠是 0
+    vector<vector<long long>> f(r + 1, vector<long long>(c + 1, 0));
+    for (int i = 1; i <= r; i++) {
+        for (int j = 1; j <= c; j++) {
+            if (g[i - 1][j - 1] == 'x') {   // 施工中：到不了
+                f[i][j] = 0;
+            } else if (i == 1 && j == 1) {  // 起點：不動也算一條
+                f[i][j] = 1;
+            } else {
+                f[i][j] = f[i - 1][j] + f[i][j - 1];
+            }
+        }
+    }
+    cout << f[r][c] << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+4 5 \\
+..x.. \\
+..... \\
+...x. \\
+..... \\
+}{
+11 \\
+}
+
+\begin{itemize}
+\item 地圖用 \texttt{vector<string>} 存，每一列讀成一個字串。 \texttt{g} 的
+列、行從 $0$ 編號，表格 \texttt{f} 從 $1$ 編號，所以第 $i$ 列第 $j$ 行的路口
+是 \texttt{g[i - 1][j - 1]}。
+\item 先判斷施工，再判斷起點。 起點如果也在施工，答案就是 $0$。
+\item 這個範例假設 $r, c \le 30$。 路線數最多是 $\binom{58}{29} \approx 3
+\times 10^{16}$，\texttt{long long} 放得下。 格子再大就要像第~9~章那樣取餘數。
+\end{itemize}
+
+\subsection{邊界：多開一圈，或是先判斷}
+\label{sec:dp2-border}
+
+第一列的格子沒有北邊，第一行沒有西邊。 處理的方法有兩種。
+
+\textbf{多開一圈。} 表格開成 $(r + 1) \times (c + 1)$，第 $0$ 列和第 $0$ 行
+當作圍牆，填上「不可能」對應的值：計數題是 $0$，求最少的題目是一個很大的數，
+求最多的題目是一個很小的數。 轉移式不用任何 \texttt{if}，上面的
+\texttt{streets.cpp} 就是這樣寫。 只有起點要特別處理，否則
+$f(1, 1) = f(0, 1) + f(1, 0) = 0$。
+
+\textbf{先判斷再用。} 表格開成 $r \times c$，從 $0$ 編號，轉移時寫
+\texttt{if (i > 0)}、\texttt{if (j > 0)}，鄰居存在才拿來用。 轉移除了鄰居的
+答案、還要用到鄰居的其他資料（例如下一節要用鄰居的高度）時，這種寫法比較直
+接，不用替圍牆編造資料。
+
+兩種都可以，同一支程式裡選一種用到底。 最常見的錯誤是混在一起：表格多開了
+一圈，讀地圖時卻忘了減一，或者反過來。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{第一列、第一行直接設成 $1$}：沒有障礙的時候，第一列和第一行都
+是 $1$，於是有人先把它們全部設好，再從 $(2, 2)$ 開始填。 範例的輸入會印出
+\texttt{15}：$(1, 4)$、$(1, 5)$ 明明被 $(1, 3)$ 擋住，卻被設成 $1$。 讓第一
+列、第一行也照轉移式算，障礙就會自動往後傳。
+\item \textbf{只用正方形的格子測試}：列和行寫反了，$r = c$ 的輸入完全看不出
+來。 自己測試時，一定要有一組列數和行數不同的輸入，例如範例的 $4 \times 5$。
+\end{itemize}
+
+\section{最小成本}
+\label{sec:dp2-cost}
+
+問「有幾種」用加法，問「最少」就把加法換成取最小值，表格的形狀和計算順序都
+不變。 這一節的例題還多了一點變化：成本不在格子上，而在兩格之間的移動上。
+
+\subsection{例題：上坡才耗電的搬運車}
+\label{sec:dp2-ex-uphill}
+
+\textbf{題意}（\akiref{only-uphill-drains-the-battery}{上坡才耗電的搬運車}）
+
+\begin{itemize}
+\item 倉庫地面分成 $m$ 列 $n$ 行，第 $i$ 列第 $j$ 行的高度是 $h_{i,j}$。
+\item 搬運車從左上角開到右下角，每一步只能往右或往下一格。
+\item 從高度 $a$ 開到高度 $b$ 時，$b > a$ 要耗電 $b - a$；平地或下坡不耗電。
+\item 求最少的總耗電量。 $m, n \le 500$，$0 \le h_{i,j} \le 10^9$。
+\end{itemize}
+
+例如高度是
+\[
+\begin{matrix}
+1 & 5 & 2 & 2 \\
+3 & 3 & 4 & 1 \\
+6 & 2 & 2 & 0
+\end{matrix}
+\]
+走「下、右、下、右、右」，高度依序是 $1, 3, 3, 2, 2, 0$，只有第一步爬坡 $2$，
+答案是 $2$。
+
+\textbf{想法}
+
+最直接的做法是列出所有路線，每條算一次耗電量。 $m \times n$ 的格子共有
+$\binom{m + n - 2}{m - 1}$ 條路線，$m = n = 500$ 時大約 $10^{299}$ 條，不可能。
+
+再試一個貪心：每一步往耗電比較少的方向走，一樣少的時候往比較低的格子走，留
+在低處，之後好像比較省。 反例是高度
+\[
+\begin{matrix}
+5 & 1 \\
+4 & 9 \\
+8 & 6
+\end{matrix}
+\]
+第一步往右或往下都是下坡，貪心選比較低的 $1$；之後只能往下爬到 $9$，耗電
+$8$，再到 $6$，總共 $8$。 往下走 $5 \to 4 \to 8 \to 6$ 只要 $4$。 先下到很低
+的地方，後面就得從低處爬上來。 一步的好壞要看後面的路才知道，這正是第~9~章
+說的「要用動態規劃」的訊號。
+
+\textbf{狀態}：\texttt{best[i][j]} 是從起點開到 $(i, j)$ 最少的耗電量。 這
+一題的轉移要用到鄰居的高度，所以表格從 $0$ 編號，用「先判斷」的寫法處理邊界。
+
+\textbf{轉移}：最後一步從上面的 $(i - 1, j)$ 開下來，或從左邊的 $(i, j - 1)$
+開過來。 從上面來的話，前半段一定是開到 $(i - 1, j)$ 的最省走法（否則換成更
+省的前半段，整條就更省），總耗電是
+\texttt{best[i - 1][j]} 加上這一步的
+$\max(0,\ h_{i,j} - h_{i-1,j})$。 從左邊來也一樣，兩者取小的：
+\[
+\mathrm{best}(i, j) = \min\Bigl(\mathrm{best}(i - 1, j) + c(h_{i-1,j}, h_{i,j}),\
+\mathrm{best}(i, j - 1) + c(h_{i,j-1}, h_{i,j})\Bigr),
+\]
+其中 $c(a, b) = \max(0, b - a)$ 是從高度 $a$ 開到高度 $b$ 的耗電量。 和第~\ref{sec:dp2-two}~
+小節的計數只差兩處：加法換成取最小值，以及每個來源要先加上那一步自己的成本。
+這一步的成本由「從哪一格來」決定，所以從上面來和從左邊來，要用不同的高度算。
+
+\textbf{初始值}：\texttt{best[0][0]} $= 0$，起點本身不耗電。
+
+\textbf{計算順序}：一列一列由上往下，每一列由左往右。
+
+範例的表格（右邊的橘色是最省的那條路線）：
+
+\begin{center}
+\begin{tikzpicture}[x=0.7cm, y=0.7cm,
+    g/.style={draw=black!55, minimum size=0.7cm, inner sep=0pt, font=\small\ttfamily},
+    on/.style={g, draw=memStroke, thick, fill=memFill}]
+\begin{scope}
+\node[font=\small] at (1.5,1) {高度 $h$};
+\foreach \row [count=\r from 0] in {{1,5,2,2},{3,3,4,1},{6,2,2,0}} {
+  \foreach \v [count=\c from 0] in \row {
+    \node[g] at (\c,-\r) {\v};
+  }
+}
+\end{scope}
+\begin{scope}[xshift=4.2cm]
+\node[font=\small] at (1.5,1) {\texttt{best}};
+\foreach \row [count=\r from 0] in {{0,4,4,4},{2,2,3,3},{5,2,2,2}} {
+  \foreach \v [count=\c from 0] in \row {
+    \node[g] at (\c,-\r) {\v};
+  }
+}
+\node[on] at (0,0) {0};
+\node[on] at (0,-1) {2};
+\node[on] at (1,-1) {2};
+\node[on] at (1,-2) {2};
+\node[on] at (2,-2) {2};
+\node[on] at (3,-2) {2};
+\end{scope}
+\end{tikzpicture}
+\diagcaption{範例的高度和填好的 \texttt{best}。 例如 \texttt{best[1][2]}：從上面
+來是 $4 + \max(0, 4 - 2) = 6$，從左邊來是 $2 + \max(0, 4 - 3) = 3$，取 $3$。}
+\label{fig:dp2-uphill}
+\end{center}
+
+同樣的模型也出現在別的地方：規劃自行車路線時只在乎總爬升；物流車在單行道組
+成的路網上，每一段路的過路費不同。 只要移動的方向不會繞回頭，成本都可以這樣
+一格一格累積。
+
+\textbf{程式}
+
+\begin{example}[label=ex:dp2-uphill]{cpp}{(uphill.cpp) 上坡才耗電的搬運車}
+#include <algorithm>
+#include <climits>
+#include <iostream>
+#include <vector>
+using namespace std;
+
+// 從高度 a 開到高度 b 的耗電量：只有上坡要耗電
+long long climb(long long a, long long b) {
+    return max(0LL, b - a);
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int m, n;
+    cin >> m >> n;
+    vector<vector<long long>> h(m, vector<long long>(n));
+    for (auto &row : h) {
+        for (long long &x : row) {
+            cin >> x;
+        }
+    }
+    // best[i][j]：從 (0, 0) 開到 (i, j) 最少耗多少電
+    const long long INF = LLONG_MAX;     // 還沒找到任何走法
+    vector<vector<long long>> best(m, vector<long long>(n, INF));
+    best[0][0] = 0;
+    for (int i = 0; i < m; i++) {
+        for (int j = 0; j < n; j++) {
+            if (i > 0) {                    // 從上面那一格開下來
+                long long c = climb(h[i - 1][j], h[i][j]);
+                best[i][j] = min(best[i][j], best[i - 1][j] + c);
+            }
+            if (j > 0) {                    // 從左邊那一格開過來
+                long long c = climb(h[i][j - 1], h[i][j]);
+                best[i][j] = min(best[i][j], best[i][j - 1] + c);
+            }
+        }
+    }
+    cout << best[m - 1][n - 1] << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+3 4 \\
+1 5 2 2 \\
+3 3 4 1 \\
+6 2 2 0 \\
+}{
+2 \\
+}
+
+\begin{itemize}
+\item \texttt{best} 一開始全部是 \texttt{INF}（\texttt{LLONG\_MAX}），意思是「還沒有找到任何走
+法」，兩個方向各拿來比一次。 \texttt{INF} 只當比較的對象，從來不拿去加：
+被加的 \texttt{best[i - 1][j]}、\texttt{best[i][j - 1]} 都已經算好，每一格都
+到得了，一定是真正的耗電量。 如果題目有走不進去的格子，到不了的格子會一直是
+\texttt{INF}，拿它去加就會溢位，要先檢查（本章練習第~1~題）。
+\item 起點在迴圈裡兩個 \texttt{if} 都不成立，保持 $0$。
+\item 每一步最多耗電 $10^9$，一條路線有 $m + n - 2 \le 998$ 步，總和接近
+$10^{12}$，超過 \texttt{int}。 高度、\texttt{climb} 的回傳值和表格都用
+\texttt{long long}。
+\end{itemize}
+
+\textbf{複雜度}
+
+每一格看兩個鄰居，$O(mn)$，$m = n = 500$ 時是 $25$ 萬格。 讀入 $25$ 萬個數字
+比計算還花時間，最大的測試資料在本書測試的環境下約 $0.05$ 秒。
+
+\subsection{常見錯誤}
+\label{sec:dp2-uphill-err}
+
+\begin{itemize}
+\item \textbf{表格用 \texttt{int}}：輸入
+\begin{code}{text}{總耗電超過 int 的輸入}
+1 7
+0 1000000000 0 1000000000 0 1000000000 0
+\end{code}
+要爬三次 $10^9$，正確答案是 \texttt{3000000000}。 把高度、\texttt{climb} 和
+表格都改成 \texttt{int}（初始值用 \texttt{INT\_MAX}），在本書測試的環境下印出
+\texttt{-1294967296}。
+\item \textbf{下坡也算耗電}：\texttt{climb} 寫成兩個高度差的絕對值，範例印
+出 \texttt{5}，上面貪心的反例印出 \texttt{7}。
+\item \textbf{用貪心}：每一步選耗電少的、或比較低的格子，上面的反例印出
+\texttt{8}。
+\item \textbf{兩個方向用同一個高度差}：從左邊來時寫成
+\texttt{climb(h[i - 1][j], h[i][j])}，抄上一行時忘了改。 從哪一格來，就用
+哪一格的高度。
+\end{itemize}
+
+\section{滾動陣列}
+\label{sec:dp2-rolling}
+
+範例~\ref{ex:dp2-uphill} 用了兩張 $500 \times 500$ 的表，各 $2$ MB，沒有問題。
+如果格子是 $5000 \times 5000$，計算只要 $2500$ 萬次，很快；可是一張
+\texttt{long long} 的表就要 $2500$ 萬 $\times 8$ 位元組 $= 200$ MB，很多題目的
+記憶體限制放不下。
+
+看轉移式：算第 $i$ 列只用到第 $i - 1$ 列和第 $i$ 列自己。 第 $i - 2$ 列以前
+的值，以後再也用不到。 像抄筆記時只看前一頁，再往前翻的那些頁可以先收起來。
+所以只要留一列。 這種寫法叫\textbf{滾動陣列}（rolling array）：同一個一維陣
+列，算完一列就「滾」到下一列。 第~9~章 9.4 節的招牌燈程式之後提過「只記上一格和這一格」，
+就是一維的版本。
+
+一列的陣列 \texttt{best[0..n-1]} 怎麼兼顧「上一列」和「這一列」？ 由左往右
+填第 $i$ 列，填到第 $j$ 格時：
+
+\begin{itemize}
+\item \texttt{best[j]} 還沒被覆寫，存的是上一列的值，就是「上面那一格」。
+\item \texttt{best[j - 1]} 剛剛填好，是這一列的值，就是「左邊那一格」。
+\end{itemize}
+
+兩個需要的值剛好都在，填好之後把 \texttt{best[j]} 換成新的值。
+
+\begin{center}
+\begin{tikzpicture}[x=1.1cm, y=1cm,
+    g/.style={draw=black!55, minimum width=1.1cm, minimum height=0.7cm, inner sep=0pt, font=\small\ttfamily},
+    new/.style={g, draw=memStroke, thick, fill=memFill},
+    old/.style={g, fill=black!8},
+    cur/.style={g, draw=optStroke, very thick}]
+\node[new] (a0) at (0,0) {2};
+\node[new] (a1) at (1,0) {2};
+\node[cur] (a2) at (2,0) {4};
+\node[old] (a3) at (3,0) {4};
+\foreach \j in {0,...,3} { \node[idxlbl] at (\j,-0.6) {\texttt{best[\j]}}; }
+\draw[decorate, decoration={brace, amplitude=5pt, mirror}] (-0.5,-0.9) -- (1.5,-0.9)
+    node[midway, below=5pt, font=\small] {這一列（第 $1$ 列）};
+\draw[decorate, decoration={brace, amplitude=5pt, mirror}] (1.5,-0.9) -- (3.5,-0.9)
+    node[midway, below=5pt, font=\small] {上一列（第 $0$ 列）};
+\draw[diagarrow] (a1.north) to[bend left=40] node[above, font=\small] {左：$2 + 1$} (a2.north);
+\draw[diagarrow] (a2.north east) to[out=60, in=120, looseness=6] node[above, font=\small] {上：$4 + 2$} (a2.north west);
+\node[font=\small, right] at (4.0,0) {$\Rightarrow$ \texttt{best[2]} $= \min(3, 6) = 3$};
+\end{tikzpicture}
+\diagcaption{範例~\ref{ex:dp2-uphill} 的輸入，填第 $1$ 列第 $2$ 格之前的陣列。
+橘色已經是第 $1$ 列的值，灰色還是第 $0$ 列的值；粉紅框的格子同時是「上面那一
+格」的舊值，也是等一下要寫入新值的位置。}
+\label{fig:dp2-roll}
+\end{center}
+
+下面的程式連高度也一列一列讀：只留上一列和這一列的高度，讀完的列就丟掉。 整
+支程式的記憶體是 $O(n)$，和列數 $m$ 無關。
+
+\begin{example}[label=ex:dp2-roll]{cpp}{(uphill\_roll.cpp) 只留一列的搬運車}
+#include <algorithm>
+#include <climits>
+#include <iostream>
+#include <vector>
+using namespace std;
+
+long long climb(long long a, long long b) {
+    return max(0LL, b - a);
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int m, n;
+    cin >> m >> n;
+    vector<long long> above(n), here(n);   // 上一列和這一列的高度
+    vector<long long> best(n);             // 只留一列的表格
+    for (int i = 0; i < m; i++) {
+        for (long long &x : here) {
+            cin >> x;
+        }
+        for (int j = 0; j < n; j++) {
+            // 此時 best[j] 是上一列的值，best[j - 1] 是這一列的值
+            long long b = LLONG_MAX;
+            if (i == 0 && j == 0) {
+                b = 0;
+            }
+            if (i > 0) {
+                b = min(b, best[j] + climb(above[j], here[j]));
+            }
+            if (j > 0) {
+                long long c = climb(here[j - 1], here[j]);
+                b = min(b, best[j - 1] + c);
+            }
+            best[j] = b;
+        }
+        swap(above, here);    // 這一列的高度，變成下一輪的「上一列」
+    }
+    cout << best[n - 1] << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+3 2 \\
+5 1 \\
+4 9 \\
+8 6 \\
+}{
+4 \\
+}
+
+\begin{itemize}
+\item 輸入是上面貪心的反例，答案 $4$。
+\item 新的值先算在 \texttt{b} 裡，兩個方向都比完才寫回 \texttt{best[j]}。 如
+果先寫 \texttt{best[j] = ...} 再拿 \texttt{best[j]} 去比，就把上一列的值蓋掉
+了。
+\item \texttt{swap(above, here)} 交換兩個 \texttt{vector} 的內容，只交換內部
+的指標，不會一個一個複製，是 $O(1)$（銜接書第~8~章）。 交換後，\texttt{here}
+裡是更早的那一列，下一輪讀入時直接蓋掉。
+\end{itemize}
+
+這支程式也用完整的測試資料驗證過，和範例~\ref{ex:dp2-uphill} 的答案完全相同。
+
+\textbf{填的方向不能反過來。} 把 \texttt{j} 改成由大到小，填第 $j$ 格時
+\texttt{best[j - 1]} 還是上一列的值，「左邊那一格」拿錯了。 第 $0$ 列更糟：
+\texttt{best[j - 1]} 是一開始的 $0$。 範例~\ref{ex:dp2-uphill} 的輸入會印出
+\texttt{0}。 寫滾動陣列之前，先把「填第 $j$ 格時，陣列裡每一格是哪一列的值」
+寫下來，再決定方向。
+
+\textbf{什麼時候不能只留一列。}
+
+\begin{itemize}
+\item 要印出路線本身，不只是答案：一列的陣列沒有留下「每一格是從哪裡來的」。
+可以另外開一張 \texttt{char} 的表記錄方向，每格只要 $1$ 位元組，比
+\texttt{long long} 小八倍。
+\item 轉移用到更前面的列，例如第 $i - 2$ 列：就留兩列或三列。
+\item 轉移用到左上角 $(i - 1, j - 1)$：它的舊值在填 \texttt{best[j - 1]} 時已經被
+蓋掉了，要先用一個變數存起來（本章練習第~6~題）。
+\end{itemize}
+
+不確定覆寫順序對不對時，改用兩個一維陣列 \texttt{prev} 和 \texttt{cur}：用
+\texttt{prev} 算出整列 \texttt{cur}，算完再 \texttt{swap(prev, cur)}。 記憶體
+多一列，但不會有「讀到一半被蓋掉」的問題。
+
+\begin{apcsnote}
+題目會寫出輸入的範圍和記憶體限制。 開二維表格之前先算一次：格子數乘上每格的
+位元組數（\texttt{int} 是 $4$，\texttt{long long} 是 $8$），再乘上表格的張
+數。 超過限制或接近限制，就改成滾動陣列；離限制很遠，用整張表比較好寫，也比
+較好檢查。
+\end{apcsnote}
+
+\section{一格記兩個數字}
+\label{sec:dp2-states}
+
+第~9~章的大夜班，只記「前 $i$ 天最多多少」不夠，還要記第 $i$ 天在做什麼。
+格子也一樣：只知道「走到這一格有幾條路線」，有時候不夠回答題目要的問題。 這
+一節的例題要知道路線「走到這裡為止，已經做過某件事了沒有」。
+
+\subsection{例題：至少經過一台飲水機的慢跑路線}
+\label{sec:dp2-ex-fountain}
+
+\textbf{題意}（\akiref{jogging-routes-past-a-fountain}{至少經過一台飲水機的慢跑路線}）
+
+\begin{itemize}
+\item 河濱步道區是 $H$ 列 $W$ 行的格子。 \texttt{.} 是步道，\texttt{*} 是有
+飲水機的步道，\texttt{\#} 是花圃，不能踩。
+\item 從左上角跑到右下角，每一步往右或往下。 只算\textbf{至少經過一台飲水機}
+的路線，起點、終點是 \texttt{*} 也算經過。
+\item 輸出路線數除以 $10^9 + 7$ 的餘數。 $H, W \le 500$。
+\end{itemize}
+
+例如
+\begin{code}{text}{3 列 4 行的步道區}
+....
+.#*.
+*...
+\end{code}
+繞過花圃的路線有 $4$ 條。 一路往右再往下的那條沒有經過飲水機，其他 $3$ 條各
+經過 $(2, 3)$ 或 $(3, 1)$ 的飲水機，答案是 $3$。
+
+\textbf{想法}
+
+先看一個聽起來合理、但會錯的做法：對每一台飲水機，算出經過它的路線數，再全部
+加起來。 問題在於一條路線可能經過好幾台飲水機。 例如
+\begin{code}{text}{兩台飲水機在同一條路線上}
+.**
+...
+\end{code}
+從左上到右下有 $3$ 條路線：右右下經過兩台，右下右經過一台，下右右一台都沒經
+過，答案是 $2$。 照上面的做法，經過 $(1, 2)$ 的有 $2$ 條、經過 $(1, 3)$ 的有
+$1$ 條，加起來是 $3$，右右下被算了兩次。
+
+\textbf{做法一：反過來數。} 「至少經過一台」的反面是「一台都沒經過」。 先算
+全部的路線數，再把每台飲水機都當成花圃、算一次不經過飲水機的路線數，相減就
+是答案。 兩次都是第~\ref{sec:dp2-blocked}~小節的計數，只是要注意相減時的餘
+數（見本節的常見錯誤）。
+
+\textbf{做法二：一格記兩個數。} 「走到 $(i, j)$ 的路線」分成兩組：一路上還沒
+經過飲水機的，和已經經過的。 兩組之後的命運不同：前一組還要再找飲水機才算
+數，後一組已經滿足條件了。 所以每一格記兩個數：
+
+\begin{itemize}
+\item \texttt{no[i][j]}：走到 $(i, j)$、包含這一格在內都還沒經過飲水機的路線數。
+\item \texttt{yes[i][j]}：走到 $(i, j)$、包含這一格在內已經經過至少一台的路線數。
+\end{itemize}
+
+轉移時，先像平常一樣把北邊和西邊加起來，兩組分開加。 接著看這一格：
+
+\begin{itemize}
+\item 是 \texttt{.}：兩組都不變。
+\item 是 \texttt{*}：走進這一格之後，原本「還沒經過」的路線也經過了。 所以
+\texttt{yes} 是兩組加起來，\texttt{no} 變成 $0$。
+\item 是 \texttt{\#}：走不進來，兩組都是 $0$。
+\end{itemize}
+
+答案是 \texttt{yes[H][W]}。 起點的「走進來之前」是：還沒經過的有 $1$ 條，已
+經經過的有 $0$ 條；接著照起點自己的種類處理，起點是 \texttt{*} 就自動變成
+\texttt{yes} $= 1$。
+
+下表是範例每一格的（\texttt{no}, \texttt{yes}）。 $(2, 3)$ 是飲水機，北邊和
+西邊進來的 $(1, 0)$、$(0, 0)$ 合起來全部變成 \texttt{yes}；$(3, 1)$ 也一樣。
+
+\begin{center}
+\begin{tabular}{c|cccc}
+\toprule
+ & 第 1 行 & 第 2 行 & 第 3 行 & 第 4 行 \\
+\midrule
+第 1 列 & $(1, 0)$ & $(1, 0)$ & $(1, 0)$ & $(1, 0)$ \\
+第 2 列 & $(1, 0)$ & \texttt{\#} & $(0, 1)$ \texttt{*} & $(1, 1)$ \\
+第 3 列 & $(0, 1)$ \texttt{*} & $(0, 1)$ & $(0, 2)$ & $(1, 3)$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+右下角是 $(1, 3)$：沒經過飲水機的 $1$ 條，經過的 $3$ 條，答案是 $3$。 兩個數
+加起來是 $4$，就是不管飲水機時的總路線數。
+
+做法一只能回答「至少一台」這種剛好有反面可以數的問題。 做法二可以推廣，例如
+「剛好經過一台」或「至少經過兩台」，只要多分幾組（本章練習第~7~題）。 下面的
+程式用做法二。
+
+同樣的模型也出現在別的地方：外送員的路線至少要經過一個取餐點、巡邏路線至少
+要經過一個打卡點，都是「經過了沒有」這一個是非的資訊。
+
+\textbf{程式}
+
+\begin{example}[label=ex:dp2-fountain]{cpp}{(fountain.cpp) 至少經過一台飲水機的慢跑路線}
+#include <iostream>
+#include <string>
+#include <vector>
+using namespace std;
+
+const long long MOD = 1000000007;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int h, w;
+    cin >> h >> w;
+    vector<string> g(h);
+    for (string &row : g) {
+        cin >> row;
+    }
+    // no[i][j]：走到 (i, j)、一路上還沒經過飲水機的路線數
+    // yes[i][j]：走到 (i, j)、已經經過至少一台飲水機的路線數
+    // 列、行從 1 編號，第 0 列、第 0 行是多開的一圈，都是 0
+    vector<vector<long long>> no(h + 1, vector<long long>(w + 1));
+    vector<vector<long long>> yes = no;
+    for (int i = 1; i <= h; i++) {
+        for (int j = 1; j <= w; j++) {
+            char cell = g[i - 1][j - 1];
+            if (cell == '#') {
+                continue;              // 花圃：兩種都是 0
+            }
+            long long inNo, inYes;     // 走進這一格之前
+            if (i == 1 && j == 1) {
+                inNo = 1;              // 起點：還沒經過任何一格
+                inYes = 0;
+            } else {
+                inNo = (no[i - 1][j] + no[i][j - 1]) % MOD;
+                inYes = (yes[i - 1][j] + yes[i][j - 1]) % MOD;
+            }
+            if (cell == '*') {         // 走進飲水機：都算經過了
+                no[i][j] = 0;
+                yes[i][j] = (inNo + inYes) % MOD;
+            } else {
+                no[i][j] = inNo;
+                yes[i][j] = inYes;
+            }
+        }
+    }
+    cout << yes[h][w] << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+3 4 \\
+.... \\
+.\#*. \\
+*... \\
+}{
+3 \\
+}
+
+\begin{itemize}
+\item \texttt{vector<vector<long long>> yes = no;} 複製一份同樣大小、全部是
+$0$ 的表格。
+\item 花圃直接 \texttt{continue}，兩張表的那一格保持一開始的 $0$。 這裡可以這
+樣寫，是因為每一格只會被填一次；換成滾動陣列時就不行了，本章練習第~3~題會看到
+原因。
+\item 兩個小於 $10^9 + 7$ 的數相加，不超過 $2.1 \times 10^9$，\texttt{long
+long} 放得下，每次加完就取餘數。
+\item 起點是花圃時，\texttt{continue} 讓起點的兩個數都是 $0$，後面每一格也都
+是 $0$，答案自然是 $0$。
+\end{itemize}
+
+\textbf{複雜度}
+
+每一格做常數次運算，$O(HW)$，兩張表各 $25$ 萬格。 最大的測試資料在本書測試
+的環境下約 $0.02$ 秒。
+
+\subsection{常見錯誤}
+\label{sec:dp2-fountain-err}
+
+\begin{itemize}
+\item \textbf{反過來數，但相減後沒有處理負數}：兩個數都先取過餘數，前面的可能
+比後面的小。 例如 $18 \times 18$ 的格子全是 \texttt{.}，只有 $(1, 3)$ 是
+\texttt{*}，全部的路線數取餘數後是 $333606206$，避開飲水機的是 $767883493$。
+寫成 \texttt{(all - none) \% MOD}，在本書測試的環境下印出
+\texttt{-434277287}；正確答案是 \texttt{565722720}。 C++ 的 \texttt{\%} 對
+負數的結果是負的，要寫成 \texttt{(all - none + MOD) \% MOD}。
+\item \textbf{把經過每台飲水機的路線數加起來}：前面的 $2 \times 3$ 例子會得到
+$3$，正確答案是 $2$。
+\item \textbf{起點的飲水機沒算到}：把起點寫成「\texttt{no} $= 1$ 之後直接
+\texttt{continue}」，跳過了後面判斷 \texttt{*} 的那幾行。 輸入
+\begin{code}{text}{起點就有飲水機的輸入}
+3 3
+*..
+.#.
+...
+\end{code}
+正確答案是 \texttt{2}，這樣寫會印出 \texttt{0}。 起點也要經過「看這一格是什
+麼」那一步，只有「走進來之前」的值要特別給。
+\end{itemize}
+
+\subsection{格子加上一點資訊}
+
+這一節的狀態是「位置加上一個是非」。 一般來說，二維格子的狀態可以寫成「位置
+$(i, j)$，再加上一點資訊」，這點資訊要回答一個問題：從這裡開始，之後怎麼走才
+合規定、能得幾分，除了位置，還取決於過去的什麼？ 例題取決於「經過飲水機了沒
+有」，所以多記一個是非；如果取決於「已經經過幾台，最多算到 $K$ 台」，就多記
+$0$ 到 $K$ 這 $K + 1$ 種。
+
+估計時間的方法和第~9~章一樣：狀態數是 $H \times W \times$（資訊的種類數），
+再乘上每個狀態要看幾個前一狀態。 $500 \times 500$ 的格子，每格記十幾種資
+訊，仍然在幾百萬的數量級。 如果資訊多到要記「走過哪些格子」，種類數就變成指
+數，表格開不下，這時要回到第~4~章的回溯，只能處理很小的格子。
+
+\section{最大正方形}
+\label{sec:dp2-square}
+
+前面幾節的表格，一格存的是「走到這裡」的答案。 這一節換一種問法：每一格當作
+某個圖形的右下角，存「以這一格為右下角，最大能做到多大」。 這種狀態在找正方
+形時特別好用。
+
+\subsection{例題：單一花種的取景框}
+\label{sec:dp2-ex-frames}
+
+\textbf{題意}（\akiref{single-flower-photo-frames}{單一花種的取景框}）
+
+\begin{itemize}
+\item 花圃是 $n$ 列 $m$ 行的格子，每格是一個小寫字母，代表花的種類。
+\item 邊長 $k$ 的正方形取景框對齊格線、整個在花圃裡；框裡的 $k^2$ 格全是同一
+種花才合格。
+\item 有 $q$ 個問題，每個問題給一個 $k$，回答有幾個位置可以放下合格的邊長 $k$
+取景框。
+\item $n, m \le 500$，$q \le 2 \times 10^5$，$1 \le k \le 500$。
+\end{itemize}
+
+例如
+\begin{code}{text}{4 列 5 行的花圃}
+aabbb
+aabbb
+cabbb
+ccaaa
+\end{code}
+邊長 $1$ 有 $20$ 個位置，邊長 $2$ 有 $5$ 個（左上角的 \texttt{a} 一個，右邊
+\texttt{b} 的 $3 \times 3$ 裡四個），邊長 $3$ 有 $1$ 個，邊長 $4$ 沒有。
+
+\textbf{想法}
+
+最直接的做法：每個問題枚舉框的每個位置，再檢查框裡的 $k^2$ 格。 $n = m =
+500$、$k = 250$ 時，位置有 $251^2$ 個，每個檢查 $250^2$ 格，一個問題就大約
+$4 \times 10^9$ 次；$q$ 個問題更不用說。 就算把每個 $k$ 的答案事先算好存起來，$k$ 從 $1$ 到
+$500$ 全部檢查一遍也來不及。
+
+\textbf{換一個問法。} 對每一格 $(i, j)$，問「以它為右下角、全是同一種花的正
+方形，邊長最大是多少」，記為 \texttt{side[i][j]}。 如果
+\texttt{side[i][j]} $= s$，以 $(i, j)$ 為右下角、邊長 $k \le s$ 的正方形都包
+在那個 $s \times s$ 的正方形裡，一定合格；邊長 $k > s$ 的一定不合格。 所以這
+一格剛好替邊長 $1, 2, \ldots, s$ 各貢獻一個位置，邊長 $k$ 的答案就是
+\[
+\text{\texttt{side}} \ge k \text{ 的格子數}.
+\]
+先數出 \texttt{side} 剛好等於每個 $d$ 的格子數 \texttt{cnt[d]}，再從大到小
+累加，\texttt{cnt[k]} 就變成「至少是 $k$ 的格子數」，每個問題查一次表。
+
+剩下的問題是怎麼算 \texttt{side}。 先看一個會錯的想法：只看上面和左邊兩格。
+如果這一格和上面、左邊的花都一樣，就取兩者的最小值加一。 反例：
+\begin{code}{text}{只看兩個鄰居會錯的花圃}
+ba
+aa
+\end{code}
+右下角的 \texttt{a}，上面和左邊都是 \texttt{a}、\texttt{side} 都是 $1$，照這
+個規則得到 $2$；可是 $2 \times 2$ 的框裡左上角是 \texttt{b}，不合格。 上面和
+左邊兩個正方形合起來，剛好缺了左上角那一塊。
+
+正確的規則要看三個鄰居：上面、左邊、左上。 如果這一格和三個鄰居的花都相同，
+\[
+\text{\texttt{side[i][j]}} = \min\bigl(\text{\texttt{side[i-1][j]}},\
+\text{\texttt{side[i][j-1]}},\ \text{\texttt{side[i-1][j-1]}}\bigr) + 1,
+\]
+否則是 $1$（只有自己這一格）。 第一列、第一行沒有完整的三個鄰居，也是 $1$。
+
+直覺是下圖：三個鄰居各自的正方形，加上這一格自己，剛好蓋住一個大一號的正方
+形。 三個裡面只要有一個小，大正方形就會缺一塊，所以由最小的那一個決定。
+
+\begin{center}
+\begin{tikzpicture}[x=0.55cm, y=0.55cm]
+\draw[black!25] (0,0) grid (5,5);
+\fill[memFill] (4,0) rectangle (5,1);
+\draw[very thick, coreStroke] (2,1) rectangle (5,4);
+\draw[very thick, optStroke, dashed] (1,0) rectangle (4,3);
+\draw[very thick, greenStroke, dotted] (1,1) rectangle (4,4);
+\draw[ultra thick, memStroke] (1,0) rectangle (5,4);
+\node[font=\small] at (4.5,0.5) {$\ast$};
+\node[font=\small, right, align=left] at (5.6,3.5) {\textcolor{coreStroke}{實線}：上面那一格的正方形};
+\node[font=\small, right, align=left] at (5.6,2.5) {\textcolor{optStroke}{虛線}：左邊那一格的正方形};
+\node[font=\small, right, align=left] at (5.6,1.5) {\textcolor{greenStroke}{點線}：左上那一格的正方形};
+\node[font=\small, right, align=left] at (5.6,0.5) {橘色粗框：加上 $\ast$ 之後的 $4 \times 4$};
+\end{tikzpicture}
+\diagcaption{三個鄰居的 \texttt{side} 都是 $3$ 時，三個 $3 \times 3$ 正方形加上
+$\ast$ 這一格，蓋滿了以 $\ast$ 為右下角的 $4 \times 4$。}
+\label{fig:dp2-square}
+\end{center}
+
+\begin{whybox}[三個取最小值為什麼剛好]
+設 $(i, j)$ 和三個鄰居的花都是 $c$，三個鄰居的 \texttt{side} 最小值是 $t$。
+
+\textbf{至少是 $t + 1$。} 以三個鄰居為右下角、邊長 $t$ 的正方形都合格（它們
+的 \texttt{side} 都 $\ge t$），而且分別全是那一格的花，也就是 $c$。 以
+$(i, j)$ 為右下角、邊長 $t + 1$ 的正方形裡，除了 $(i, j)$ 自己以外的每一格，
+都落在這三個正方形的至少一個裡面：在最後一列的落在左邊那個裡，在最後一行的
+落在上面那個裡，其他的落在左上那個裡。 所以整個正方形都是 $c$。
+
+\textbf{不會超過 $t + 1$。} 假設以 $(i, j)$ 為右下角、邊長 $s$ 的正方形合格。
+把它的最後一列去掉，得到以 $(i - 1, j)$ 為右下角、邊長 $s - 1$ 的正方形（少
+了一列，寬度也只取右邊的 $s - 1$ 行），它是大正方形的一部分，也合格，所以
+\texttt{side[i-1][j]} $\ge s - 1$。 左邊和左上同理。 因此三個都 $\ge s - 1$，
+$t \ge s - 1$，也就是 $s \le t + 1$。
+
+這一格和三個鄰居只要有一格的花不同，任何邊長 $2$ 以上的正方形都會同時框到兩
+種花，所以只能是 $1$。
+\end{whybox}
+
+範例的 \texttt{side}：
+
+\begin{center}
+\begin{tikzpicture}[x=0.62cm, y=0.62cm,
+    g/.style={draw=black!55, minimum size=0.62cm, inner sep=0pt, font=\small\ttfamily},
+    hl/.style={g, draw=memStroke, thick, fill=memFill}]
+\begin{scope}
+\node[font=\small] at (2,1) {花圃};
+\foreach \row [count=\r from 0] in {{a,a,b,b,b},{a,a,b,b,b},{c,a,b,b,b},{c,c,a,a,a}} {
+  \foreach \v [count=\c from 0] in \row {
+    \node[g] at (\c,-\r) {\v};
+  }
+}
+\end{scope}
+\begin{scope}[xshift=4.6cm]
+\node[font=\small] at (2,1) {\texttt{side}};
+\foreach \row [count=\r from 0] in {{1,1,1,1,1},{1,2,1,2,2},{1,1,1,2,3},{1,1,1,1,1}} {
+  \foreach \v [count=\c from 0] in \row {
+    \node[g] at (\c,-\r) {\v};
+  }
+}
+\node[hl] at (4,-2) {3};
+\end{scope}
+\end{tikzpicture}
+\diagcaption{範例的花圃和 \texttt{side}。 第 $2$ 列第 $1$ 行（從 $0$ 編號）的
+\texttt{a} 和上面、左上都是 \texttt{a}，但左邊是 \texttt{c}，所以是 $1$。}
+\label{fig:dp2-side}
+\end{center}
+
+\texttt{side} 等於 $1, 2, 3$ 的格子分別有 $15, 4, 1$ 格。 從大到小累加：至少
+$3$ 的有 $1$ 格，至少 $2$ 的有 $5$ 格，至少 $1$ 的有 $20$ 格，就是範例的答案。
+
+同樣的模型也出現在別的地方：在一塊有些地方不能用的空地上，找能蓋最大正方形
+建物的位置；在影像裡找顏色一致的最大方塊。
+
+\textbf{程式}
+
+\begin{example}[label=ex:dp2-frames]{cpp}{(frames.cpp) 單一花種的取景框}
+#include <algorithm>
+#include <iostream>
+#include <string>
+#include <vector>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n, m;
+    cin >> n >> m;
+    vector<string> g(n);
+    for (string &row : g) {
+        cin >> row;
+    }
+    // side[i][j]：右下角在 (i, j)、全是同一種花的正方形的最大邊長
+    vector<vector<int>> side(n, vector<int>(m, 1));
+    vector<long long> cnt(502, 0);  // cnt[d]：side 剛好是 d 的格子數
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < m; j++) {
+            char c = g[i][j];
+            if (i > 0 && j > 0 && c == g[i - 1][j] &&
+                c == g[i][j - 1] && c == g[i - 1][j - 1]) {
+                side[i][j] = min({side[i - 1][j], side[i][j - 1],
+                                  side[i - 1][j - 1]}) + 1;
+            }
+            cnt[side[i][j]]++;
+        }
+    }
+    // 由大到小累加：cnt[k] 變成 side 至少是 k 的格子數
+    for (int k = 500; k >= 1; k--) {
+        cnt[k] += cnt[k + 1];
+    }
+    int q;
+    cin >> q;
+    while (q--) {
+        int k;
+        cin >> k;
+        cout << cnt[k] << '\n';
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+4 5 \\
+aabbb \\
+aabbb \\
+cabbb \\
+ccaaa \\
+4 \\
+1 2 3 4 \\
+}{
+20 \\
+5 \\
+1 \\
+0 \\
+}
+
+\begin{itemize}
+\item \texttt{side} 一開始全是 $1$，條件不成立的格子（包括第一列、第一行）就
+保持 $1$。
+\item \texttt{min(\{a, b, c\})} 用大括號一次比三個數，需要
+\texttt{<algorithm>}。
+\item \texttt{side} 最大是 $500$，累加時會讀到 \texttt{cnt[501]}，所以開
+$502$ 格。 $k$ 比 $n$ 或 $m$ 大時，\texttt{cnt[k]} 自然是 $0$，不用特別判斷。
+\item 輸出最多 $2 \times 10^5$ 行，用 \texttt{'\textbackslash n'} 而不用
+\texttt{endl}，避免每一行都清一次輸出緩衝區。
+\end{itemize}
+
+\textbf{複雜度}
+
+填表 $O(nm)$，累加 $O(500)$，每個問題 $O(1)$，總共 $O(nm + q)$。 最大的測試資
+料在本書測試的環境下約 $0.06$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{只數剛好等於 $k$ 的格子}：少了累加那個迴圈，範例印出
+\texttt{15 4 1 0}（每個數一行）。 右邊那塊 \texttt{b} 的 \texttt{side} 是
+$3$，它裡面以同一格為右下角的 $2 \times 2$ 也合格，卻沒被算到。
+\item \textbf{只檢查上面和左邊的花}：條件裡少了 \texttt{g[i - 1][j - 1]}，
+上面的 \texttt{ba}／\texttt{aa} 問邊長 $2$ 時印出 \texttt{1}，正確是 \texttt{0}。
+\item \textbf{每個問題重新掃一遍}：每個問題都把 \texttt{side} 整張表掃一次，
+數有幾格 $\ge k$，一個問題 $25$ 萬格，$2 \times 10^5$ 個問題就是 $5 \times
+10^{10}$，來不及。 問題很多時，先把所有可能的答案算好。
+\end{itemize}
+
+\section{從正方形到矩形}
+\label{sec:dp2-rect}
+
+矩形比正方形多一個自由度：寬和高可以不同。 上一節「以這一格為右下角的最大正
+方形」只要一個數字就描述得完，矩形不行，所以要換別的方法。 這一節整理三種常
+見的工具，章末的實作練習會用到。
+
+\subsection{二維前綴和}
+\label{sec:dp2-prefix2d}
+
+第~5~章的前綴和推廣到二維：$S(i, j)$ 是左上角 $i$ 列 $j$ 行那一塊的總和，
+$S(0, \cdot) = S(\cdot, 0) = 0$。 它本身就是一張由上往下、由左往右填的表：
+\[
+S(i, j) = S(i - 1, j) + S(i, j - 1) - S(i - 1, j - 1) + a_{i,j}.
+\]
+上面那塊和左邊那塊重疊的部分（左上那塊）被加了兩次，所以減掉一次。 有了 $S$，
+第 $r_1$ 到 $r_2$ 列、第 $c_1$ 到 $c_2$ 行的矩形總和用同樣的想法算：
+\[
+S(r_2, c_2) - S(r_1 - 1, c_2) - S(r_2, c_1 - 1) + S(r_1 - 1, c_1 - 1).
+\]
+\begin{code}{cpp}{二維前綴和}
+// a 和 S 都從 1 編號，S 多開一圈 0
+for (int i = 1; i <= R; i++) {
+    for (int j = 1; j <= C; j++) {
+        S[i][j] = S[i-1][j] + S[i][j-1] - S[i-1][j-1] + a[i][j];
+    }
+}
+// 第 r1 到 r2 列、第 c1 到 c2 行的總和
+long long rect = S[r2][c2] - S[r1-1][c2]
+               - S[r2][c1-1] + S[r1-1][c1-1];
+\end{code}
+有了它，每個矩形的總和都是 $O(1)$。 枚舉所有矩形是 $O(R^2 C^2)$，$R = C = 50$
+時大約 $6 \times 10^6$ 個，來得及；$R = C = 200$ 就有 $16$ 億個，太多了。
+
+\subsection{總和最大的矩形}
+\label{sec:dp2-maxrect}
+
+要找總和最大的矩形，先固定它的上邊在第 $a$ 列、下邊在第 $b$ 列。 這時每一行
+在第 $a$ 到第 $b$ 列的部分，可以壓成一個數：這一行在這幾列的總和。 矩形就變
+成這排數字裡連續的一段，問題變成一維的最大區間和，用第~9~章 9.6 節的 \texttt{endAt}（或第~5~章的前綴和）一次掃過去。
+
+例如
+\[
+\begin{matrix}
+1 & -2 & -3 & 2 \\
+-4 & 3 & 2 & -1 \\
+2 & 1 & 4 & -5
+\end{matrix}
+\]
+固定第 $2$ 到第 $3$ 列，四行壓成 $-2, 4, 6, -6$，最大的連續一段是 $4 + 6 =
+10$，也就是第 $2$ 到第 $3$ 列、第 $2$ 到第 $3$ 行的矩形。 對每一組 $(a, b)$ 都
+做一次，取最大的，這個例子的答案就是 $10$。
+
+\begin{code}{cpp}{固定上下兩列，壓成一維}
+long long best = LLONG_MIN;
+for (int a = 1; a <= R; a++) {
+    vector<long long> col(C + 1, 0);  // 第 j 行在第 a 到 b 列的總和
+    for (int b = a; b <= R; b++) {
+        long long endAt = 0;          // 以第 j 行結尾的最大總和
+        for (int j = 1; j <= C; j++) {
+            col[j] += A[b][j];        // b 往下一列，每行多加一格
+            endAt = col[j] + max(endAt, 0LL);  // 前面是負的就不接
+            best = max(best, endAt);
+        }
+    }
+}
+\end{code}
+\texttt{b} 往下移一列時，\texttt{col} 不用重算，每一行加上新的一格就好。 時間
+是 $O(R^2 C)$。 $R$ 和 $C$ 差很多時，讓比較小的那一邊當成被固定的「列」，例如
+$R = 20$、$C = 10^5$ 是 $4 \times 10^7$，反過來就是 $2 \times 10^{11}$。
+
+\subsection{全空的最大矩形}
+
+另一種常見的題目：格子裡有些格子是壞的，找不含壞格子、面積最大的矩形。 逐列
+處理，對第 $i$ 列的每一行，記下「從第 $i$ 列往上數，連續幾格是好的」，叫做
+高度 \texttt{up[j]}。 \texttt{up} 本身是一個很簡單的動態規劃：好的格子是上一
+列的 \texttt{up[j]} 加一，壞的格子是 $0$，可以用滾動陣列只留一列。
+
+把第 $i$ 列的 \texttt{up} 畫成一排長條，以第 $i$ 列為底邊的矩形，就是這排長條
+裡的矩形。 每一根長條往左、往右能延伸到第一根比它矮的長條為止，用第~6~章
+6.3 節的單調堆疊，一列是 $O(C)$，整張表 $O(RC)$。 例如某一
+列的高度是 $2, 3, 3, 1$，以高度 $3$ 為高的矩形可以橫跨第 $2$、$3$ 行，面積
+$6$；以高度 $2$ 為高的可以橫跨前三行，面積也是 $6$。
+
+\section{什麼時候用格子上的動態規劃}
+\label{sec:dp2-when}
+
+\begin{itemize}
+\item 輸入是一張格子或表格，移動只朝固定的方向（往右和往下，或一列一列往下），
+問「有幾種」「最少」「最多」。
+\item 格子數在幾百萬以內，每一格只看常數個鄰居。 $500 \times 500$、
+$1000 \times 1000$、$2000 \times 2000$ 都是常見的範圍。
+\item 每一格的答案，只需要「怎麼走到這一格」的少量資訊，例如經過了沒有、用了幾
+次；這些資訊放進狀態，表格多幾層。
+\item 問正方形時，用「以這一格為右下角」當狀態；問矩形時，先想二維前綴和、固定
+兩列壓成一維、逐列的高度三種工具。
+\end{itemize}
+
+看起來像、但不能直接用的情況：
+
+\begin{itemize}
+\item 可以往四個方向走，例如迷宮。 狀態圖有環（往右再往左就回到原地），找不到計
+算順序，第~9~章說過的事在這裡一樣成立。 每一步的成本都一樣時，用第~12~章的
+廣度優先搜尋；成本不同時，要用加權最短路徑，本書不談。
+\item 規定路線不能重複經過同一格，而且可以往回走：要記住走過哪些格子，狀態數
+是指數，只有很小的格子可以用第~4~章的回溯。
+\end{itemize}
+
+\section{本章常見錯誤}
+\label{sec:dp2-pitfalls}
+
+各節的錯誤，歸納起來是五類。 寫完格子的動態規劃，交出去之前逐項檢查。
+
+\begin{center}
+\begin{tabular}{p{0.2\linewidth}p{0.46\linewidth}p{0.22\linewidth}}
+\toprule
+錯誤 & 例子 & 見 \\
+\midrule
+邊界與初始值 & 第一列、第一行直接設成 $1$，忽略障礙；起點的飲水機沒算；
+多開一圈卻沒有減一 & 第~\ref{sec:dp2-blocked}、\ref{sec:dp2-border}、
+\ref{sec:dp2-fountain-err}~節 \\
+轉移漏了來源 & 正方形只看上、左兩格；兩個方向用同一個高度差 &
+第~\ref{sec:dp2-ex-frames}、\ref{sec:dp2-uphill-err}~節 \\
+狀態少了資訊 & 把經過每台飲水機的路線數加起來，重複計算；用貪心選下一步 &
+第~\ref{sec:dp2-ex-uphill}、\ref{sec:dp2-ex-fountain}~節 \\
+滾動陣列的覆寫順序 & 填的方向反了，用到還沒更新的值；先寫回再比較；障礙格
+\texttt{continue} 留下上一列的值 & 第~\ref{sec:dp2-rolling}~節、練習第~3~題 \\
+型別與餘數 & 耗電總和用 \texttt{int}；相減後沒有加回 $10^9 + 7$ &
+第~\ref{sec:dp2-uphill-err}、\ref{sec:dp2-fountain-err}~節 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+另外一個和格子特別有關的習慣：自己測試時，一定要有一組列數和行數不同的輸入，
+以及一組只有一列或只有一行的輸入。 列、行寫反和邊界沒處理好，用正方形的格子
+都看不出來。
+
+\section{本章練習}
+\label{sec:dp2-exercises}
+
+\begin{drills}[label=drills:dp2]
+\item 每一格有一個過路費，起點和終點也要付，從左上角往右、往下走到右下角：
+\[
+\begin{matrix}
+3 & 1 & 4 & 1 \\
+2 & 7 & 1 & 8 \\
+5 & 2 & 1 & 3 \\
+1 & 6 & 2 & 1
+\end{matrix}
+\]
+\begin{enumerate}
+\item 寫出狀態、轉移和初始值，手動填出整張表，答案是多少？ 寫出一條最省的
+路線。
+\item 如果有些格子不能走，有人把不能走的格子設成 \texttt{LLONG\_MAX}，轉移照
+樣寫 \texttt{min(best[i-1][j], best[i][j-1]) + a[i][j]}。 這樣會出什麼問題？
+怎麼改？
+\end{enumerate}
+
+\item 用範例~\ref{ex:dp2-roll} 跑範例~\ref{ex:dp2-uphill} 的輸入（$3$ 列 $4$ 行
+那一組）。
+\begin{enumerate}
+\item 第 $0$ 列算完時，\texttt{best} 的內容是什麼？
+\item 第 $1$ 列剛算完 \texttt{j = 1} 那一格時，\texttt{best} 的內容是什麼？
+哪幾格是第 $1$ 列的值，哪幾格還是第 $0$ 列的值？
+\end{enumerate}
+
+\item 有人把範例~\ref{ex:dp2-streets} 改成滾動陣列：
+\begin{code}{cpp}{練習 3}
+vector<long long> f(c + 1, 0);
+for (int i = 1; i <= r; i++) {
+    for (int j = 1; j <= c; j++) {
+        if (g[i - 1][j - 1] == 'x') {
+            continue;
+        }
+        if (i == 1 && j == 1) {
+            f[j] = 1;
+        } else {
+            f[j] = f[j] + f[j - 1];
+        }
+    }
+}
+cout << f[c] << '\n';
+\end{code}
+範例~\ref{ex:dp2-streets} 的輸入會印出什麼？ 錯在哪裡？ 怎麼改？
+
+\item 直接照轉移式寫成遞迴，不加記憶化：
+\begin{code}{cpp}{練習 4}
+long long paths(int i, int j) {
+    if (i == 1 || j == 1) {
+        return 1;
+    }
+    return paths(i - 1, j) + paths(i, j - 1);
+}
+\end{code}
+\begin{enumerate}
+\item 呼叫 \texttt{paths(4, 5)}，回傳值是多少？ \texttt{paths} 一共被呼叫幾
+次（包括第一次）？
+\item 說明一般來說，呼叫次數 $= 2 \times$ 回傳值 $- 1$。（提示：每一次呼叫不
+是直接回傳 $1$，就是剛好再呼叫兩次。）
+\item 照第~9~章 \texttt{stamps\_memo.cpp} 的方式加上記憶化（查表的呼叫也算一
+次），\texttt{paths(4, 5)} 一共被呼叫幾次？
+\end{enumerate}
+
+\item 照範例~\ref{ex:dp2-frames} 的規則，填出下面花圃的 \texttt{side}，並回答
+邊長 $1$ 到 $4$ 各有幾個合格的位置。
+\begin{code}{text}{練習 5 的花圃}
+aabba
+aabbb
+bbbbb
+abbbb
+aabbb
+\end{code}
+
+\item 第~\ref{sec:dp2-paths}~節的路線計數，如果除了往東、往南，還可以往東南斜
+走一步（從 $(i, j)$ 直接到 $(i + 1, j + 1)$）：
+\begin{enumerate}
+\item 寫出新的轉移式。
+\item 改成只留一列的滾動陣列，由左往右填。 為什麼需要多一個變數？ 寫出迴圈。
+\end{enumerate}
+
+\item 把例題改成「剛好經過一台飲水機」的路線數。
+\begin{enumerate}
+\item 每一格要記幾個數？ 寫出它們的意義和走進 \texttt{*} 時的轉移。
+\item 第~\ref{sec:dp2-ex-fountain}~小節 $2 \times 3$ 的例子（\texttt{.**}／
+\texttt{...}）答案是多少？
+\end{enumerate}
+\end{drills}
+
+\section{實作練習}
+\label{sec:dp2-practice}
+
+下面是 Aki-Judge 上和本章相關的題目，依小節分組。 難度分四階：暖身是直接套用
+本章的寫法；基本要自己定出狀態和轉移；實戰的題敘比較長，要先把題目轉換成本章
+的形狀；挑戰會和其他章的技巧合在一起，或需要更多維的狀態。
+
+\begin{center}
+\begin{tabular}{llc}
+\toprule
+小節 & 題目 & 難度 \\
+\midrule
+路線計數與障礙 & \akiref{night-market-snack-plans}{夜市小吃組合數} & 暖身 \\
+ & \akiref{routes-through-one-way-corridors}{單向走廊的路線數} & 暖身 \\
+ & \akiref{seepage-from-the-top-row}{從頂層滲到底層的水路} & 基本 \\
+ & \akiref{stepping-over-puddles}{跨過水坑的上學路線} & 基本 \\
+ & \akiref{clear-just-one-shelf}{只移走一座貨架} & 基本 \\
+\midrule
+最小成本與最大分數 & \akiref{best-route-through-the-stamp-booth}{必經集章點的最高分路線} & 暖身 \\
+ & \akiref{tolls-to-every-drop-off}{每個送貨點的最低過路費} & 基本 \\
+ & \akiref{drilling-down-the-ore-pyramid}{礦層金字塔的鑽探路線} & 基本 \\
+ & \akiref{best-score-at-every-exit-slot}{彈珠斜板各出口的最高分} & 基本 \\
+ & \akiref{the-route-with-the-strongest-weakest-signal}{訊號最弱處最強的路線} & 基本 \\
+ & \akiref{best-route-when-one-square-is-closed}{單格封閉後的最佳路線} & 挑戰 \\
+ & \akiref{capped-battery-least-starting-charge}{有容量上限的電池：最少起始電量} & 挑戰 \\
+\midrule
+一格記多個數字 & \akiref{cheapest-routes-and-one-coin-more}{最省和只多一枚的路線} & 基本 \\
+ & \akiref{one-take-drone-footage}{只錄一段的空拍路線} & 基本 \\
+ & \akiref{the-cart-that-hates-turning}{轉彎次數有限的推車} & 實戰 \\
+ & \akiref{waivers-from-the-supply-stations}{補給站的免罰券} & 實戰 \\
+ & \akiref{a-workout-plan-without-back-to-back-muscle-groups}{不連練同一部位的課表} & 挑戰 \\
+ & \akiref{toggle-tiles-on-a-round-trip}{來回踩燈磚} & 挑戰 \\
+ & \akiref{two-boats-dragging-a-net}{雙船拖網} & 挑戰 \\
+\midrule
+正方形與矩形 & \akiref{best-crop-that-keeps-the-subject}{保留主角的最佳裁切} & 基本 \\
+ & \akiref{booth-area-with-a-minimum-size}{尺寸有下限的最佳攤位區} & 基本 \\
+ & \akiref{smallest-rectangle-reaching-the-target}{發電量達標的最小屋頂區塊} & 基本 \\
+ & \akiref{the-most-fertile-stone-free-plot}{避開石頭的最肥沃菜園} & 實戰 \\
+ & \akiref{sticker-sizes-on-a-cracked-wall}{裂磚牆上貼得下的壁貼尺寸} & 挑戰 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+本章的三題例題也在 Aki-Judge 上，讀完各節之後可以先自己寫一次再對照。
+
+\section{讀完你應該會}
+\label{sec:dp2-checklist}
+
+\begin{itemize}
+\item 看到只能往右、往下走的格子題，能用「最後一步從哪裡來」寫出計數、最少、最
+多三種轉移，並正確處理第一列、第一行和走不進去的格子。
+\item 能在「多開一圈」和「先判斷再用」兩種邊界寫法中選一種，寫完後用列數、行數
+不同的輸入測試。
+\item 能把二維表格改成只留一列的滾動陣列，說出填第 $j$ 格時陣列裡每一格是哪一
+列的值，並判斷覆寫的方向。
+\item 轉移時發現只知道「走到這裡的答案」不夠，能把缺的資訊（例如經過了沒有）加
+進狀態，並估計表格的大小。
+\item 能用「以這一格為右下角的最大邊長」解正方形的題目，並說明為什麼要取三個鄰
+居的最小值；看到矩形的題目，能想到二維前綴和、固定兩列壓成一維、逐列的高度三
+種工具。
+\end{itemize}
+
+\textbf{延伸閱讀}（書末會整理完整的參考資料）
+
+\begin{itemize}
+\item Antti Laaksonen，\textit{Competitive Programmer's Handbook}，7.3 節：格
+子上的路徑，一頁就講完，可以拿來快速複習。
+\item 劉汝佳，《算法競賽入門經典》第 2 版，9.1 節：從數字三角形講格子型的動態
+規劃，比較遞迴、記憶化與填表。
+\item Steven Halim 等，\textit{Competitive Programming 4}，Book 1，3.5.2 節：
+總和最大的矩形，從暴力一路改進到固定兩列的做法。
+\item Thomas H. Cormen 等，\textit{Introduction to Algorithms}，第 4 版，
+14.4 節：最長共同子序列，同樣是一格看上、左、左上三格的二維表格，第~16~章會
+再遇到。
+\end{itemize}
+
+\addcontentsline{toc}{section}{練習解答}
+\section*{練習解答}
+
+\begin{enumerate}
+\item
+\begin{enumerate}
+\item \texttt{best[i][j]}：從左上角走到 $(i, j)$、包含兩端的最少過路費。 轉移
+是 $\min(\text{上}, \text{左}) + a_{i,j}$，第一列只能從左、第一行只能從上；
+初始值是起點自己的 $3$。 填好的表：
+\[
+\begin{matrix}
+3 & 4 & 8 & 9 \\
+5 & 11 & 9 & 17 \\
+10 & 12 & 10 & 13 \\
+11 & 17 & 12 & 13
+\end{matrix}
+\]
+答案是 $13$。 從右下角往回找「是從哪一格來的」：$13 = 12 + 1$ 來自左邊，
+$12 = 10 + 2$ 來自上面，依此類推，路線是
+$3 \to 1 \to 4 \to 1 \to 1 \to 2 \to 1$，也就是右、右、下、下、下、右。
+\item 不能走的格子是 \texttt{LLONG\_MAX}，它南邊或東邊的格子取最小值時，如果
+另一邊也是 \texttt{LLONG\_MAX}（兩邊都到不了），就會算
+\texttt{LLONG\_MAX + a[i][j]}，溢位成負數，變成「最省」。 改法：不能走的格子
+直接跳過、保持 \texttt{LLONG\_MAX}；能走的格子，兩個來源都是
+\texttt{LLONG\_MAX} 時保持 \texttt{LLONG\_MAX}，否則才拿比較小的那個加上
+\texttt{a[i][j]}。 也可以用一個不會溢位的「很大的數」，例如 $4 \times
+10^{18}$ 或 \texttt{LLONG\_MAX / 2}，但要確認「很大的數加上一條路線的總和」仍
+然不會超過 \texttt{long long}，而且最後要判斷答案是不是還那麼大（到不了）。
+\end{enumerate}
+
+\item
+\begin{enumerate}
+\item \texttt{0 4 4 4}。
+\item \texttt{2 2 4 4}。 前兩格是第 $1$ 列的值（\texttt{best[1][0]} $= 2$、
+\texttt{best[1][1]} $= 2$），後兩格還是第 $0$ 列的值。 這正是
+圖~\ref{fig:dp2-roll} 的狀態。
+\end{enumerate}
+
+\item 印出 \texttt{15}，正確是 $11$。 一整張表時，施工的格子一開始就是 $0$，
+\texttt{continue} 不會出錯；只留一列時，\texttt{f[j]} 裡是上一列同一行的值，
+\texttt{continue} 讓它原封不動留下來，等於施工的路口「到得了」，而且路線數和
+它北邊的路口一樣。 範例裡 $(3, 4)$ 施工，\texttt{f[4]} 留著第 $2$ 列的 $2$，
+最後算出 $15$。 改法是把 \texttt{continue} 換成 \texttt{f[j] = 0;}（再
+\texttt{continue}）。 這也是滾動陣列的一般原則：每一格每一輪都要寫入，不能
+因為「不能走」就跳過。
+
+\item
+\begin{enumerate}
+\item 回傳 $35$，一共被呼叫 $69$ 次。
+\item 回傳 $1$ 的呼叫是遞迴樹的葉子，答案是所有葉子的 $1$ 加起來，所以葉子有
+「回傳值」個。 其他每一次呼叫剛好有兩個子呼叫，這樣的樹，內部的點數比葉子少
+一，總數是 $2 \times$ 回傳值 $- 1$。 回傳值本身就是路線數，所以不加記憶化的
+遞迴，呼叫次數和路線數同一個數量級，$500 \times 500$ 的格子完全不可能。
+\item $25$ 次。 需要算的是 $i \ge 2$、$j \ge 2$ 的 $3 \times 4 = 12$ 個狀態，每
+個第一次被算時呼叫兩次，加上最外面那一次，$1 + 2 \times 12 = 25$。
+\end{enumerate}
+
+\item \texttt{side} 是
+\[
+\begin{matrix}
+1 & 1 & 1 & 1 & 1 \\
+1 & 2 & 1 & 2 & 1 \\
+1 & 1 & 1 & 2 & 2 \\
+1 & 1 & 2 & 2 & 3 \\
+1 & 1 & 1 & 2 & 3
+\end{matrix}
+\]
+邊長 $1$ 到 $4$ 各有 $25, 9, 2, 0$ 個位置。 例如第 $4$ 列第 $4$ 行（從 $0$ 編
+號）：四格都是 \texttt{b}，上面是 $3$，左邊和左上都是 $2$，取最小值加一是
+$3$。
+
+\item
+\begin{enumerate}
+\item $f(i, j) = f(i - 1, j) + f(i, j - 1) + f(i - 1, j - 1)$，三個不存在的鄰居
+都當成 $0$。
+\item 填第 $j$ 格時，需要上一列的 \texttt{f[j]}（上）和 \texttt{f[j - 1]}
+（左上），以及這一列的 \texttt{f[j - 1]}（左）。 可是 \texttt{f[j - 1]} 只有一
+格，填第 $j - 1$ 格時已經把上一列的值蓋掉了。 所以在蓋掉之前，先把舊的值存在
+變數 \texttt{diag} 裡：
+\begin{code}{cpp}{練習 6 的解答}
+for (int i = 1; i <= r; i++) {
+    long long diag = 0;                   // 上一列的 f[j - 1]
+    for (int j = 1; j <= c; j++) {
+        long long up = f[j];     // 上一列的 f[j]，等一下會被蓋掉
+        if (g[i - 1][j - 1] == 'x') {
+            f[j] = 0;
+        } else if (i == 1 && j == 1) {
+            f[j] = 1;
+        } else {
+            f[j] = up + f[j - 1] + diag;
+        }
+        diag = up;               // 下一格的左上，就是這一格的上
+    }
+}
+\end{code}
+\end{enumerate}
+
+\item
+\begin{enumerate}
+\item 三個數：走到這裡經過了 $0$ 台、剛好 $1$ 台、$2$ 台以上的路線數。 經過 $2$
+台以上的不會再變回合格，但仍然要記下來，否則下一台飲水機會把它們誤算成「剛好
+$1$ 台」。（只記 $0$ 台和 $1$ 台、遇到 \texttt{*} 時把 $1$ 台的直接丟掉，也
+可以，效果一樣。） 走進 \texttt{*} 時，$0$ 台的變成 $1$ 台，$1$ 台和 $2$ 台
+以上的都變成 $2$ 台以上；走進 \texttt{.} 時三組都不變。 答案是右下角的「剛好
+$1$ 台」。
+\item $1$。 只有右下右這條剛好經過一台。
+\end{enumerate}
+\end{enumerate}
