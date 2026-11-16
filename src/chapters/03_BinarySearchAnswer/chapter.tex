@@ -1,4 +1,1316 @@
-% 佔位：本章尚未開始。book.tex 裡先註解掉。
 \chapter{二分搜尋答案}
+\label{ch:binary-search}
 
-本章尚未開始。
+% 本章用到的小圖：一排格子，代表一個陣列或一串「行／不行」。
+%   \bsarrayrow{y}{lo}{hi}{mid}{左邊的標籤}
+% 畫出陣列 4 9 15 15 22 31 40 58。 下標 <= lo 的格子塗灰（已知太小），
+% 下標 >= hi 的格子塗藍（已知夠大），mid 用橘色，其他是還沒排除的。
+\newcommand{\bsarrayrow}[5]{%
+    \node[left, font=\small] at (-0.6,#1) {#5};
+    \foreach \bsv [count=\bsi from 0] in {4,9,15,15,22,31,40,58} {
+        \ifnum\bsi=#4
+            \node[hlcell] at (\bsi*0.95,#1) {\bsv};
+        \else\ifnum\bsi>#2 \ifnum\bsi<#3
+            \node[cell] at (\bsi*0.95,#1) {\bsv};
+        \else
+            \node[cell, fill=coreFill] at (\bsi*0.95,#1) {\bsv};
+        \fi\else
+            \node[cell, fill=black!12] at (\bsi*0.95,#1) {\bsv};
+        \fi\fi
+    }%
+}
+% 一格「行／不行」：\bscellT{x}{y}{文字}、\bscellF{x}{y}{文字}
+\newcommand{\bscellT}[3]{\node[cell, fill=coreFill, minimum width=0.62cm] at ({#1},{#2}) {#3};}
+\newcommand{\bscellF}[3]{\node[cell, fill=black!12, minimum width=0.62cm] at ({#1},{#2}) {#3};}
+
+朋友心裡想了一個 $1$ 到 $1000$ 之間的整數，你每猜一個數，他只會回答「太大」
+「太小」或「對了」。 最少要準備猜幾次，才能保證一定猜中？ 往下讀之前，先想
+想你第一個會猜哪個數，以及為什麼。
+
+再換一個問題。 一台加熱器的功率可以從 $0$ 調到很大，功率越大越耗電。 給你
+接下來每個小時的氣溫，要找出讓魚缸水溫一直不低於某個溫度的最小功率。 直接用
+公式算功率很麻煩，可是「功率定成 $7$ 夠不夠」只要照著每個小時模擬一次就知道。
+如果功率 $7$ 夠，$8$ 一定也夠；$6$ 不夠，$5$ 一定也不夠。 這兩個問題其實是
+同一件事。
+
+第一個問題的答案是每次猜剩下範圍的正中間，因為不管朋友回答太大還是太小，都
+能丟掉一半的可能，這叫\textbf{二分搜尋}（binary search）。 第二個問題把「找
+最小的功率」換成一連串「這個功率夠不夠」的問題，再對功率做二分搜尋，叫
+\textbf{對答案二分搜}（binary search on the answer）。 這一章先講第一種，在
+排好序的資料裡找位置；接著講第二種，它的用途比第一種廣得多，很多「最少要多少」
+「最多可以多少」的題目都靠它。
+
+這一章只用一種二分搜的寫法，從陣列到對答案都套同一個骨架，邊界的問題只要想
+清楚一次。 用到的語法在銜接書都講過：\texttt{lower\_bound}、
+\texttt{upper\_bound} 和半開區間在第~9~章，解題程式的骨架和從資料範圍估計時
+間在第~10~章 10.1 節。 沒讀過銜接書的讀者，只要知道 \texttt{vector} 怎麼
+用，以及 \texttt{long long} 的範圍大約到 $9 \times 10^{18}$，就能讀這一章。
+
+\section{每次丟掉一半}
+\label{sec:bs-halving}
+
+先把猜數字的過程寫下來。 假設朋友想的是 $697$，每次都猜目前範圍的正中間（除
+以 $2$ 無條件捨去）：
+
+\begin{center}
+\begin{tabular}{cccc}
+\toprule
+第幾次 & 猜 & 回答 & 剩下的範圍（個數） \\
+\midrule
+1 & 500 & 太小 & $[501, 1000]$（500） \\
+2 & 750 & 太大 & $[501, 749]$（249） \\
+3 & 625 & 太小 & $[626, 749]$（124） \\
+4 & 687 & 太小 & $[688, 749]$（62） \\
+5 & 718 & 太大 & $[688, 717]$（30） \\
+6 & 702 & 太大 & $[688, 701]$（14） \\
+7 & 694 & 太小 & $[695, 701]$（7） \\
+8 & 698 & 太大 & $[695, 697]$（3） \\
+9 & 696 & 太小 & $[697, 697]$（1） \\
+10 & 697 & 對了 & \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+每猜一次，剩下的個數至少少掉一半。 $1000$ 減半 $10$ 次就剩 $1$ 個（$2^{10} =
+1024 \ge 1000$），所以準備 $10$ 次一定夠。 換成一個一個猜（$1, 2, 3, \ldots$），
+最壞要猜 $1000$ 次。 範圍變成 $10^9$ 時，一個一個猜要十億次，每次猜中間只要
+$30$ 次。 這個差距就是二分搜尋的價值：做的次數從 $n$ 變成大約 $\log_2 n$。
+
+\subsection{在排好的陣列裡找位置}
+\label{sec:bs-template}
+
+把猜數字搬到陣列上。 下面這個陣列已經由小到大排好：
+
+\[
+a = [\,4,\ 9,\ 15,\ 15,\ 22,\ 31,\ 40,\ 58\,] \qquad (n = 8)
+\]
+
+問題：\textbf{第一個大於或等於 $x$ 的元素在哪個位置？} 例如 $x = 20$ 的答案
+是下標 $4$（元素 $22$）；$x = 15$ 的答案是下標 $2$，有兩個 $15$ 時要第一個；
+$x = 60$ 比每一個都大，約定答案是 $n = 8$，表示「沒有」。
+
+最直接的做法是從左往右找，$O(n)$。 只問一次的話這樣就好；如果要問 $q$ 次，
+$n$、$q$ 都是 $2 \times 10^5$ 時就是 $4 \times 10^{10}$ 次，太慢。 陣列有
+序，就可以像猜數字一樣每次丟掉一半。
+
+關鍵的觀察是：對每個位置問「$a[i] \ge x$ 嗎？」，答案從左到右排起來一定是
+前面一段「不是」，後面一段「是」。 $x = 20$ 時是
+
+\begin{center}
+\begin{tikzpicture}
+\foreach \v [count=\i from 0] in {4,9,15,15,22,31,40,58} {
+    \node[idxlbl] at (\i*0.95,0.75) {\v};
+}
+\foreach \i in {0,1,2,3} {\bscellF{\i*0.95}{0}{F}}
+\foreach \i in {4,5,6,7} {\bscellT{\i*0.95}{0}{T}}
+\foreach \i in {0,...,7} {\node[idxlbl] at (\i*0.95,-0.7) {\i};}
+\end{tikzpicture}
+\diagcaption{陣列的每個元素（上方小字）對「$\ge 20$ 嗎？」的回答。 F 是不是，T 是。
+要找的是第一個 T，下標 $4$。}
+\label{fig:bs-ft}
+\end{center}
+
+所以「第一個 $\ge x$ 的位置」就是「第一個 T 的位置」。 這一章的每一個二分搜
+都會寫成找第一個 T（或最後一個 T），寫法只有一種：
+
+\begin{itemize}
+\item 用兩個變數 \texttt{lo}、\texttt{hi}，並且一直保持兩件事：\texttt{lo}
+的位置是 F，\texttt{hi} 的位置是 T。 第一個 T 一定在 \texttt{lo} 之後、
+\texttt{hi} 或 \texttt{hi} 之前。
+\item 一開始不知道哪裡是 F、哪裡是 T，就在兩端外面各想像一格：
+\texttt{lo = -1} 當作 F，\texttt{hi = n} 當作 T。 這兩格永遠不會真的去讀。
+\item 只要 \texttt{hi - lo > 1}，中間就還有沒確定的格子。 取中間的
+\texttt{mid}，它是 T 就把 \texttt{hi} 移過去，是 F 就把 \texttt{lo} 移過去。
+\item 停下來時 \texttt{hi - lo == 1}，\texttt{lo} 是最後一個 F，
+\texttt{hi} 是第一個 T，答案是 \texttt{hi}。
+\end{itemize}
+
+用 $x = 20$ 跑一次。 灰色是已經確定是 F 的格子，藍色是已經確定是 T 的格子，
+橘色是這一輪檢查的 \texttt{mid}：
+
+\begin{center}
+\begin{tikzpicture}[y=1.15cm]
+\bsarrayrow{3}{-1}{8}{3}{第 1 輪}
+\bsarrayrow{2}{3}{8}{5}{第 2 輪}
+\bsarrayrow{1}{3}{5}{4}{第 3 輪}
+\bsarrayrow{0}{3}{4}{-9}{結束}
+\foreach \i in {0,...,7} {\node[idxlbl] at (\i*0.95,-0.62) {\i};}
+\end{tikzpicture}
+\diagcaption{在 $[4, 9, 15, 15, 22, 31, 40, 58]$ 裡找第一個 $\ge 20$ 的位置。
+每一輪沒確定的格子（白色）少一半。}
+\label{fig:bs-trace}
+\end{center}
+
+\begin{center}
+\begin{tabular}{ccccll}
+\toprule
+輪 & \texttt{lo} & \texttt{hi} & \texttt{mid} & \texttt{a[mid]} & 結果 \\
+\midrule
+1 & $-1$ & 8 & 3 & 15 & $< 20$，F，\texttt{lo = 3} \\
+2 & 3 & 8 & 5 & 31 & $\ge 20$，T，\texttt{hi = 5} \\
+3 & 3 & 5 & 4 & 22 & $\ge 20$，T，\texttt{hi = 4} \\
+\midrule
+結束 & 3 & 4 & & & 回傳 \texttt{hi = 4} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+寫成程式，順便和標準函式庫的 \texttt{lower\_bound} 比對：
+
+\begin{example}[label=ex:first-at-least]{cpp}{(first\_at\_least.cpp) 第一個大於或等於 x 的位置}
+#include <algorithm>
+#include <iostream>
+#include <vector>
+using namespace std;
+
+// 回傳第一個 a[i] >= x 的位置 i；每一個都比 x 小時回傳 n
+// 迴圈不變量：a[lo] < x，a[hi] >= x（a[-1] 和 a[n] 是想像的格子）
+int firstAtLeast(const vector<int> &a, int x) {
+    int lo = -1, hi = a.size();
+    while (hi - lo > 1) {
+        int mid = lo + (hi - lo) / 2;
+        if (a[mid] >= x) {
+            hi = mid;
+        } else {
+            lo = mid;
+        }
+    }
+    return hi;
+}
+
+int main() {
+    int n, q;
+    cin >> n;
+    vector<int> a(n);
+    for (int &v : a) {
+        cin >> v;
+    }
+    cin >> q;
+    while (q--) {
+        int x;
+        cin >> x;
+        int lb = lower_bound(a.begin(), a.end(), x) - a.begin();
+        cout << x << ' ' << firstAtLeast(a, x) << ' ' << lb << '\n';
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+8 \\
+4 9 15 15 22 31 40 58 \\
+5 \\
+20 \\
+15 \\
+3 \\
+58 \\
+60 \\
+}{
+20 4 4 \\
+15 2 2 \\
+3 0 0 \\
+58 7 7 \\
+60 8 8 \\
+}
+
+每一行是「$x$、自己寫的結果、\texttt{lower\_bound} 的結果」，五個查詢兩邊都
+一樣。 $x = 3$ 比每個元素都小，\texttt{lo} 一直停在 $-1$，答案是 $0$；
+$x = 60$ 比每個元素都大，\texttt{hi} 一直停在 $8$。 兩端的情況不用另外寫
+\texttt{if}，這是想像格子的好處。
+
+\begin{itemize}
+\item \texttt{mid = lo + (hi - lo) / 2} 和 \texttt{(lo + hi) / 2} 在這裡結果
+一樣（\texttt{lo} 是 $-1$ 時也一樣），但後者在 \texttt{lo}、\texttt{hi} 都
+很大時，相加可能超過 \texttt{int}。 對答案二分搜時數字常常到 $10^9$ 以上，
+所以統一寫前者。
+\item \texttt{a.size()} 的型別是 \texttt{size\_t}，存進 \texttt{int hi} 時
+轉成 \texttt{int}。 陣列長度在 $2^{31}$ 以內，不會有問題。
+\end{itemize}
+
+\subsection{為什麼一定會停、一定對}
+\label{sec:bs-why}
+
+這個寫法有兩個地方要確認。 第一次讀可以先記住結論，跳到下一小節。
+
+\textbf{一定會停。} 迴圈條件是 \texttt{hi - lo > 1}，也就是 \texttt{hi - lo}
+至少是 $2$。 這時 \texttt{mid} 嚴格落在兩者之間：\texttt{lo < mid < hi}。
+不管走哪一邊，\texttt{hi - lo} 都會變小，而且變成原來的一半左右（多一點點）。
+它從 $n + 1$ 開始，每輪大約減半，減到 $1$ 就停，所以最多跑
+$\lceil \log_2 (n + 1) \rceil$ 輪。 $n = 8$ 時最多 $4$ 輪，$n = 2 \times 10^5$
+時最多 $18$ 輪。
+
+\textbf{一定對。} 「\texttt{lo} 的位置是 F，\texttt{hi} 的位置是 T」在迴圈
+開始前成立（兩格都是想像的），每一輪也都維持住：\texttt{mid} 是 T 才讓
+\texttt{hi} 等於它，是 F 才讓 \texttt{lo} 等於它。 這種「每一輪開始時都成立」
+的性質叫\textbf{迴圈不變量}（loop invariant）。 停下來時 \texttt{lo} 和
+\texttt{hi} 相鄰，一個 F 一個 T，因為 F 全部在 T 前面，\texttt{hi} 就是第一個
+T。
+
+這也說明了二分搜尋需要什麼：F 全部在前、T 全部在後，中間不能再出現 F。 這個
+性質叫\textbf{單調性}（monotonicity）。 陣列排好序時，「$a[i] \ge x$」一定有
+單調性；陣列沒排好時就沒有，二分搜會給出沒有意義的結果。
+
+寫二分搜時最常想錯的，是 \texttt{lo}、\texttt{hi} 到底代表什麼、停下來要回傳
+哪一個。 用這個寫法，只要先寫一行註解說清楚「\texttt{lo} 是 F、\texttt{hi} 是
+T」，三個問題就都有答案：一開始放在想像的格子上、更新時直接等於
+\texttt{mid}、最後回傳 \texttt{hi}。
+
+\subsection{四種問法都是「第一個 T」}
+\label{sec:bs-four}
+
+在有序的陣列上，常見的問法有四種。 每一種都換成「第一個 T」或「最後一個 F」，
+只有判斷條件不同，骨架不用改：
+
+\begin{center}
+\begin{tabular}{llll}
+\toprule
+要找的 & 條件（T 的意思） & 回傳 & 標準函式庫 \\
+\midrule
+第一個 $\ge x$ & \texttt{a[mid] >= x} & \texttt{hi} & \texttt{lower\_bound} \\
+第一個 $> x$ & \texttt{a[mid] > x} & \texttt{hi} & \texttt{upper\_bound} \\
+最後一個 $< x$ & \texttt{a[mid] >= x} & \texttt{lo} & \texttt{lower\_bound} 的前一格 \\
+最後一個 $\le x$ & \texttt{a[mid] > x} & \texttt{lo} & \texttt{upper\_bound} 的前一格 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+後兩列的「最後一個」，就是第一個 T 前面那一個 F，也就是停下來時的
+\texttt{lo}；回傳 $-1$ 表示沒有。 例如在上面的陣列裡，最後一個 $\le 15$ 的是
+下標 $3$，最後一個 $< 15$ 的是下標 $1$。 另外兩個常用的量也從這裡來：
+\texttt{lower\_bound} 的位置等於「比 $x$ 小的元素個數」，兩個 bound 相減等於
+「等於 $x$ 的元素個數」。
+
+\begin{bridgerecap}[\texttt{lower\_bound} 與 \texttt{upper\_bound}]
+\texttt{lower\_bound(v.begin(), v.end(), x)} 回傳第一個 $\ge x$ 的迭代器，
+\texttt{upper\_bound} 回傳第一個 $> x$ 的迭代器，找不到時都回傳
+\texttt{v.end()}，減掉 \texttt{v.begin()} 就是下標（銜接書第~9~章）。 兩個
+函式都假設範圍已經由小到大排好，沒排好也不會報錯，只會給出錯的位置。
+\texttt{set} 和 \texttt{map} 要用成員函式 \texttt{s.lower\_bound(x)}，用
+\texttt{std::lower\_bound} 會變成 $O(n)$。
+\end{bridgerecap}
+
+既然有現成的函式，為什麼還要自己寫？ 因為下一節的對答案二分搜沒有陣列可以
+傳給 \texttt{lower\_bound}，「第 \texttt{mid} 格是 T 嗎」要呼叫一個自己寫的函
+式才知道。 骨架在這裡練熟，到時候只要換掉判斷條件。
+
+\textbf{什麼時候用、什麼時候不能用。} 資料讀進來之後不再改變、查詢很多次、
+每次問的是「第一個／最後一個滿足某個大小關係的位置」或「有幾個比 $x$ 小」，
+就先排序再二分搜，總共 $O((n + q) \log n)$。 查詢之間還會插入或刪除資料時，
+排好的 \texttt{vector} 每次插入要搬 $O(n)$ 個元素，改用 \texttt{set}／
+\texttt{map} 的成員函式。 要找的條件如果和大小順序無關（例如「第一個偶數」），
+排好序也沒有單調性，不能二分搜。
+
+\begin{apcsnote}
+APCS 實作題由程式自動評分，只看輸出。 二分搜寫錯時，常常只在邊界出錯：答案是
+第一個位置、答案是最後一個位置、找不到。 題目的範例不一定測到這三種情況，交
+出去之前自己各補一組小輸入測一次。
+\end{apcsnote}
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{更新寫成 \texttt{lo = mid}，迴圈卻用另一種寫法}：很多人學過的
+寫法是「答案在 $[\texttt{lo}, \texttt{hi}]$ 之間」，迴圈條件是
+\texttt{lo < hi}。 這種寫法的 F 分支必須寫 \texttt{lo = mid + 1}，寫成
+\texttt{lo = mid} 就可能停不下來：
+\begin{code}{cpp}{答案在 [lo, hi] 之間的寫法，F 分支寫錯}
+int lo = 0, hi = n - 1;
+while (lo < hi) {
+    int mid = (lo + hi) / 2;
+    if (a[mid] < x) {
+        lo = mid;          // 應該是 lo = mid + 1
+    } else {
+        hi = mid;
+    }
+}
+\end{code}
+在上面的陣列找 $x = 9$：\texttt{mid} 依序是 $3$、$1$，\texttt{hi} 變成 $1$；
+接著 \texttt{lo = 0}、\texttt{hi = 1}，\texttt{mid} 是 $0$，$a[0] = 4 < 9$，
+\texttt{lo} 又設成 $0$，從此不再改變，程式永遠不會結束。 只剩兩個元素時，
+\texttt{(lo + hi) / 2} 等於 \texttt{lo}，\texttt{lo = mid} 等於沒動。 本章的
+寫法用 \texttt{hi - lo > 1} 當條件，保證 \texttt{lo < mid < hi}，兩個分支都
+會讓範圍變小，不會有這個問題。 無論用哪一種寫法，都用「只剩兩個元素」的輸入
+手動跑一次。
+\item \textbf{陣列沒有排序}：輸入的資料是亂的，忘了先 \texttt{sort}。 二分搜
+不會報錯，只會給出看起來合理的錯答案。
+\item \textbf{\texttt{(lo + hi) / 2} 溢位}：\texttt{lo}、\texttt{hi} 是
+\texttt{int}，兩個都超過 $1.1 \times 10^9$ 時相加超過 $2^{31} - 1$。 在陣列
+上不容易遇到，對答案二分搜時就會遇到。 統一寫
+\texttt{lo + (hi - lo) / 2}，範圍大時用 \texttt{long long}。
+\end{itemize}
+
+\section{有序資料上的查詢}
+\label{sec:bs-sorted}
+
+這一節的例題是上一節的直接應用：資料已經排好，查詢很多次，每次問「第一個
+$\ge x$ 的在哪裡」。 重點是看出 \texttt{lower\_bound} 回傳的位置同時回答了
+兩件事，以及等號要放在哪一邊。
+
+\subsection{例題：趕得上的下一班車}
+\label{sec:ex-next-bus}
+
+\textbf{題意}（\akiref{the-next-bus-you-can-catch}{趕得上的下一班車}）
+
+\begin{itemize}
+\item 校車今天有 $n$ 班，發車時刻 $t_1 < t_2 < \cdots < t_n$ 已經排好。
+\item 有 $q$ 位同學，每位在時刻 $x$ 到站。 發車時刻 $< x$ 的已經開走；
+發車時刻 $\ge x$ 的都趕得上，剛好等於 $x$ 也算。
+\item 對每位同學輸出：已經開走幾班，以及他會搭的那一班（趕得上的最早一班）
+的發車時刻；全部開走時，第二個數輸出 $-1$。
+\item $n, q \le 2 \times 10^5$，時刻在 $0$ 到 $10^9$ 之間。
+\end{itemize}
+
+例如四班車在 $30$、$45$、$60$、$90$ 發車。 時刻 $45$ 到站的同學，$30$ 那班
+開走了，$45$ 那班剛好趕上，答案是 \texttt{1 45}；時刻 $100$ 到站時四班都開走
+了，答案是 \texttt{4 -1}。
+
+\textbf{想法}
+
+最直接的做法是每位同學都從第一班往後找，找到第一班發車時刻 $\ge x$ 的。 一位
+同學最多看 $n$ 班，$q$ 位同學是 $O(nq)$，$n = q = 2 \times 10^5$ 時是
+$4 \times 10^{10}$ 次，來不及。
+
+發車時刻已經排好，「$t_i \ge x$ 嗎」從左到右是 F…F T…T，要找的是第一個 T，
+這正是 \texttt{lower\_bound}。 設它的下標是 $k$（從 $0$ 開始），那麼：
+
+\begin{itemize}
+\item 下標 $0$ 到 $k - 1$ 都是 F，也就是發車時刻 $< x$、已經開走的班次，剛好
+$k$ 班。 已經開走的班數就是 $k$。
+\item 下標 $k$ 是第一個趕得上的，他會搭 \texttt{t[k]}。
+\item $k = n$ 表示每一班都是 F，全部開走了，輸出 $-1$。 這時不能讀
+\texttt{t[k]}。
+\end{itemize}
+
+一次 \texttt{lower\_bound} 就同時得到兩個答案。 等號的處理要對：題目說剛好等
+於 $x$ 趕得上，所以「趕得上」是 $t_i \ge x$，對應 \texttt{lower\_bound}；如果
+題目改成「剛好等於 $x$ 的那班已經關門」，條件變成 $t_i > x$，就要換成
+\texttt{upper\_bound}。 讀題時先寫下 T 的條件，再決定用哪一個。
+
+同樣的模型也出現在別的地方：依時間排好的系統紀錄，找某個時刻之後的第一筆；
+運費、所得稅的級距表，找某個金額落在哪一級。
+
+\textbf{程式}
+
+\begin{example}[label=ex:next-bus]{cpp}{(next\_bus.cpp) 趕得上的下一班車}
+#include <algorithm>
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n, q;
+    cin >> n >> q;
+    vector<long long> t(n);
+    for (long long &x : t) {
+        cin >> x;
+    }
+    while (q--) {
+        long long x;
+        cin >> x;
+        // 第一班發車時刻 >= x 的位置，也就是已經開走的班數
+        int k = lower_bound(t.begin(), t.end(), x) - t.begin();
+        if (k == n) {
+            cout << k << " -1\n";        // 全部開走了
+        } else {
+            cout << k << ' ' << t[k] << '\n';
+        }
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+4 5 \\
+30 45 60 90 \\
+10 \\
+45 \\
+46 \\
+90 \\
+100 \\
+}{
+0 30 \\
+1 45 \\
+2 60 \\
+3 90 \\
+4 -1 \\
+}
+
+\begin{itemize}
+\item 把 \texttt{lower\_bound} 那一行換成第~\ref{sec:bs-template}~小節的
+\texttt{firstAtLeast}，結果完全一樣。 考試或練習時用哪一個都可以，用標準函式
+庫比較不容易寫錯。
+\item 時刻到 $10^9$，\texttt{int} 裝得下；這裡用 \texttt{long long} 只是習慣，
+讀進來的數字和比較的對象型別一致，比較不會出錯。
+\item 查詢多達 $2 \times 10^5$ 次，輸出也是 $2 \times 10^5$ 行，所以加上輸入
+加速（銜接書第~10~章），換行用 \texttt{'\textbackslash n'} 不用
+\texttt{endl}。
+\end{itemize}
+
+\textbf{複雜度}
+
+每次查詢 $O(\log n)$，最多 $18$ 次比較，總共 $O(q \log n)$。 讀入和輸出佔了
+大部分時間，最大的測試資料（俗稱測資）在本書測試的環境下約 $0.04$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{用 \texttt{upper\_bound}}：把剛好在 $x$ 發車的班次當成開走了。
+範例的輸入會印出
+\begin{code}{text}{用 upper\_bound 的輸出}
+0 30
+2 60
+2 60
+4 -1
+4 -1
+\end{code}
+時刻 $45$ 和 $90$ 到站的兩位同學都錯了。 範例剛好有「到站時刻等於發車時刻」
+的情況，所以會被抓到；如果範例沒有，這個錯就要靠自己補測資。
+\item \textbf{沒有檢查 $k = n$}：直接輸出 \texttt{t[k]}。 範例最後一行在本書
+測試的環境下印出 \texttt{4 0}，讀到的是陣列後面的記憶體，結果沒有保證。 加上
+\texttt{-fsanitize=address} 編譯，執行時會報 \texttt{heap-buffer-overflow}。
+\item \textbf{每次查詢都從頭掃}：範例很快就跑完，最大的測資要做
+$4 \times 10^{10}$ 次比較，超過時間限制。
+\end{itemize}
+
+\section{對答案二分搜}
+\label{sec:bs-answer}
+
+回到章首的加熱器。 題目問的是「最小的功率」，直接算很難；但如果先猜一個功率，
+問「這個功率夠不夠」，照著每小時模擬一遍就知道。 把每個可能的功率排成一排，
+對「夠不夠」的回答也是 F…F T…T：太小的都不夠，從某個值開始都夠。 要找的最
+小功率就是第一個 T，和上一節找陣列位置是同一件事，只是「第 \texttt{mid} 格是
+T 嗎」要呼叫一個函式來回答。 這個函式在本書叫 \textbf{check 函式}，程式裡寫
+成 \texttt{ok(x)}。
+
+對答案二分搜分三步：
+
+\begin{enumerate}
+\item \textbf{寫 check 函式}：給一個答案 $x$，判斷「答案是 $x$ 時做不做得到」。
+這通常比直接求答案容易得多，常常只是一次模擬或一次掃描。
+\item \textbf{說明單調性}：說清楚為什麼「$x$ 做得到，$x + 1$ 也做得到」（或反
+過來）。 沒有這一步，二分搜可能停在錯的地方。
+\item \textbf{定上下界}：找一個一定做不到的值當 \texttt{lo}、一個一定做得到的
+值當 \texttt{hi}，再套上一節的骨架。 上下界都要說得出理由。
+\end{enumerate}
+
+總時間是「check 一次的時間」乘上「二分搜的輪數」。 答案的範圍是 $R$ 時，輪數
+大約是 $\log_2 R$，$R = 10^9$ 時是 $30$ 輪，$R = 10^{18}$ 時是 $60$ 輪，都很
+少。 所以只要 check 是 $O(n)$，整題就是 $O(n \log R)$。
+
+\subsection{例題：魚缸加熱器的最小功率}
+\label{sec:ex-heater}
+
+\textbf{題意}（\akiref{minimum-heater-power-for-the-fish-tank}{魚缸加熱器的最小功率}）
+
+\begin{itemize}
+\item 魚缸一開始的水溫是 $T_0$ 度。 加熱器的功率 $P$ 是一個非負整數，選好就
+不能改。
+\item 接下來有 $n$ 個小時。 第 $i$ 小時先加熱：水溫加 $P$，但最高只到 $U$ 度，
+超過的部分散掉；再降溫：水溫減 $d_i$ 度。
+\item 每個小時降溫之後，水溫都必須至少 $L$ 度。 求最小的 $P$。
+\item $n \le 2 \times 10^5$，$0 \le L \le T_0 \le U \le 10^9$，
+$1 \le d_i \le U - L$。 在這些限制下答案一定存在。
+\end{itemize}
+
+例如 $T_0 = 18$、$L = 10$、$U = 24$，五個小時的降溫是 $1, 1, 9, 9, 9$，答案
+是 $7$。 下圖是功率 $6$ 和 $7$ 時，每小時降溫後的水溫：
+
+\begin{center}
+\begin{tikzpicture}[x=1.5cm, y=0.28cm]
+\draw[black!45] (0,8) -- (5.3,8);
+\draw[black!45] (0,8) -- (0,25.5);
+\foreach \h in {0,...,5} {
+    \draw[black!45] (\h,8.25) -- (\h,7.75) node[below, font=\scriptsize, text=black!60] {\h};
+}
+\foreach \v in {10,15,20,24} {
+    \draw[black!45] (0.05,\v) -- (-0.05,\v) node[left, font=\scriptsize, text=black!60] {\v};
+}
+\draw[dashed, black!50] (0,24) -- (5.3,24) node[right, font=\scriptsize] {$U$};
+\draw[dashed, optStroke] (0,10) -- (5.3,10) node[right, font=\scriptsize] {$L$};
+\draw[thick, optStroke] (0,18) -- (1,23) -- (2,23) -- (3,15) -- (4,12) -- (5,9);
+\foreach \x/\y in {0/18,1/23,2/23,3/15,4/12,5/9} {\fill[optStroke] (\x,\y) circle (2.2pt);}
+\draw[thick, coreStroke] (3,15) -- (4,13) -- (5,11);
+\foreach \x/\y in {4/13,5/11} {\fill[coreStroke] (\x,\y) circle (2.2pt);}
+\node[font=\scriptsize, text=coreStroke] at (5.45,12.3) {$P = 7$};
+\node[font=\scriptsize, text=optStroke] at (5.45,7.6) {$P = 6$};
+\node[font=\scriptsize, text=black!60] at (2.65,6.0) {小時};
+\end{tikzpicture}
+\diagcaption{每小時降溫後的水溫。 前三小時兩條線重合：加熱都被上限 $U = 24$
+截掉。 $P = 6$ 在第 5 小時掉到 $9 < 10$，$P = 7$ 一直都在 $10$ 以上。}
+\label{fig:heater-temp}
+\end{center}
+
+\textbf{想法}
+
+\textbf{先試一個公式。} 如果沒有上限 $U$，前 $i$ 小時一共加熱 $iP$、降溫
+$d_1 + \cdots + d_i$，只要每個 $i$ 都有 $T_0 + iP - (d_1 + \cdots + d_i) \ge L$
+就行，$P$ 可以直接算。 拿範例算：$i = 5$ 時要 $18 + 5P - 29 \ge 10$，
+$P \ge 4.2$；其他的 $i$ 要求更低，所以公式說 $P = 5$。 可是上圖的 $P = 6$ 都
+不夠。 錯在前兩個小時：水溫已經接近 $24$ 度，加熱的熱量大多散掉，存不起來。
+上限讓「總共加了多少熱」不再等於「水溫升了多少」，公式就不成立了。
+
+\textbf{再試暴力解。} 給定 $P$，照題目模擬 $n$ 個小時，就知道 $P$ 夠不夠，這
+是 $O(n)$。 從 $P = 0$ 開始一個一個試，第一個夠的就是答案。 答案可能到 $10^9$，
+要試 $10^9$ 個 $P$、每個 $O(n)$，來不及。 不過這個暴力解在小範圍裡是對的，可
+以拿來對拍。
+
+\textbf{第 1 步：check 函式。} 就是上面的模擬：
+
+\begin{code}{cpp}{check 函式：功率 p 夠不夠}
+bool ok(long long p) {
+    long long t = T0;
+    for (int i = 0; i < n; i++) {
+        t = min(U, t + p);      // 先加熱，超過 U 的部分散掉
+        t -= d[i];              // 再降溫
+        if (t < L) {
+            return false;
+        }
+    }
+    return true;
+}
+\end{code}
+
+\textbf{第 2 步：單調性。} 直覺是：功率大的那台，每個小時的水溫都不會比功率小
+的那台低，既然功率小的那台都撐過去了，功率大的也撐得過去。 上圖的兩條線正是
+這樣：$P = 7$ 那條從頭到尾都不在 $P = 6$ 那條的下面。 範例的 $P$ 從 $0$ 到
+$14$ 對 \texttt{ok} 的回答是
+
+\begin{center}
+\begin{tikzpicture}
+\foreach \i in {0,...,6} {\bscellF{\i*0.65}{0}{F}}
+\foreach \i in {7,...,14} {\bscellT{\i*0.65}{0}{T}}
+\node[hlcell, minimum width=0.62cm] at (7*0.65,0) {T};
+\foreach \i in {0,...,14} {\node[idxlbl] at (\i*0.65,-0.7) {\i};}
+\end{tikzpicture}
+\diagcaption{範例裡每個功率 $P$（下方小字）夠不夠。 第一個 T 在 $P = 7$。}
+\label{fig:heater-ft}
+\end{center}
+
+\begin{whybox}[功率越大，水溫不會越低]
+設 $P \le P'$，兩台加熱器第 $i$ 小時降溫後的水溫分別是 $t_i$ 和 $t'_i$，
+$t_0 = t'_0 = T_0$。 用歸納法證明每個 $i$ 都有 $t_i \le t'_i$。 假設
+$t_{i-1} \le t'_{i-1}$，那麼 $t_{i-1} + P \le t'_{i-1} + P'$。 再和 $U$ 取較
+小的值，大小關係不變：兩邊都沒超過 $U$ 時照舊；只有右邊超過時右邊變成 $U$，
+仍然不小於左邊；兩邊都超過時兩邊都是 $U$。 最後兩邊都減 $d_i$，得到
+$t_i \le t'_i$。
+
+所以功率 $P$ 每小時都不低於 $L$ 時，功率 $P'$ 也是。 證明裡真正用到的只有一件
+事：每一步的更新「輸入越大、輸出不會越小」。 加熱、取 $\min$、減掉固定的數都
+有這個性質，換成別的模擬題時，也是檢查這一點。
+\end{whybox}
+
+\textbf{第 3 步：上下界。} 下界：$P$ 最小是 $0$，而 $P = 0$ 可能就夠了（例如
+$T_0$ 很高、降溫很少），所以 $0$ 不能當成「一定不行」。 用想像的
+$\texttt{lo} = -1$，它永遠不會被 \texttt{ok} 檢查。 上界：$P = U - L$ 一定夠。
+每小時開始時水溫至少 $L$，加熱 $U - L$ 之後一定到達 $U$；再降 $d_i \le U - L$
+度，至少剩 $L$ 度。 所以 $\texttt{hi} = U - L$。
+
+用範例跑一次，\texttt{lo} 一直是 F、\texttt{hi} 一直是 T：
+
+\begin{center}
+\begin{tabular}{ccccc}
+\toprule
+輪 & \texttt{lo} & \texttt{hi} & \texttt{mid} & \texttt{ok(mid)} \\
+\midrule
+1 & $-1$ & 14 & 6 & F，第 5 小時剩 $9$ 度 \\
+2 & 6 & 14 & 10 & T \\
+3 & 6 & 10 & 8 & T \\
+4 & 6 & 8 & 7 & T \\
+\midrule
+結束 & 6 & 7 & & 答案 \texttt{hi = 7} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+同樣的模型也出現在別的地方：手機一邊用一邊充電，電量最多 $100\%$，充電器的功
+率最小要多少才不會關機；倉庫每天進貨、出貨，倉庫有容量上限，每天最少要進多少
+貨才不會缺貨。 只要「選一個固定的量，模擬一遍就知道行不行，而且量越大越容易
+行」，都可以對答案二分搜。
+
+\textbf{程式}
+
+\begin{example}[label=ex:heater]{cpp}{(heater.cpp) 魚缸加熱器的最小功率}
+#include <algorithm>
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int n;
+long long T0, L, U;
+vector<long long> d;
+
+// 功率 p 能不能讓每小時降溫後都至少 L 度
+bool ok(long long p) {
+    long long t = T0;
+    for (int i = 0; i < n; i++) {
+        t = min(U, t + p);      // 先加熱，超過 U 的部分散掉
+        t -= d[i];              // 再降溫
+        if (t < L) {
+            return false;
+        }
+    }
+    return true;
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    cin >> n >> T0 >> L >> U;
+    d.resize(n);
+    for (long long &x : d) {
+        cin >> x;
+    }
+    long long lo = -1;          // 功率 -1：當作一定不行
+    long long hi = U - L;       // 功率 U - L：一定可以
+    while (hi - lo > 1) {
+        long long mid = lo + (hi - lo) / 2;
+        if (ok(mid)) {
+            hi = mid;
+        } else {
+            lo = mid;
+        }
+    }
+    cout << hi << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+5 18 10 24 \\
+1 1 9 9 9 \\
+}{
+7 \\
+}
+
+\begin{itemize}
+\item 二分搜的部分和 \texttt{first\_at\_least.cpp} 一字不差，只是
+\texttt{a[mid] >= x} 換成 \texttt{ok(mid)}、型別換成 \texttt{long long}。
+\item \texttt{ok} 要用到題目的資料，這裡把它們放在全域變數。 也可以寫成
+lambda，用 \texttt{[\&]} 捕獲 \texttt{main} 裡的變數（銜接書第~9~章）。
+\item \texttt{t + p} 最大大約是 $2 \times 10^9$，超過 \texttt{int} 的上限
+$2^{31} - 1 \approx 2.1 \times 10^9$ 只差一點點。 用 \texttt{long long} 就
+不用去算這個邊界。
+\end{itemize}
+
+\textbf{複雜度}
+
+\texttt{ok} 是 $O(n)$。 範圍從 $-1$ 到 $U - L \le 10^9$，最多
+$\lceil \log_2 (10^9 + 1) \rceil = 30$ 輪，總共大約
+$30 \times 2 \times 10^5 = 6 \times 10^6$ 步，$O(n \log U)$。 最大的測試資
+料在本書測試的環境下約 $0.01$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{加熱和降溫的順序寫反}：\texttt{ok} 寫成先減 \texttt{d[i]}、檢查，
+再加熱。 第一個範例剛好也印出 \texttt{7}；換成輸入
+\begin{code}{text}{順序寫反會錯的輸入}
+3 5 5 10
+4 4 4
+\end{code}
+正確答案是 $4$：每小時 $5 + 4 - 4 = 5$ 度，剛好符合。 順序寫反時，第 1 小時
+一開始就是 $5 - 4 = 1$ 度，不管功率多大都不行，\texttt{hi} 從頭到尾沒動過，
+程式印出上界 \texttt{5}。 「不管 $x$ 是多少 check 都說不行」時，本章的寫法
+會直接輸出 \texttt{hi}，不會報錯，所以模擬的細節要照題目逐句對過。
+\item \textbf{用公式代替模擬}：忽略上限 $U$，用總降溫量算 $P$。 範例印出
+\texttt{5}，原因見「想法」。
+\item \textbf{上界沒有理由}：例如覺得「平均每小時降多少，功率就要多少」，把
+\texttt{hi} 設成 $\lfloor (d_1 + \cdots + d_n) / n \rfloor$。 範例的平均是
+$29 / 5$，\texttt{hi = 5}，可是答案是 $7$。 \texttt{hi} 從來沒有被檢查過，程式
+照樣印出 \texttt{5}。 本章的寫法把 \texttt{hi} 當成「已知是 T」，所以
+\texttt{hi} 一定要是證明過做得到的值。
+\item \textbf{從 $0$ 開始一個一個試}：範例很快，答案到 $10^9$ 時要模擬十億次，
+超過時間限制。
+\end{itemize}
+
+\section{最大化最小值}
+\label{sec:bs-maxmin}
+
+上一節找的是「最小的、做得到的值」。 另一種常見的問法剛好反過來：在限制之內，
+讓某個量\textbf{最大}。 例如預算有限，要讓全隊最弱的人盡量強。 這時 check 的
+回答是 T…T F…F：太小的目標都做得到，太大的做不到，要找的是最後一個 T。
+
+骨架不用改，只要把 \texttt{lo}、\texttt{hi} 的意思對調：\texttt{lo} 一直是 T，
+\texttt{hi} 一直是 F，停下來時回傳 \texttt{lo}。
+
+\begin{code}{cpp}{找最後一個 T 的骨架}
+// 迴圈不變量：ok(lo) 是 true，ok(hi) 是 false
+while (hi - lo > 1) {
+    long long mid = lo + (hi - lo) / 2;
+    if (ok(mid)) {
+        lo = mid;
+    } else {
+        hi = mid;
+    }
+}
+// lo 是最後一個 true
+\end{code}
+
+\subsection{例題：教練指導後的最低分}
+\label{sec:ex-coach}
+
+\textbf{題意}（\akiref{raising-the-teams-lowest-score}{教練指導後的最低分}）
+
+\begin{itemize}
+\item 校隊有 $n$ 位選手，選手 $i$ 目前 $a_i$ 分。 教練每指導他一次，他的分數
+加 $b_i$。
+\item 教練最多指導 $k$ 次，可以集中在同一個人，也可以不用完。
+\item 求指導之後「全隊最低分」最大可以是多少。
+\item $n \le 2 \times 10^5$，$0 \le k \le 10^9$，$0 \le a_i \le 10^9$，
+$1 \le b_i \le 10^9$。
+\end{itemize}
+
+例如三位選手的分數是 $3, 8, 5$，每次指導分別加 $2, 1, 4$，最多指導 $5$ 次。
+要讓最低分至少 $9$：第一位差 $6$ 分要 $3$ 次，第二位差 $1$ 分要 $1$ 次，第三
+位差 $4$ 分要 $1$ 次，共 $5$ 次，剛好。 要至少 $10$ 的話，三位分別要 $4$、
+$2$、$2$ 次，共 $8$ 次，不夠。 答案是 $9$。
+
+\textbf{想法}
+
+\textbf{先想一個模擬。} 很自然的做法是：每次都指導目前分數最低的人，做 $k$ 次。
+這是對的（最低分只取決於最低的那個人，指導別人不會讓最低分變高），用第~6~章的
+優先佇列每次 $O(\log n)$，總共 $O(k \log n)$。 可是 $k$ 到 $10^9$，太慢。
+
+\textbf{換成判斷問題。} 把「最低分最大是多少」換成「最低分能不能至少是 $x$」。
+固定 $x$ 之後，每個人要做的事就確定了：分數已經 $\ge x$ 的人不用指導；分數
+$a_i < x$ 的人差 $x - a_i$ 分，每次加 $b_i$，至少要
+$\lceil (x - a_i) / b_i \rceil$ 次。 把每個人需要的次數加起來，不超過 $k$ 就
+做得到。 這是一次 $O(n)$ 的掃描。
+
+整數的無條件進位寫成 \texttt{(x - a[i] + b[i] - 1) / b[i]}，前提是分子
+\texttt{x - a[i]} 是正的。 例如差 $6$ 分、每次加 $4$：$(6 + 3) / 4 = 2$；差
+$8$ 分：$(8 + 3) / 4 = 2$；差 $9$ 分：$(9 + 3) / 4 = 3$。
+
+\textbf{單調性。} 目標 $x$ 變大時，每個人需要的次數只會一樣或變多，總數也是。
+所以 $x$ 做得到時，比 $x$ 小的目標也都做得到：回答是 T…T F…F，要找最後一個 T。
+
+\textbf{上下界。} 下界：$\texttt{lo} = \min a_i$，一次都不指導，最低分就是它，
+一定做得到。 上界要一定做不到。 看目前最低分的那位選手，他每次最多加
+$\max b_i$ 分，$k$ 次最多加 $k \cdot \max b_i$ 分，所以最低分不可能超過
+$\min a_i + k \cdot \max b_i$。 取
+$\texttt{hi} = \min a_i + k \cdot \max b_i + 1$。 這個數最大大約是
+$10^9 + 10^9 \times 10^9 \approx 10^{18}$，要用 \texttt{long long}，好在還在
+它的範圍（約 $9.2 \times 10^{18}$）裡面。
+
+\textbf{check 裡的溢位。} $x$ 可能到 $10^{18}$，一位選手需要的次數也可能到
+$10^{18}$，二十個人加起來就超過 \texttt{long long}。 解法是一邊加一邊檢查：總
+數一超過 $k$ 就回傳 \texttt{false}，不用再加下去。 $k \le 10^9$，所以在還沒
+超過 $k$ 之前，總數最多是 $10^9$ 加上一個人的次數，不會溢位。
+
+用範例跑一次，範圍是 $\texttt{lo} = 3$、$\texttt{hi} = 3 + 5 \times 4 + 1 = 24$：
+
+\begin{center}
+\begin{tabular}{ccccl}
+\toprule
+輪 & \texttt{lo} & \texttt{hi} & \texttt{mid} & 需要的次數 \\
+\midrule
+1 & 3 & 24 & 13 & $5 + 5 + 2 = 12 > 5$，F \\
+2 & 3 & 13 & 8 & $3 + 0 + 1 = 4$，T \\
+3 & 8 & 13 & 10 & $4 + 2 + 2 = 8 > 5$，F \\
+4 & 8 & 10 & 9 & $3 + 1 + 1 = 5$，T \\
+\midrule
+結束 & 9 & 10 & & 答案 \texttt{lo = 9} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\begin{tikzpicture}
+\foreach \i in {3,...,9} {\bscellT{{(\i-3)*0.65}}{0}{T}}
+\foreach \i in {10,...,15} {\bscellF{{(\i-3)*0.65}}{0}{F}}
+\node[hlcell, minimum width=0.62cm] at (6*0.65,0) {T};
+\foreach \i in {3,...,15} {\node[idxlbl] at ({(\i-3)*0.65},-0.7) {\i};}
+\node[font=\small] at (13*0.65,0) {$\cdots$};
+\end{tikzpicture}
+\diagcaption{範例裡每個目標 $x$（下方小字）做不做得到。 這次 T 在前、F 在後，
+要找的是最後一個 T，$x = 9$。}
+\label{fig:coach-tf}
+\end{center}
+
+同樣的模型也出現在別的地方：機房裡的伺服器各有目前的處理量和每次升級增加的量，
+預算只夠升級 $k$ 次，要讓最慢的那台盡量快；工廠的幾條產線各有產能，加派人手
+時每條線提升的量不同，要讓產量最低的那條線盡量高。 題目問「最小值最大」或
+「最大值最小」時，先想想能不能換成「能不能至少（至多）是 $x$」。
+
+\textbf{程式}
+
+\begin{example}[label=ex:coach]{cpp}{(coach.cpp) 教練指導後的最低分}
+#include <algorithm>
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int n;
+long long k;
+vector<long long> a, b;
+
+// 最低分能不能拉到至少 x：需要的指導次數不超過 k
+bool ok(long long x) {
+    long long used = 0;
+    for (int i = 0; i < n; i++) {
+        if (a[i] >= x) {
+            continue;                           // 已經夠了，0 次
+        }
+        used += (x - a[i] + b[i] - 1) / b[i];   // 無條件進位
+        if (used > k) {
+            return false;                       // 已經超過，不用再加
+        }
+    }
+    return true;
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    cin >> n >> k;
+    a.resize(n);
+    b.resize(n);
+    for (long long &x : a) {
+        cin >> x;
+    }
+    for (long long &x : b) {
+        cin >> x;
+    }
+    long long minA = *min_element(a.begin(), a.end());
+    long long maxB = *max_element(b.begin(), b.end());
+    long long lo = minA;                    // 不用指導就做得到
+    long long hi = minA + k * maxB + 1;     // 一定做不到
+    while (hi - lo > 1) {
+        long long mid = lo + (hi - lo) / 2;
+        if (ok(mid)) {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    cout << lo << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+3 5 \\
+3 8 5 \\
+2 1 4 \\
+}{
+9 \\
+}
+
+\begin{itemize}
+\item \texttt{min\_element}、\texttt{max\_element} 回傳迭代器，前面加
+\texttt{*} 取值（銜接書第~9~章）。
+\item \texttt{k * maxB} 兩個都是 \texttt{long long}，乘起來最大 $10^{18}$，
+不會溢位。 如果 \texttt{k} 宣告成 \texttt{int}，\texttt{k * maxB} 仍然會先轉
+成 \texttt{long long} 再乘，但讀題時把會參與大數運算的變數都宣告成
+\texttt{long long}，比較不用逐一檢查。
+\item \texttt{ok} 的 \texttt{continue} 不能省。 少了它，分數已經夠高的選手會
+算出負的次數，把別人需要的次數抵掉（見本節的常見錯誤）。
+\end{itemize}
+
+\textbf{複雜度}
+
+範圍最大約 $10^{18}$，二分搜最多 $60$ 輪，每輪 $O(n)$，總共大約
+$1.2 \times 10^7$ 步，$O(n \log (k \cdot \max b))$。 最大的測試資料在本書測
+試的環境下約 $0.01$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{已經夠高的人算出負的次數}：拿掉 \texttt{if (a[i] >= x)} 那段。
+第二個範例
+\begin{code}{text}{少了 continue 會錯的輸入}
+3 4
+20 2 5
+3 2 1
+\end{code}
+正確答案是 $6$。 第一位選手已經 $20$ 分，目標 $8$ 時算出
+$(8 - 20 + 2) / 3 = -3$ 次，把另外兩位需要的 $3 + 3 = 6$ 次抵成 $3$ 次，於是
+誤判做得到，程式印出 \texttt{8}。 C++ 的整數除法是向 $0$ 捨去，分子是負的時候
+進位公式本來就不成立。
+\item \textbf{累加不提早停}：拿掉 \texttt{if (used > k)} 那段，改成迴圈結束後
+才比較。 輸入 $20$ 位選手都是 $0$ 分，第一位每次加 $10^9$、其他十九位每次加
+$1$，$k = 10^9$，正確答案是 $52631578$。 二分搜一開始試的目標大約是
+$5 \times 10^{17}$，十九位選手各要這麼多次，總和超過 \texttt{long long}。
+在本書測試的環境下，程式印出 \texttt{970881267038877386}。
+\item \textbf{上界太小}：例如設成 $\max a_i + k$，以為每次指導只加 $1$ 分。 輸
+入 \texttt{1 3}、\texttt{0}、\texttt{10}（一位選手、$3$ 次、每次加 $10$）的答
+案是 $30$，這樣設的 \texttt{hi} 是 $3$，程式印出 \texttt{2}。
+\item \textbf{用浮點數算進位}：寫成 \texttt{ceil((double)(x - a[i]) / b[i])}。
+\texttt{double} 只有大約 $16$ 位有效數字，分子到 $10^{18}$ 時除出來的結果不精
+確，次數可能少算 $1$。 整數的進位一律用整數算。
+\end{itemize}
+
+\section{上下界與單調性的檢查}
+\label{sec:bs-checklist}
+
+兩題例題的錯誤，大多不在二分搜的迴圈本身，而在迴圈外面：上下界、單調性、
+check 裡的計算。 寫對答案二分搜時，照下面的順序檢查。
+
+\textbf{1. \texttt{lo}、\texttt{hi} 的意思寫在註解裡。} 找第一個 T 時，
+\texttt{lo} 一定是 F、\texttt{hi} 一定是 T；找最後一個 T 時反過來。 這兩個值
+永遠不會被 \texttt{ok} 檢查，所以可以是想像的值（例如 $-1$），但它們的意思必
+須是真的。
+
+\textbf{2. 「一定做得到」的那一端要有理由。} 加熱器的 $U - L$、指導次數的
+$\min a_i$ 都附了一句理由。 想不出理由時，不要隨便抓一個「應該夠大」的數。 兩
+個例題的常見錯誤都示範了：那一端設錯時，程式不會報錯，只會安靜地印出錯的答案。
+
+\textbf{3. 可能沒有答案時，多放一格想像的格子。} 有些題目說「不管多大都做不到
+就輸出 $-1$」。 這時找不到一個保證做得到的值，可以把 \texttt{hi} 設成「答案
+可能的最大值再加 $1$」，把它當成想像的 T。 停下來時如果 \texttt{hi} 還在那個
+位置，表示真正的範圍裡沒有任何 T，輸出 $-1$。 這和陣列版用 $n$ 表示「沒有」是
+同一個想法。
+
+\textbf{4. 說得出單調性的理由。} 「$x$ 做得到，$x + 1$ 也做得到」通常有一句話
+的理由：大箱子裝得下小箱子裝的東西、預算多的人可以照預算少的人的買法買、功率
+大的加熱器每小時水溫都不比較低。 說不出來時，先在小範圍把 $x$ 從小到大每個都
+跑一次 \texttt{ok}，看回答是不是真的 F…F T…T。
+
+\textbf{5. check 裡的數字會到多大。} 答案的範圍到 $10^{18}$ 時，\texttt{mid}
+本身就要用 \texttt{long long}，check 裡任何和 \texttt{mid} 相乘、相加的式子都要
+估一次最大值。 會累加的量，一超過限制就停。
+
+\textbf{6. 估輪數。} 範圍是 $R$ 時最多 $\lceil \log_2 R \rceil$ 輪：$10^6$ 是
+$20$ 輪，$10^9$ 是 $30$ 輪，$10^{18}$ 是 $60$ 輪。 再乘上 check 的時間，就是
+整題的時間。 輪數很少，所以上界寬鬆一點（多一兩個數量級）幾乎不影響時間，設
+大比設小安全，只要不溢位。
+
+\begin{apcsnote}
+實作題問「最少需要多少」「最多可以多少」，而答案的範圍大到不能一個一個試時，
+先問自己兩件事：給一個答案，能不能用一次掃描或一次模擬判斷行不行？ 答案變大
+時，行不行會不會只變一次？ 兩個都是，就對答案二分搜。 check 寫好之後，先用
+「從小到大一個一個試」的暴力解在小範圍對拍。
+\end{apcsnote}
+
+\section{沒有單調性與實數答案}
+\label{sec:bs-fails}
+
+\subsection{沒有單調性}
+
+二分搜每一輪都根據 \texttt{mid} 的回答丟掉一半，前提是丟掉的那一半裡不可能有答
+案。 回答不是 F…F T…T 時，這個前提就不成立。
+
+例子：社團有 $12$ 個人，要分成每組 $x$ 人，剛好分完，不能有人落單。 $x$ 從
+$1$ 到 $12$ 的回答是
+
+\begin{center}
+\begin{tikzpicture}
+\foreach \i/\r in {1/T,2/T,3/T,4/T,5/F,6/T,7/F,8/F,9/F,10/F,11/F,12/T} {
+    \if\r T \bscellT{{(\i-1)*0.65}}{0}{T} \else \bscellF{{(\i-1)*0.65}}{0}{F} \fi
+}
+\foreach \i in {1,...,12} {\node[idxlbl] at ({(\i-1)*0.65},-0.7) {\i};}
+\end{tikzpicture}
+\diagcaption{每組 $x$ 人能不能剛好分完 $12$ 個人。 T 和 F 交錯出現，沒有單調性。}
+\label{fig:bs-nonmono}
+\end{center}
+
+如果硬把它當成 T…T F…F，用上一節的骨架找「能剛好分完的最大組人數」：
+\texttt{lo = 1}、\texttt{hi = 13}（想像的 F），依序檢查 $7$（F）、$4$（T）、
+$5$（F），停下來回傳 $4$。 真正的答案是 $12$。 二分搜檢查到 $7$ 是 F，就把
+$8$ 到 $12$ 全部丟掉了。 這類問題要直接枚舉（第~4~章），或是用數學性質（這裡
+是因數）。
+
+另一種常見的情況是函數先增後減，例如一個長方形盒子的容積隨著摺邊的寬度先變大
+再變小，要找最大值。 函數值本身沒有單調性，但「下一個值比這一個大嗎」這個回
+答是 T…T F…F，可以對它二分搜，或用三分搜（ternary search）；延伸閱讀的 CPH
+3.3 節有這種寫法。 本書的題目用不到，只要知道「直接對函數值二分搜」是錯的就
+好。
+
+\textbf{判斷順序}：寫 check 之前，先用一句話說出單調性的理由；說不出來，就在
+小範圍把每個 $x$ 都跑一次看看。 出現 T 和 F 交錯，就換方法。
+
+\subsection{答案是實數}
+\label{sec:bs-real}
+
+有些題目的答案是實數，例如水深、速度、時間，題目要求印到小數點後幾位，或印出
+$\lfloor 1000x \rfloor$。 二分搜照樣能用，有兩個地方不同：
+
+\begin{itemize}
+\item 沒有「相鄰的兩個整數」，迴圈不能用 \texttt{hi - lo > 1} 當條件。 改成
+\textbf{固定跑一定的輪數}，例如 $100$ 輪。 每輪範圍減半，$100$ 輪之後範圍縮
+小了 $2^{100} \approx 10^{30}$ 倍，遠超過 \texttt{double} 能表示的精細程度。
+\item \texttt{lo}、\texttt{hi} 都是 \texttt{double}，更新時直接設成
+\texttt{mid}，不用加減 $1$。
+\end{itemize}
+
+例子：求方程式 $x^3 + x = c$ 的解（$c \ge 0$）。 左邊隨 $x$ 變大而變大，所以
+「$x^3 + x \ge c$ 嗎」是 F…F T…T。 $x = 0$ 時左邊是 $0 \le c$，
+$x = c + 1$ 時左邊一定大於 $c$，答案就在兩者之間。
+
+\begin{example}[label=ex:root]{cpp}{(root.cpp) 實數的二分搜}
+#include <iomanip>
+#include <iostream>
+using namespace std;
+
+// 求 x * x * x + x = c 的解（c >= 0）。左邊隨 x 變大而變大。
+double solve(double c) {
+    double lo = 0, hi = c + 1;      // f(0) = 0 <= c，f(c + 1) > c
+    for (int round = 0; round < 100; round++) {
+        double mid = (lo + hi) / 2;
+        if (mid * mid * mid + mid >= c) {
+            hi = mid;
+        } else {
+            lo = mid;
+        }
+    }
+    return hi;
+}
+
+int main() {
+    double c;
+    cout << fixed << setprecision(6);
+    while (cin >> c) {
+        cout << solve(c) << '\n';
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+2 \\
+5 \\
+0.5 \\
+1000000 \\
+}{
+1.000000 \\
+1.515980 \\
+0.423854 \\
+99.996667 \\
+}
+
+$c = 2$ 時答案剛好是 $1$。 $c = 10^6$ 時答案接近 $100$（$100^3 = 10^6$），
+因為還有 $+x$ 那一項，比 $100$ 小一點。 \texttt{while (cin >> c)} 一直讀到輸
+入結束。
+
+為什麼不寫 \texttt{while (hi - lo > 1e-9)}？ \texttt{double} 大約只有 $16$ 位
+有效數字。 答案很大時，例如在 $10^{12}$ 附近，相鄰兩個 \texttt{double} 之間就
+差了大約 $2 \times 10^{-4}$，\texttt{hi - lo} 永遠不可能小於 $10^{-9}$：最後
+\texttt{mid} 會等於 \texttt{lo} 或 \texttt{hi}，範圍不再變小，迴圈停不下來。
+固定輪數就沒有這個問題，而且一定停。
+
+題目要求印 $\lfloor 1000x \rfloor$ 這種「無條件捨去」的格式時，通常會保證答案
+離整數夠遠，計算時一點點誤差不會讓捨去的結果差 $1$。 沒有這種保證的題目，要
+特別小心捨去前的誤差。
+
+\section{本章常見錯誤}
+\label{sec:bs-pitfalls}
+
+前面各節的錯誤，歸納起來是五類。 寫二分搜的題目時，交出去之前逐項檢查一次。
+
+\begin{center}
+\begin{tabular}{p{0.2\linewidth}p{0.46\linewidth}p{0.22\linewidth}}
+\toprule
+錯誤 & 例子 & 見 \\
+\midrule
+迴圈停不下來 & 「答案在 $[\texttt{lo}, \texttt{hi}]$」的寫法用了
+\texttt{lo = mid}；實數二分搜用 \texttt{hi - lo > 1e-9} 當條件 &
+第~\ref{sec:bs-halving}、\ref{sec:bs-real}~節 \\
+等號放錯邊 & 趕得上的車用了 \texttt{upper\_bound} & 第~\ref{sec:ex-next-bus}~節 \\
+上下界沒有理由 & 加熱器用平均降溫當上界；指導次數用 $\max a_i + k$ 當上界 &
+第~\ref{sec:ex-heater}、\ref{sec:ex-coach}~節 \\
+check 寫錯 & 加熱、降溫順序相反；已經夠高的人算出負的次數；用公式代替模擬 &
+第~\ref{sec:ex-heater}、\ref{sec:ex-coach}~節 \\
+溢位與精度 & \texttt{(lo + hi) / 2}；check 裡累加不提早停；用
+\texttt{double} 算整數進位 & 第~\ref{sec:bs-halving}、\ref{sec:ex-coach}~節 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+另外一個在每一題都出現的錯誤：沒有檢查「找不到」的情況。 陣列版要先確認位置
+不是 $n$ 才能讀；對答案二分搜要確認題目是否保證有答案。
+
+\section{本章練習}
+\label{sec:ch3-exercises}
+
+\begin{drills}[label=drills:ch3]
+\item 陣列 $a = [3, 8, 8, 12, 17, 25, 30]$（$n = 7$），用範例
+~\ref{ex:first-at-least} 的 \texttt{firstAtLeast}。
+\begin{enumerate}
+\item $x = 12$ 時，列出每一輪的 \texttt{lo}、\texttt{hi}、\texttt{mid}，以及
+回傳值。
+\item $x = 26$ 時呢？
+\item 把條件改成 \texttt{a[mid] > x}，$x = 8$ 時回傳什麼？ 這個位置代表什麼？
+\end{enumerate}
+
+\item 用本章的寫法，下列情況最多要檢查幾次（呼叫幾次 \texttt{ok}，或比較幾次
+\texttt{a[mid]}）？
+\begin{enumerate}
+\item 長度 $2 \times 10^5$ 的陣列。
+\item 長度 $10^6$ 的陣列。
+\item 範例~\ref{ex:heater}，$U - L = 10^9$。
+\item 範例~\ref{ex:coach}，$k = 10^9$、$\max b_i = 10^9$。
+\end{enumerate}
+
+\item 有人想找「最後一個 $\le x$ 的位置」，寫了下面的函式。 $a = [3, 8, 8, 12]$、
+$x = 8$ 時它回傳什麼？ 錯在哪裡，怎麼改？
+\begin{code}{cpp}{練習 3}
+int lastAtMost(const vector<int> &a, int x) {
+    int lo = -1, hi = a.size();
+    while (hi - lo > 1) {
+        int mid = lo + (hi - lo) / 2;
+        if (a[mid] <= x) {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    return hi;
+}
+\end{code}
+
+\item 下面每一個「答案為 $x$ 時做不做得到」，判斷它對 $x$ 有沒有單調性。 有的
+話說明理由，以及 T 在前還是在後；沒有的話給一個反例。
+\begin{enumerate}
+\item 一本書 $m$ 頁，每天讀 $x$ 頁，能不能在 $D$ 天內讀完。
+\item 一排有 $n$ 個座位，要讓 $p$ 個人坐下，任兩個人之間至少空 $x$ 個位子，坐
+不坐得下。
+\item 只用面額 $x$ 元的硬幣，能不能剛好湊出 $n$ 元。
+\item 一條長 $m$ 公尺的步道旁有 $n$ 盞路燈，位置已知，每盞燈照亮左右各 $x$
+公尺，整條步道是不是都照得到。
+\end{enumerate}
+
+\item 範例~\ref{ex:heater} 把上界設成 $U - L$。
+\begin{enumerate}
+\item 證明 $\texttt{hi} = \max d_i$ 也一定做得到。
+\item 有人把上界設成 $\max d_i - 1$，第~\ref{sec:ex-heater}~小節「順序寫反」
+那組輸入（\texttt{3 5 5 10}、\texttt{4 4 4}）會印出什麼？
+\end{enumerate}
+
+\item 關於範例~\ref{ex:root}：
+\begin{enumerate}
+\item 範圍從 $[0, c + 1]$ 開始，要讓範圍縮小到 $10^{-6}$ 以下，$c = 10^6$ 時大
+約要幾輪？ 跑 $100$ 輪是不是浪費很多時間？
+\item 把 \texttt{for} 改成 \texttt{while (hi - lo > 1e-9)}，輸入
+$c = 10^{36}$（答案大約 $10^{12}$）時會發生什麼事？
+\end{enumerate}
+\end{drills}
+
+\section{實作練習}
+\label{sec:ch3-practice}
+
+下面是 Aki-Judge 上和本章相關的題目，依小節分組。 難度分四階：暖身是直接套用
+本章的寫法；基本要自己寫出判斷條件或 check 函式；實戰的題敘比較長，要先把題目
+轉換成本章的形狀；挑戰會和其他章的技巧合在一起。
+
+\begin{center}
+\begin{tabular}{llc}
+\toprule
+小節 & 題目 & 難度 \\
+\midrule
+有序資料上的查詢 & \akiref{same-score-same-rank}{同分同名次} & 暖身 \\
+ & \akiref{waiting-for-the-k-th-loan}{等第 k 次借出} & 基本 \\
+ & \akiref{which-day-is-enough}{累計到哪一天才夠} & 基本 \\
+ & \akiref{the-nearest-free-parking-space}{最近的空停車格} & 實戰 \\
+ & \akiref{transfers-on-the-way-to-school}{轉乘上學} & 實戰 \\
+ & \akiref{splitting-badge-swipes-into-sessions}{打卡紀錄切成幾段} & 挑戰 \\
+\midrule
+對答案二分搜 & \akiref{largest-name-badge-from-card-sheets}{活動名牌的最大邊長} & 暖身 \\
+ & \akiref{slowest-pace-for-in-order-homework}{照順序趕作業的最低效率} & 基本 \\
+ & \akiref{smallest-water-bottle-for-the-hike}{登山水壺的最小容量} & 實戰 \\
+ & \akiref{grouping-players-in-sign-up-order}{依報名順序分組的最小實力差} & 實戰 \\
+ & \akiref{daily-hour-cap-for-club-officers}{社團幹部的每日工時上限} & 挑戰 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+本章的三題例題也在 Aki-Judge 上，讀完各節之後可以先自己寫一次再對照。
+
+\section{讀完你應該會}
+\label{sec:ch3-checklist}
+
+\begin{itemize}
+\item 能用「\texttt{lo} 是 F、\texttt{hi} 是 T、\texttt{hi - lo > 1}」的寫法
+寫出二分搜，並在只剩兩個元素、答案在兩端、找不到的輸入上手動跑過。
+\item 看到「第一個 $\ge x$」「最後一個 $\le x$」「比 $x$ 小的有幾個」這類問法，
+能說出要用 \texttt{lower\_bound} 還是 \texttt{upper\_bound}，以及要不要退一格。
+\item 看到「最少要多少才夠」「最多可以多少」、答案範圍大到不能一個一個試的題
+目，能寫出 check 函式，並用一句話說明它的單調性。
+\item 能替對答案二分搜設定上下界，說出「為什麼這一端一定做得到（做不到）」，並
+估計 check 裡的數字最大到多少、需不需要提早停。
+\item 能判斷一個問題沒有單調性而不能二分搜，並知道實數答案要固定輪數。
+\end{itemize}
+
+\textbf{延伸閱讀}（書末會整理完整的參考資料）
+
+\begin{itemize}
+\item Antti Laaksonen，\textit{Competitive Programmer's Handbook}，3.3 節：篇
+幅很短，介紹另一種「每次跳一半」的寫法，以及怎麼找先增後減的函數的最大值。
+\item Steven Halim 等，\textit{Competitive Programming 4}，Book 1，3.3.1 節：實數
+答案的二分搜，以及更多對答案二分搜的題型分類。
+\item Steven S. Skiena，\textit{The Algorithm Design Manual}，第 3 版，5.1 節：
+二分搜尋的幾種變化，例如計算出現次數、在不知道長度的資料裡搜尋。
+\end{itemize}
+
+\addcontentsline{toc}{section}{練習解答}
+\section*{練習解答}
+
+\begin{enumerate}
+\item
+\begin{enumerate}
+\item \texttt{(lo, hi, mid)} 依序是 $(-1, 7, 3)$：$a[3] = 12 \ge 12$，T，
+\texttt{hi = 3}；$(-1, 3, 1)$：$8 < 12$，F，\texttt{lo = 1}；$(1, 3, 2)$：
+$8 < 12$，F，\texttt{lo = 2}。 \texttt{hi - lo = 1}，回傳 $3$。
+\item $(-1, 7, 3)$：$12 < 26$，\texttt{lo = 3}；$(3, 7, 5)$：$25 < 26$，
+\texttt{lo = 5}；$(5, 7, 6)$：$30 \ge 26$，\texttt{hi = 6}。 回傳 $6$。
+\item 回傳 $3$。 過程是 $(-1, 7, 3)$：$12 > 8$，\texttt{hi = 3}；
+$(-1, 3, 1)$：$8 > 8$ 不成立，\texttt{lo = 1}；$(1, 3, 2)$：同樣不成立，
+\texttt{lo = 2}。 這是第一個 $> 8$ 的位置，也就是 \texttt{upper\_bound} 的
+結果；它減掉 \texttt{lower\_bound} 的結果 $1$，等於 $8$ 出現的次數 $2$。
+\end{enumerate}
+
+\item 本章的寫法最多跑 $\lceil \log_2 g \rceil$ 輪，$g$ 是一開始的
+\texttt{hi - lo}，每輪檢查一次。
+\begin{enumerate}
+\item $g = 2 \times 10^5 + 1$，$18$ 次（$2^{17} = 131072 < g \le 2^{18} = 262144$）。
+\item $g = 10^6 + 1$，$20$ 次（$2^{20} = 1048576$）。
+\item $g = 10^9 + 1$，$30$ 次（$2^{30} \approx 1.07 \times 10^9$）。
+\item $g = k \cdot \max b_i + 1 = 10^{18} + 1$，$60$ 次
+（$2^{60} \approx 1.15 \times 10^{18}$）。 每次 \texttt{ok} 是 $O(n)$，
+總共大約 $60n$ 步。
+\end{enumerate}
+
+\item 回傳 $3$，是第一個 $> 8$ 的位置，不是最後一個 $\le 8$ 的位置（應該是 $2$）。
+這個函式的條件是「$a[\texttt{mid}] \le x$ 是 T」，而 $\le x$ 的元素排在前面，所
+以回答是 T…T F…F，迴圈維持的是「\texttt{lo} 是 T、\texttt{hi} 是 F」。 停下來
+時最後一個 T 是 \texttt{lo}，所以要回傳 \texttt{lo}。 改成 \texttt{return lo;}
+之後，沒有任何元素 $\le x$ 時回傳 $-1$，表示沒有。 寫完二分搜，先看清楚
+\texttt{lo}、\texttt{hi} 各是 T 還是 F，再決定回傳哪一個。
+
+\item
+\begin{enumerate}
+\item 有單調性，T 在後。 $D$ 天讀 $Dx$ 頁，$x$ 越大讀得越多；$Dx \ge m$ 時，
+比 $x$ 大的也都成立。
+\item 有單調性，T 在前。 間隔 $x$ 坐得下時，把要求降成 $x - 1$，原本的坐法仍然
+滿足（每兩人之間的空位一樣多，至少 $x \ge x - 1$），所以也坐得下。
+\item 沒有單調性。 $n = 12$ 時，$x = 4$ 可以、$x = 5$ 不行、$x = 6$ 又可以。
+\item 有單調性，T 在後。 半徑變大時，每盞燈照到的範圍只會變大、包含原來的範
+圍，原本照得到的點仍然照得到。 check 的寫法是把燈的位置排好，由左往右檢查相鄰
+兩盞燈照到的範圍有沒有接上，以及兩端有沒有照到。
+\end{enumerate}
+
+\item
+\begin{enumerate}
+\item 設 $P = \max d_i$，用歸納法說明每小時降溫後至少 $L$ 度。 第 $i$ 小時開始
+時水溫 $t \ge L$（$i = 1$ 時 $t = T_0 \ge L$）。 如果加熱後沒有超過 $U$，水溫
+是 $t + P - d_i \ge t \ge L$，因為 $P \ge d_i$；如果超過了，水溫是
+$U - d_i \ge L$，因為題目保證 $d_i \le U - L$。 兩種情況都至少 $L$ 度。
+\item 輸入的 $d_i$ 都是 $4$，\texttt{hi = 3}。 答案其實是 $4$，比 \texttt{hi}
+大，二分搜在 $[-1, 3]$ 裡每一個 \texttt{ok} 都是 F，\texttt{hi} 沒有動過，程式
+印出 \texttt{3}。 這說明上界一定要是「證明過做得到」的值：$\max d_i$ 可以，
+$\max d_i - 1$ 不行。
+\end{enumerate}
+
+\item
+\begin{enumerate}
+\item 一開始的範圍大約是 $10^6$，縮到 $10^{-6}$ 要縮 $10^{12}$ 倍，
+$\log_2 10^{12} \approx 40$ 輪。 多跑的 $60$ 輪每輪只做幾次乘法和比較，只有一
+個查詢的話完全感覺不到。 查詢很多、check 又是 $O(n)$ 的題目，才需要算一下輪
+數，例如改成 $60$ 輪。
+\item 範圍會停在相鄰的兩個 \texttt{double} 上。 答案在 $10^{12}$ 附近時，相鄰
+兩個 \texttt{double} 大約差 $2 \times 10^{-4}$，\texttt{hi - lo} 不可能小於
+$10^{-9}$；這時 \texttt{(lo + hi) / 2} 會等於 \texttt{lo} 或 \texttt{hi}，範
+圍不再改變，迴圈永遠不會結束。 固定輪數的寫法沒有這個問題。
+\end{enumerate}
+\end{enumerate}

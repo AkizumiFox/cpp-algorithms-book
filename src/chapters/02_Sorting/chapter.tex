@@ -1,4 +1,1288 @@
-% 佔位：本章尚未開始。book.tex 裡先註解掉。
 \chapter{排序與有序資料}
+\label{ch:sorting}
 
-本章尚未開始。
+月底整理報帳，桌上有一疊打亂的收據，每張印著一個發票號碼。 會計提醒你，有
+幾張收據可能被重複送了兩次以上，要把它們挑出來。 收據有幾百張，你會怎麼找？
+往下讀之前，先想一個做法，並估計一下要翻幾次。
+
+最直接的做法是拿起一張，和其他每一張比號碼，再拿下一張重複一次。 $n$ 張收
+據要比大約 $n^2 / 2$ 次，幾百張就是好幾萬次。 大多數人實際上會換一種做法：
+先把整疊收據依號碼排好，重複的收據就會疊在一起，從頭翻一遍就全部找到了。
+
+這一章講的就是這個想法：資料排好順序之後，很多問題會變簡單。 相同的東西會靠
+在一起，最小、最大、第幾小的都在固定的位置，要找某個值或某個範圍，也不用從
+頭找到尾。 排序本身直接用函式庫的 \texttt{sort}，這一章的重點是排好之後怎麼
+用：去掉重複、計算每個值出現幾次、合併相連的區間、把很大的數字換成名次（離散
+化），以及在排好的資料上快速查詢。 中間也會花一節看簡單的排序演算法怎麼一步
+一步把陣列排好，因為一輪一輪追蹤程式的狀態，是讀程式和寫程式都要會的基本功。
+
+用到的語法在《C++ 程式設計：給學過 C 的人》（以下簡稱銜接書）都講過：
+\texttt{sort} 與比較函式、lambda、\texttt{unique}、\texttt{lower\_bound}、
+\texttt{upper\_bound} 在第~9~章，\texttt{pair}、\texttt{set}、\texttt{map}
+與結構化綁定在第~8~章，從資料範圍估計時間在第~10~章 10.1 節。 沒讀過銜接書
+的讀者，只要會用 \texttt{sort} 排序 \texttt{vector}，知道比較函式回傳
+\texttt{true} 代表「前面的排在前面」，就能開始讀這一章；其他函式用到時會用
+「銜接書回顧」框簡短說明。
+
+\section{排好之後，相同的會靠在一起}
+\label{sec:srt-adjacent}
+
+回到收據。 下圖上排是十張收據原本的順序，下排是依號碼排好之後。 排好之後，
+同一個號碼的收據一定連成一段，因為不會有別的號碼夾在兩張相同的號碼中間：夾在
+中間的號碼必須不小於它、也不大於它，那就只能是它自己。
+
+\begin{center}
+\begin{tikzpicture}[every node/.style={}, c/.style={cell, minimum width=1.25cm, font=\ttfamily\small},
+  h/.style={hlcell, minimum width=1.25cm, font=\ttfamily\small}]
+\node[left, font=\small] at (-0.1,1.4) {原本};
+\foreach \v [count=\i from 0] in {4127,3301,4512,3301,2875,4127,3960,3301,4512,2210} {
+  \node[c] at (\i*1.3+0.6,1.4) {\v};
+}
+\node[left, font=\small] at (-0.1,0) {排好};
+\foreach \v [count=\i from 0] in {2210,2875} {\node[c] at (\i*1.3+0.6,0) {\v};}
+\foreach \v [count=\i from 2] in {3301,3301,3301} {\node[h] at (\i*1.3+0.6,0) {\v};}
+\node[c] at (5*1.3+0.6,0) {3960};
+\foreach \v [count=\i from 6] in {4127,4127,4512,4512} {\node[h] at (\i*1.3+0.6,0) {\v};}
+\end{tikzpicture}
+\diagcaption{十張收據排序前後。 排好之後，重複的號碼（橘色）各自連成一段。}
+\label{fig:srt-receipts}
+\end{center}
+
+所以「找重複」變成「由左往右看，找長度至少 $2$ 的段」。 每一段的寫法都一樣：
+從段的開頭 \texttt{i} 出發，讓 \texttt{j} 往右走，直到遇到不同的值；
+\texttt{a[i]} 到 \texttt{a[j - 1]} 就是同一段，長度是 \texttt{j - i}，下一段
+從 \texttt{j} 開始。
+
+\begin{example}[label=ex:srt-runs]{cpp}{(runs.cpp) 找出重複的收據號碼和張數}
+#include <algorithm>
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    int n;
+    cin >> n;
+    vector<int> a(n);
+    for (int &x : a) {
+        cin >> x;
+    }
+    sort(a.begin(), a.end());
+    int i = 0;
+    while (i < n) {
+        int j = i;
+        while (j < n && a[j] == a[i]) {   // a[i..j) 是同一個值
+            j++;
+        }
+        if (j - i >= 2) {
+            cout << a[i] << ' ' << j - i << '\n';
+        }
+        i = j;                            // 跳到下一段的開頭
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+10 \\
+4127 3301 4512 3301 2875 4127 3960 3301 4512 2210 \\
+}{
+3301 3 \\
+4127 2 \\
+4512 2 \\
+}
+
+\begin{itemize}
+\item 內層的條件先寫 \texttt{j < n}，再寫 \texttt{a[j] == a[i]}。 \texttt{\&\&}
+左邊是假的時候，右邊不會執行，所以 \texttt{j} 走到 \texttt{n} 時不會讀到陣列外
+面。 兩邊對調，最後一段就會讀到 \texttt{a[n]}。
+\item 看起來是兩層迴圈，但 \texttt{j} 走過的格子，\texttt{i} 會直接跳過去，
+不會再走一次。 兩層迴圈合起來，\texttt{j} 從頭到尾只走一遍，是 $O(n)$。 整支
+程式的時間花在排序，$O(n \log n)$。
+\item 同樣的骨架改一行就能做別的事：印出每個值和它出現的次數、找出出現最多次
+的值（眾數）、只數有幾種不同的值。
+\end{itemize}
+
+最直接的做法，也就是一開始說的兩兩比較，是 $n(n-1)/2$ 次比較。 這種「把所有
+可能都試一遍」的做法叫\textbf{暴力解}（brute force）。 它很慢，但寫法直接、
+不容易錯，後面每一題都會先寫出暴力解，用資料範圍算出它為什麼不夠快，再找更好
+的做法。 $n = 2 \times 10^5$ 時，兩兩比較是 $2 \times 10^{10}$ 次，照銜接書
+10.1 節的估計要好幾十秒；排序大約是 $n \log_2 n \approx 3.5 \times 10^6$ 次比
+較，一眨眼就做完。
+
+\subsection{只留下不同的值}
+
+很多題目只在乎「出現過哪些值」，不在乎出現幾次，這時要把重複的去掉。 排序之
+後重複的都靠在一起，所以只要「和前一個不同才留下」。 函式庫已經寫好了這件事：
+
+\begin{bridgerecap}[\texttt{unique} 與 \texttt{erase}]
+\texttt{unique(first, last)} 把\textbf{相鄰}的重複元素只留一個，往前搬，回傳
+「不重複部分的結尾」（銜接書第~9~章）。 它沒辦法改變 \texttt{vector} 的大
+小，所以後面還留著一段沒用的元素，要再用 \texttt{erase} 刪掉：
+\begin{code}{cpp}{排序、去重的固定寫法}
+sort(v.begin(), v.end());
+v.erase(unique(v.begin(), v.end()), v.end());
+\end{code}
+做完之後 \texttt{v} 由小到大、沒有重複，\texttt{v.size()} 就是不同的值有幾
+種。 \texttt{unique} 只處理相鄰的重複，所以一定要先排序。
+\end{bridgerecap}
+
+例如 $\{5, 2, 5, 9, 2, 5\}$ 排序後是 $\{2, 2, 5, 5, 5, 9\}$；\texttt{unique}
+做完，前三格是 $\{2, 5, 9\}$，後三格的內容沒有規定，回傳值指著第四格；
+\texttt{erase} 把後三格刪掉，大小變成 $3$。 只寫 \texttt{unique} 不寫
+\texttt{erase}，\texttt{v.size()} 還是 $6$，後面三格的垃圾會被當成資料。
+
+\subsection{什麼時候用、什麼時候不用}
+
+\begin{itemize}
+\item \textbf{適合的訊號}：題目提到「重複」「相同」「有幾種」「出現最多次」
+「最接近的兩個」，而且資料讀完之後就不會再改變。 排序後最接近的兩個數一定相鄰
+（本章練習第~6~題），也是同一個想法。
+\item \textbf{值的範圍很小時，用計數陣列更快}：如果每個值都在 $0$ 到 $10^6$
+之間，開一個 \texttt{cnt} 陣列，\texttt{cnt[x]++} 就數完了，是 $O(n)$ 加上
+值域的大小。 值到 $10^9$ 或有負數時開不了這麼大的陣列，才用排序。
+\item \textbf{原本的順序有意義時要小心}：排序會把順序打亂。 題目要「依輸入順
+序輸出」或「第一次出現的位置」，要另外記下每筆資料原本的位置，或改用
+\texttt{set}、\texttt{map} 邊讀邊記（銜接書第~8~章）。
+\end{itemize}
+
+\subsection{例題：軌道故障點合併成維修段}
+\label{sec:srt-ex-faults}
+
+\textbf{題意}（\akiref{merging-reported-track-faults}{軌道故障點合併成維修段}）
+
+\begin{itemize}
+\item 一條直線軌道上，每個整數座標都有一個感測器。 巡檢時收到 $N$ 筆故障回
+報，每筆是一個整數座標，可能是負數，順序是亂的，同一個座標可能被回報很多次。
+\item 把所有被回報過的座標分成維修段：一段 $[l, r]$ 表示 $l, l + 1, \ldots,
+r$ 都被回報過，而且相鄰的兩個座標如果都被回報過，一定在同一段。
+\item 先輸出段數，再依左端點由小到大，每行輸出一段的 $l$ 和 $r$。
+$N \le 2 \times 10^5$，座標在 $-10^9$ 到 $10^9$ 之間。
+\end{itemize}
+
+例如回報的座標是 $8, -2, 4, 6, -1, 5, 8, -3, 10, 5$。 去掉重複之後是 $-3,
+-2, -1, 4, 5, 6, 8, 10$，可以分成 $[-3, -1]$、$[4, 6]$、$[8, 8]$、$[10, 10]$
+四段。 $7$ 和 $9$ 沒有被回報，所以 $8$ 和 $10$ 各自一段。
+
+\begin{center}
+\begin{tikzpicture}[x=0.9cm, y=0.6cm]
+\draw[black!45] (-3.5,0) -- (10.5,0);
+\foreach \x in {-3,...,10} {
+  \draw[black!45] (\x,0.1) -- (\x,-0.1) node[below, font=\scriptsize, text=black!60] {\x};
+}
+\foreach \x in {-3,-2,-1,4,5,6,8,10} {\fill[memStroke] (\x,0.5) circle (2.5pt);}
+\foreach \x in {8,5} {\fill[memStroke] (\x,0.95) circle (2.5pt);}
+\foreach \l/\r in {-3/-1, 4/6, 8/8, 10/10} {
+  \draw[thick, coreStroke] (\l-0.25,1.5) -- (\l-0.25,1.75) -- (\r+0.25,1.75) -- (\r+0.25,1.5);
+}
+\end{tikzpicture}
+\diagcaption{範例的十筆回報。 圓點是回報（$5$ 和 $8$ 各被回報兩次），上方的括號是四個維修段。}
+\label{fig:srt-faults}
+\end{center}
+
+\textbf{想法}
+
+暴力解：對每個被回報過的座標 $x$，在所有回報裡找 $x + 1$ 在不在，在的話 $x$
+和 $x + 1$ 屬於同一段。 每次找要看過全部 $N$ 筆，總共 $O(N^2)$，$N = 2 \times
+10^5$ 時是 $4 \times 10^{10}$ 次，來不及。
+
+座標到 $\pm 10^9$，也不能開一個以座標為索引的陣列，把被回報的格子標起來。
+
+排序之後，問題就變得很直接。 一段連續的座標，排好之後一定是陣列裡相鄰的一串，
+而且每一個都比前一個多 $1$。 所以從段的開頭往右走，只要下一個剛好是目前這個
+加 $1$ 就繼續，否則這一段到此為止。 這和 \texttt{runs.cpp} 的骨架一樣，只是
+「同一段」的條件從「等於開頭」改成「比前一個多 $1$」。
+
+重複的座標會打斷這個判斷。 範例排好之後是 $\ldots, 4, 5, 5, 6, \ldots$：看到
+第二個 $5$ 時，它不等於 $5 + 1$，段就斷了，$[4, 6]$ 會被切成兩段。 所以要先去
+重，再找段。
+
+去重之後的陣列是 $-3, -2, -1, 4, 5, 6, 8, 10$，下表是每一段的開頭 \texttt{i}
+和走到的 \texttt{j}：
+
+\begin{center}
+\begin{tabular}{cccl}
+\toprule
+\texttt{i}（開頭） & \texttt{a[i]} & \texttt{j}（走到） & 這一段 \\
+\midrule
+0 & $-3$ & 2 & $[-3, -1]$；\texttt{a[3]} $= 4 \ne -1 + 1$，停 \\
+3 & $4$ & 5 & $[4, 6]$；\texttt{a[6]} $= 8 \ne 6 + 1$，停 \\
+6 & $8$ & 6 & $[8, 8]$；\texttt{a[7]} $= 10 \ne 9$，停 \\
+7 & $10$ & 7 & $[10, 10]$；已經是最後一個 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+同樣的模型也出現在別的地方：倉庫的貨架編號中，哪幾段連續的貨架被標成待盤點；
+一份出勤紀錄裡，某位員工連續出勤的天數各是哪幾段。
+
+\textbf{程式}
+
+\begin{example}[label=ex:srt-faults]{cpp}{(faults.cpp) 軌道故障點合併成維修段}
+#include <algorithm>
+#include <iostream>
+#include <utility>
+#include <vector>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n;
+    cin >> n;
+    vector<int> a(n);
+    for (int &x : a) {
+        cin >> x;
+    }
+    sort(a.begin(), a.end());
+    a.erase(unique(a.begin(), a.end()), a.end());   // 重複的座標只留一個
+    int k = a.size();
+    vector<pair<int, int>> seg;                     // 每一段的左右端點
+    int i = 0;
+    while (i < k) {
+        int j = i;
+        while (j + 1 < k && a[j + 1] == a[j] + 1) { // 下一個剛好接上
+            j++;
+        }
+        seg.push_back({a[i], a[j]});                // a[i..j] 是一段
+        i = j + 1;
+    }
+    cout << seg.size() << '\n';
+    for (auto [l, r] : seg) {
+        cout << l << ' ' << r << '\n';
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+10 \\
+8 -2 4 6 -1 5 8 -3 10 5 \\
+}{
+4 \\
+-3 -1 \\
+4 6 \\
+8 8 \\
+10 10 \\
+}
+
+\begin{itemize}
+\item 這裡的 \texttt{j} 停在段的最後一個元素上（兩端都算），和
+\texttt{runs.cpp} 停在下一段開頭不同，所以下一段從 \texttt{j + 1} 開始。 兩
+種寫法都可以，選一種之後，\texttt{seg} 的端點和下一段的開頭要跟著一致。
+\item 座標用 \texttt{int} 就夠：最大是 $10^9$，\texttt{a[j] + 1} 最多是
+$10^9 + 1$，還在 \texttt{int} 的範圍（約 $2.1 \times 10^9$）裡。
+\item 每一段都在找到結尾時馬上存進 \texttt{seg}，迴圈結束時沒有「還沒存的最後
+一段」。 常見錯誤的第二項是另一種寫法會出的問題。
+\item \texttt{for (auto [l, r] : seg)} 是結構化綁定（銜接書第~8~章），等於對
+每個 \texttt{pair} 取出 \texttt{first} 和 \texttt{second}。
+\end{itemize}
+
+\textbf{複雜度}
+
+排序 $O(N \log N)$，去重和找段都是 $O(N)$。 最大的測試資料（俗稱測資）在本書
+測試的環境下約 $0.03$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{沒有去重}：拿掉 \texttt{erase(unique(...))} 那一行，範例的輸入會
+印出 \texttt{6} 段：$[4, 6]$ 被重複的 $5$ 切成 $[4, 5]$ 和 $[5, 6]$，$8$ 也多
+了一段 $[8, 8]$。 題目的範例如果剛好沒有重複，這個錯誤看不出來，所以自己測試
+時要故意放幾個重複的值。
+\item \textbf{忘了最後一段}：另一種常見的寫法是用兩個變數 \texttt{l}、
+\texttt{r} 記住目前這一段，接不上時才把它存起來、開新的一段。 這樣寫，最後一
+段在迴圈裡永遠等不到「接不上」，迴圈結束後要再存一次；忘了的話，範例會少印
+$[10, 10]$。 輸入只有一個座標時更明顯：一段都印不出來。
+\item \textbf{用座標當陣列索引}：開 \texttt{bool seen[2000000001]} 要約 $2$ GB，
+遠超過題目的記憶體限制；就算值域小一點，負的座標也會變成負的索引。 值域大或有
+負數，就排序。
+\end{itemize}
+
+\section{依好幾個欄位排序}
+\label{sec:srt-multikey}
+
+資料常常不只一個欄位。 物流中心每天要出很多張訂單，每張有單號、截止日、重量。
+撿貨的順序是：截止日早的先出；同一天截止的，重的先出（先放在推車底層）；再相同
+就照單號。 這種「先比第一個欄位，相同再比第二個」的順序，用一個比較函式表達：
+
+\begin{example}[label=ex:srt-orders]{cpp}{(orders.cpp) 依截止日、重量、單號排序}
+#include <algorithm>
+#include <iostream>
+#include <vector>
+using namespace std;
+
+struct Order {
+    int id, due, weight;   // 單號、截止日、重量
+};
+
+int main() {
+    int n;
+    cin >> n;
+    vector<Order> v(n);
+    for (Order &o : v) {
+        cin >> o.id >> o.due >> o.weight;
+    }
+    sort(v.begin(), v.end(), [](const Order &x, const Order &y) {
+        if (x.due != y.due) {
+            return x.due < y.due;          // 截止日早的在前
+        }
+        if (x.weight != y.weight) {
+            return x.weight > y.weight;    // 同一天，重的在前
+        }
+        return x.id < y.id;                // 再相同，單號小的在前
+    });
+    for (int i = 0; i < n; i++) {
+        cout << v[i].id << (i + 1 < n ? ' ' : '\n');
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+6 \\
+101 3 20 \\
+102 1 5 \\
+103 3 35 \\
+104 2 12 \\
+105 1 5 \\
+106 3 20 \\
+}{
+102 105 104 103 101 106 \\
+}
+
+第 $1$ 天截止的是 $102$、$105$，重量一樣，照單號；第 $2$ 天只有 $104$；第 $3$
+天是 $103$（$35$）、再來 $101$ 和 $106$（都是 $20$，照單號）。
+
+\begin{bridgerecap}[比較函式與嚴格弱序]
+\texttt{sort} 的第三個引數收兩個元素 \texttt{x}、\texttt{y}，\texttt{x} 應該
+排在 \texttt{y} 前面時回傳 \texttt{true}（銜接書第~9~章）。 它必須表現得像
+「嚴格小於」：
+\begin{itemize}
+\item 兩個元素相等時，兩個方向都要回傳 \texttt{false}，所以不能用
+\texttt{<=} 或 \texttt{>=}。
+\item \texttt{x} 在 \texttt{y} 前、\texttt{y} 在 \texttt{z} 前，\texttt{x} 就
+要在 \texttt{z} 前。
+\end{itemize}
+標準把這些條件叫做\textbf{嚴格弱序}（strict weak ordering）。 違反時，
+\texttt{sort} 可能排錯，也可能讀到陣列外面而讓程式當掉，而且編譯器不會警告。
+\end{bridgerecap}
+
+寫多欄位比較函式時，固定照上面的格式：每個欄位一個 \texttt{if}，「不相等就決
+定，相等就往下」。 兩種看起來比較短的寫法都是錯的：
+
+\begin{itemize}
+\item \texttt{return x.due < y.due || x.weight > y.weight;}：
+\texttt{x} 的截止日比較晚、但比較重時，它仍然回傳 \texttt{true}。 拿訂單
+$(due = 3, weight = 20)$ 和 $(due = 1, weight = 5)$ 來試，兩個方向都會回傳
+\texttt{true}，等於說「兩張都排在對方前面」。
+\item 最後一行寫成 \texttt{return x.id <= y.id;}：同一張訂單和自己比較時回傳
+\texttt{true}，違反「相等時回傳 \texttt{false}」。
+\end{itemize}
+
+\subsection{另外兩個寫法}
+
+\textbf{用 \texttt{pair} 或 \texttt{tuple} 省掉比較函式。} \texttt{pair}、
+\texttt{tuple} 內建的 \texttt{<} 就是「先比第一個，相同再比第二個……」，所以
+欄位都是由小到大時，把它們依重要性放進 \texttt{tuple} 直接排序即可。 要由大到
+小的欄位，還是寫比較函式比較清楚。
+
+\textbf{排序之後還要知道原本是第幾筆。} 例如題目要輸出「每位選手的名次，照輸
+入順序」。 做法是多存一個欄位記原本的編號，排序後依名次走一遍，把名次寫回
+\texttt{rank[原本的編號]}。 另一種常見的寫法是不動資料本身，只排一個編號陣列
+\texttt{idx = \{0, 1, \ldots, n - 1\}}，比較函式裡比 \texttt{a[i]} 和
+\texttt{a[j]}。
+
+\textbf{相等的元素要照原本的順序。} \texttt{sort} 不保證相等的元素維持原本的先
+後。 題目寫「同分時照報名順序」，可以在比較函式最後比原本的編號，或改用
+\texttt{stable\_sort}（銜接書第~9~章），它保證相等的元素維持原順序。 兩種都比
+「相信 \texttt{sort} 剛好不會動它們」安全。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{比較函式用 \texttt{<=}}：除了上面說的，最容易出事的情況是大量相
+等的元素。 銜接書第~9~章示範過：$20$ 個相同的數用 \texttt{<=} 排序，表面上看不
+出問題，用 AddressSanitizer 檢查，就會看到 \texttt{sort} 讀到
+\texttt{vector} 的範圍外面。
+\item \textbf{只比主要欄位，卻期待次要欄位有固定順序}：只比截止日，同一天的訂
+單誰先誰後沒有規定，換一台電腦或換一組輸入就可能不同。 題目有規定的次序，就把
+它寫進比較函式。
+\item \textbf{由大到小寫成 \texttt{x.weight - y.weight}}：比較函式回傳
+\texttt{bool}，任何不是 $0$ 的值都會變成 \texttt{true}，等於說「只要不相等，
+\texttt{x} 就在前面」。 編譯器不會警告。
+\end{itemize}
+
+\section{簡單排序與交換次數}
+\label{sec:srt-simple}
+
+解題時排序一律用 \texttt{sort}。 不過有兩個理由，值得看一次簡單的排序演算法怎
+麼運作：觀念題可能給一段排序程式，問某一輪之後陣列長什麼樣子，或總共交換了幾
+次；另外，有些實作題問的就是「照這種方式排，要搬動幾次」。
+
+\textbf{插入排序}（insertion sort）像整理手上的撲克牌：左邊是已經排好的部分，
+每次拿右邊的下一張，往左邊找它該放的位置，比它大的牌都往右挪一格。
+
+\begin{example}[label=ex:srt-insertion]{cpp}{(insertion.cpp) 插入排序，印出每一輪的陣列和總搬移次數}
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    int n;
+    cin >> n;
+    vector<int> a(n);
+    for (int &x : a) {
+        cin >> x;
+    }
+    long long shifts = 0;
+    for (int i = 1; i < n; i++) {
+        int key = a[i];
+        int j = i - 1;
+        while (j >= 0 && a[j] > key) {   // 比 key 大的往右挪一格
+            a[j + 1] = a[j];
+            j--;
+            shifts++;
+        }
+        a[j + 1] = key;
+        for (int t = 0; t < n; t++) {          // 印出這一輪結束後的陣列
+            cout << a[t] << (t + 1 < n ? ' ' : '\n');
+        }
+    }
+    cout << shifts << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+5 \\
+4 2 5 1 3 \\
+}{
+2 4 5 1 3 \\
+2 4 5 1 3 \\
+1 2 4 5 3 \\
+1 2 3 4 5 \\
+6 \\
+}
+
+追蹤排序程式時，用表格一輪一輪寫下陣列最不容易錯。 下表的橘色是這一輪插入的
+元素最後落下的位置：
+
+\begin{center}
+\begin{tikzpicture}[x=0.95cm, y=0.95cm]
+\foreach \row/\lbl/\vals/\hl/\cnt in {
+  0/開始/{4,2,5,1,3}/-1/{},
+  1/{$i = 1$}/{2,4,5,1,3}/0/{挪 $1$ 次},
+  2/{$i = 2$}/{2,4,5,1,3}/2/{挪 $0$ 次},
+  3/{$i = 3$}/{1,2,4,5,3}/0/{挪 $3$ 次},
+  4/{$i = 4$}/{1,2,3,4,5}/2/{挪 $2$ 次}} {
+  \node[left, font=\small] at (-0.1,-\row) {\lbl};
+  \foreach \v [count=\k from 0] in \vals {
+    \ifnum\k=\hl
+      \node[hlcell] at (\k+0.5,-\row) {\v};
+    \else
+      \node[cell] at (\k+0.5,-\row) {\v};
+    \fi
+  }
+  \node[right, font=\small] at (5.2,-\row) {\cnt};
+}
+\end{tikzpicture}
+\diagcaption{插入排序每一輪結束後的陣列。 例如 $i = 3$ 時拿起 $1$，$2$、$4$、$5$ 都比它大，各往右挪一格。}
+\label{fig:srt-insertion}
+\end{center}
+
+總共挪了 $1 + 0 + 3 + 2 = 6$ 次。 這個數字有一個不用模擬就能算出來的意義：數一
+數陣列裡有幾對「前面的比後面的大」，例如 $(4, 2)$、$(4, 1)$、$(4, 3)$、
+$(2, 1)$、$(5, 1)$、$(5, 3)$，剛好 $6$ 對。 這樣的一對叫\textbf{逆序對}
+（inversion）。 插入排序每挪一格，就是讓一個比 \texttt{key} 大的元素越過
+\texttt{key}，剛好消掉一個逆序對，其他對的前後關係都沒變；排好的陣列沒有逆序
+對，所以挪的總次數等於一開始的逆序對數。 每次只交換相鄰兩個元素的
+\textbf{氣泡排序}（bubble sort）也一樣，交換次數等於逆序對數。
+
+這也說明了這類排序為什麼慢：由大到小排好的 $n$ 個數有 $n(n-1)/2$ 個逆序對，
+每次只能消掉一個，就是 $O(n^2)$。 $n = 2 \times 10^5$ 時大約是 $2 \times
+10^{10}$ 次。 \texttt{sort} 用的方法每一步可以搬得很遠，是 $O(n \log n)$；
+第~8~章的合併排序是其中一種，並且會在合併的時候順便數出逆序對的個數。
+
+\begin{apcsnote}
+APCS 的觀念題是選擇題，有不少題目是給一段程式，問執行後的輸出或某一行執行了
+幾次。 遇到排序程式時，不要在腦中模擬，在紙上畫出上面那種表格，每一輪寫一列。
+如果問的是交換或搬移的總次數，可以再用「逆序對有幾個」驗算一次。
+\end{apcsnote}
+
+\section{合併相連的區間}
+\label{sec:srt-merge}
+
+停車場的監視器只在偵測到動靜時錄影，留下很多段錄影片段，有些互相重疊，有些剛
+好接在一起。 管理員想知道：實際上錄到的是哪幾段時間，總共錄了多久？ 這叫合
+併區間：給一堆區間，把重疊或相接的合成一段。
+
+這一節用半開區間 $[s, e)$：從第 $s$ 秒開始，到第 $e$ 秒時已經停了。 所以
+$[12, 15)$ 和 $[15, 18)$ 剛好接在一起，中間沒有空檔，應該合成 $[12, 18)$。
+
+做法是依開始時間排序，由左往右看。 手上隨時拿著「目前正在合併的一段」
+$[L, R)$。 下一個片段 $[s, e)$ 如果在 $R$ 之前或剛好在 $R$ 開始（$s \le R$），
+就接得上，把 $R$ 延長到 $\max(R, e)$；否則中間有空檔，目前這一段已經完整，收
+下來，從 $[s, e)$ 重新開始。
+
+為什麼斷開時就可以把 $[L, R)$ 收下？ 斷開表示時間軸上 $R$ 到 $s$ 之間有一段
+空檔。 還沒看的片段都從 $s$ 或更晚才開始，沒有一個能填進這段空檔，所以
+$[L, R)$ 以後不可能再變長，可以放心收下。
+
+\begin{example}[label=ex:srt-merge]{cpp}{(merge.cpp) 合併錄影片段}
+#include <algorithm>
+#include <iostream>
+#include <utility>
+#include <vector>
+using namespace std;
+
+int main() {
+    int n;
+    cin >> n;
+    vector<pair<long long, long long>> v(n);    // 片段 [s, e)
+    for (auto &[s, e] : v) {
+        cin >> s >> e;
+    }
+    sort(v.begin(), v.end());                   // 依開始時間排序
+    vector<pair<long long, long long>> out;
+    long long L = v[0].first, R = v[0].second;  // 目前正在合併的一段
+    for (int i = 1; i < n; i++) {
+        auto [s, e] = v[i];
+        if (s <= R) {                           // 接得上：延長
+            R = max(R, e);
+        } else {                                // 斷開：收下目前這段
+            out.push_back({L, R});
+            L = s;
+            R = e;
+        }
+    }
+    out.push_back({L, R});                      // 最後一段
+    long long total = 0;
+    for (auto [l, r] : out) {
+        cout << l << ' ' << r << '\n';
+        total += r - l;
+    }
+    cout << total << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+6 \\
+12 15 \\
+3 6 \\
+20 22 \\
+5 9 \\
+15 18 \\
+4 5 \\
+}{
+3 9 \\
+12 18 \\
+20 22 \\
+14 \\
+}
+
+\begin{center}
+\begin{tikzpicture}[x=0.75cm, y=0.55cm]
+\node[font=\small] at (12.5,8.1) {排序後的片段};
+\ivbar{7}{3}{6}{$[3, 6)$}
+\ivbar{6}{4}{5}{$[4, 5)$}
+\ivbar{5}{5}{9}{$[5, 9)$}
+\ivbar{4}{12}{15}{$[12, 15)$}
+\ivbar{3}{15}{18}{$[15, 18)$}
+\ivbar{2}{20}{22}{$[20, 22)$}
+\node[left, font=\small] at (2.6,0.9) {合併後};
+\ivbar[ivpick]{0.9}{3}{9}{}
+\ivbar[ivpick]{0.9}{12}{18}{}
+\ivbar[ivpick]{0.9}{20}{22}{}
+\ivaxis{2}{22}{0}
+\end{tikzpicture}
+\diagcaption{六個錄影片段依開始時間排好（上），合併成三段（下）。 $[12, 15)$ 和 $[15, 18)$ 只是相接，也合在一起。}
+\label{fig:srt-merge}
+\end{center}
+
+下表逐一列出迴圈每一步，$[L, R)$ 是處理完這個片段之後的狀態：
+
+\begin{center}
+\begin{tabular}{cccl}
+\toprule
+片段 $[s, e)$ & $s \le R$？ & $[L, R)$ & 收下的段 \\
+\midrule
+$[3, 6)$ & （第一段） & $[3, 6)$ & \\
+$[4, 5)$ & $4 \le 6$，是 & $[3, 6)$ & \\
+$[5, 9)$ & $5 \le 6$，是 & $[3, 9)$ & \\
+$[12, 15)$ & $12 \le 9$，否 & $[12, 15)$ & $[3, 9)$ \\
+$[15, 18)$ & $15 \le 15$，是 & $[12, 18)$ & \\
+$[20, 22)$ & $20 \le 18$，否 & $[20, 22)$ & $[12, 18)$ \\
+迴圈結束 & & & $[20, 22)$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+第二列的 $[4, 5)$ 整個落在 $[3, 6)$ 裡面，所以 $R$ 要寫成 \texttt{max(R, e)}，
+不能直接改成 \texttt{e}，否則 $R$ 會從 $6$ 縮回 $5$。 排序、掃描都是一遍，整
+支程式 $O(n \log n)$。
+
+\textbf{兩端都算的區間。} 如果區間是整數的 $[l, r]$，兩端都算（例如第 $l$ 天
+到第 $r$ 天），$[1, 3]$ 和 $[4, 6]$ 之間沒有空出任何一天，也應該合併。 這時接
+得上的條件是 $s \le R + 1$。 上一節的維修段就是這種情況：每個座標看成長度 $1$
+的區間 $[x, x]$，「下一個剛好是前一個加 $1$」正是 $s = R + 1$。 讀題時先確認
+端點算不算，再決定條件。
+
+\textbf{什麼時候用。} 題目給很多段時間、路段、範圍，問「聯集有多長」「被分成幾
+塊」「空出來的最長一段」，都是先合併。 如果問的是「某一刻有幾段同時重疊」，合
+併會把資訊丟掉，要用第~7~章的掃描線或第~5~章的差分。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{相接的沒有合併}：條件寫成 \texttt{s < R}，範例會印出 $4$ 段，
+$[12, 15)$ 和 $[15, 18)$ 被分開，總長還是 $14$。 題目問段數時就錯了。 反過來，
+題目的區間是兩端都算時，還要再寬一格（$s \le R + 1$）。
+\item \textbf{忘了最後一段}：拿掉迴圈後面的 \texttt{out.push\_back}，範例少了
+$[20, 22)$，總長印出 \texttt{12}。
+\item \textbf{沒有排序}：片段照輸入順序處理，$[12, 15)$ 先出現，接著看到
+$[3, 6)$ 時，$3 \le 15$ 被當成接得上，兩段就錯誤地黏在一起了。
+\end{itemize}
+
+\section{離散化：只在乎大小順序}
+\label{sec:srt-compress}
+
+有些題目的數字很大，但真正有用的只是它們的大小關係。 例如五位同學的身高是
+$172, 158, 181, 158, 165$ 公分，題目只問「誰比誰高」。 把身高換成「在所有不同
+的身高裡排第幾」：$158$ 是第 $0$ 名，$165$ 是第 $1$ 名，$172$ 是第 $2$ 名，
+$181$ 是第 $3$ 名，原本的資料就變成 $2, 0, 3, 0, 1$。 大小關係完全沒變，但數
+字變小了，可以拿來當陣列的索引。 這叫\textbf{離散化}（coordinate
+compression），也叫座標壓縮。
+
+\begin{center}
+\begin{tikzpicture}[x=1.2cm, y=1cm]
+\node[left, font=\small] at (-0.1,2) {原始值};
+\foreach \v [count=\i from 0] in {172,158,181,158,165} {\node[cell, minimum width=1.05cm] (o\i) at (\i+0.5,2) {\v};}
+\node[left, font=\small] at (-0.1,0) {名次};
+\foreach \v [count=\i from 0] in {2,0,3,0,1} {\node[hlcell, minimum width=1.05cm] (r\i) at (\i+0.5,0) {\v};}
+\foreach \i in {0,...,4} {\draw[diagarrow] (o\i.south) -- (r\i.north);}
+\node[right, font=\small, align=left] at (6.2,1) {排序、去重：\\ \texttt{158 165 172 181}\\ 名次 \texttt{\ \ 0\ \ \ 1\ \ \ 2\ \ \ 3}};
+\end{tikzpicture}
+\diagcaption{離散化：每個值換成它在「排序、去重後的表」裡的位置。}
+\label{fig:srt-compress}
+\end{center}
+
+做法就是本章前面的兩件事再加一個查詢：
+
+\begin{enumerate}
+\item 把所有值複製一份，排序、去重，得到表 \texttt{vals}。
+\item 對每個原始值 \texttt{x}，它的名次是
+\texttt{lower\_bound(vals.begin(), vals.end(), x) - vals.begin()}。
+\end{enumerate}
+
+\texttt{lower\_bound} 回傳第一個 $\ge x$ 的位置（下一節會再複習），\texttt{x}
+一定在表裡，所以找到的就是 \texttt{x} 自己；減掉 \texttt{vals.begin()} 得到
+索引，也就是「表裡比 \texttt{x} 小的有幾個」。 每次查詢 $O(\log k)$，$k$ 是
+不同的值的個數。
+
+也可以用 \texttt{map<int, int>} 記下每個值的名次：把所有值放進
+\texttt{map}，再依序走一遍，給第 $0$、$1$、$2$……名。 寫法比較直觀，但
+\texttt{map} 每個節點分開配置記憶體，通常比排序好的 \texttt{vector} 慢，資料
+多時用 \texttt{vector} 加 \texttt{lower\_bound}。
+
+\subsection{例題：電梯經過停靠樓層的提示音}
+\label{sec:srt-ex-chimes}
+
+\textbf{題意}（\akiref{elevator-chimes}{電梯經過停靠樓層的提示音}）
+
+\begin{itemize}
+\item 一棟大樓的樓層用整數編號，負數是地下樓層，編號不一定連續，也可能很大。
+電梯今天只在有人預約過的樓層設停靠點。
+\item 依序有 $N$ 筆預約，第 $i$ 筆是樓層 $a_i$。 同一層可能被預約很多次，但只
+算一個停靠點。
+\item 電梯一開始在 $a_1$，接著依序前往 $a_2, \ldots, a_N$。 從 $x$ 移動到 $y$
+時，沿路每\textbf{經過}一個停靠點，以及\textbf{抵達} $y$ 時，各響一聲；出發的
+$x$ 不響。 下一筆和目前所在的樓層相同時不移動，也不響。
+\item 求總共響幾聲。 $N \le 2 \times 10^5$，樓層在 $-10^9$ 到 $10^9$ 之間。
+\end{itemize}
+
+例如預約依序是 $3, 15, -1, 8, 3, -1$，停靠點由低到高是 $-1, 3, 8, 15$。 從
+$3$ 到 $15$ 經過 $8$、抵達 $15$，響 $2$ 聲；從 $15$ 到 $-1$ 經過 $8$、$3$，
+抵達 $-1$，響 $3$ 聲；接下來三段各響 $2$、$1$、$1$ 聲，總共 $9$ 聲。
+
+\textbf{想法}
+
+暴力解：先把停靠點排序、去重，每一次移動都把停靠點從頭看一遍，數有幾個落在
+出發點和目的地之間（不含出發點，含目的地）。 停靠點最多 $N$ 個，移動 $N - 1$
+次，是 $O(N^2)$，$4 \times 10^{10}$ 次，來不及。
+
+\textbf{停下來想一想}：從 $3$ 到 $15$ 響了 $2$ 聲，從 $15$ 到 $-1$ 響了
+$3$ 聲。 這兩個數字和停靠點表 $-1, 3, 8, 15$ 有什麼關係？
+
+把每個停靠點換成它在表裡的名次：$-1$ 是 $0$、$3$ 是 $1$、$8$ 是 $2$、$15$ 是
+$3$。 從名次 $p$ 往上到名次 $q$，會經過名次 $p + 1, \ldots, q - 1$ 的停靠點，
+再抵達名次 $q$，一共 $q - p$ 聲；往下也一樣，是 $p - q$ 聲。 所以每次移動響的
+次數就是\textbf{名次差的絕對值}，樓層的實際數字不重要。 這正是離散化的用處：
+先把整串預約換成名次，問題就只剩相減。
+
+\begin{center}
+\begin{tabular}{lcccccc}
+\toprule
+預約 $a_i$ & $3$ & $15$ & $-1$ & $8$ & $3$ & $-1$ \\
+名次 & $1$ & $3$ & $0$ & $2$ & $1$ & $0$ \\
+響幾聲（和前一筆的名次差） & & $2$ & $3$ & $2$ & $1$ & $1$ \\
+累計 & & $2$ & $5$ & $7$ & $8$ & $9$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+同一層連續預約兩次時，名次相同，差是 $0$，剛好符合「不移動、不響」的規定，不
+用另外處理。
+
+同樣的模型也出現在別的地方：捷運列車只在有人上下車的站停，問司機總共報了幾次
+站名；一張很長的時間軸上只有某些時刻有事件，問兩個時刻之間隔了幾個事件。
+
+\textbf{程式}
+
+\begin{example}[label=ex:srt-chimes]{cpp}{(chimes.cpp) 電梯經過停靠樓層的提示音}
+#include <algorithm>
+#include <cstdlib>
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n;
+    cin >> n;
+    vector<int> a(n);
+    for (int &x : a) {
+        cin >> x;
+    }
+    vector<int> stops = a;                      // 停靠點：排序、去重
+    sort(stops.begin(), stops.end());
+    stops.erase(unique(stops.begin(), stops.end()), stops.end());
+    vector<int> rk(n);                          // 每筆預約換成名次
+    for (int i = 0; i < n; i++) {
+        rk[i] = lower_bound(stops.begin(), stops.end(), a[i]) - stops.begin();
+    }
+    long long total = 0;
+    for (int i = 1; i < n; i++) {
+        total += abs(rk[i] - rk[i - 1]);        // 名次差就是響的次數
+    }
+    cout << total << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+6 \\
+3 15 -1 8 3 -1 \\
+}{
+9 \\
+}
+
+\begin{itemize}
+\item \texttt{stops} 是 \texttt{a} 的複本。 \texttt{a} 要保持原本的預約順序，
+所以排序和去重都在複本上做。
+\item 程式分成兩步：先把每筆預約換成名次存進 \texttt{rk}，再只看 \texttt{rk}
+算答案。 第二步完全不需要知道樓層，這是離散化題目常見的形狀。
+\item \texttt{lower\_bound} 回傳迭代器，減掉 \texttt{stops.begin()} 是一個整數
+（型別是 \texttt{ptrdiff\_t}），存進 \texttt{int} 沒有問題，因為最多 $2 \times
+10^5$。
+\item \texttt{total} 一定要用 \texttt{long long}：每次最多響 $2 \times 10^5$
+聲，移動 $2 \times 10^5$ 次，最多大約 $4 \times 10^{10}$。
+\end{itemize}
+
+\textbf{複雜度}
+
+排序 $O(N \log N)$，$N$ 次 \texttt{lower\_bound} 各 $O(\log N)$，最後相加
+$O(N)$，合計 $O(N \log N)$。 最大的測試資料在本書測試的環境下約 $0.03$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{沒有去重}：拿掉 \texttt{erase(unique(...))}，表裡同一層出現好幾
+次，名次就被重複的樓層撐大了。 範例的表變成 $-1, -1, 3, 3, 8, 15$，$15$ 的名
+次變成 $5$，程式印出 \texttt{16}。
+\item \textbf{直接用樓層相減}：$|a_i - a_{i-1}|$ 把沒有停靠點的樓層也算進去，
+範例會得到 $12 + 16 + 9 + 5 + 4 = 46$。 題目數的是「停靠點」，不是樓層。
+\item \textbf{總和用 \texttt{int}}：輸入先預約 $1$ 到 $100000$ 層各一次，再在
+$1$ 和 $100000$ 之間來回十萬次，正確答案是 \texttt{9999999999}。 把
+\texttt{total} 改成 \texttt{int}，在本書測試的環境下印出
+\texttt{1410065407}，加了 \texttt{-Wall -Wextra} 也沒有警告。
+\end{itemize}
+
+\section{在排好的資料上查詢}
+\label{sec:srt-query}
+
+資料排好之後，查詢可以很快。 這一節的情境是「先給一批資料，再問很多次」：每次
+都從頭找一遍是 $O(n)$，$q$ 次就是 $O(nq)$；先排序一次，每次查詢用二分搜尋，
+是 $O(\log n)$，合計 $O((n + q) \log n)$。
+
+\begin{bridgerecap}[\texttt{lower\_bound} 與 \texttt{upper\_bound}]
+用在\textbf{已經由小到大排好}的範圍上（銜接書第~9~章）：
+\begin{itemize}
+\item \texttt{lower\_bound(first, last, x)}：第一個 $\ge x$ 的位置。
+\item \texttt{upper\_bound(first, last, x)}：第一個 $> x$ 的位置。
+\end{itemize}
+兩者都回傳迭代器，找不到時回傳 \texttt{last}，都是 $O(\log n)$。 減掉
+\texttt{begin()} 得到索引，這個索引也等於「比 $x$ 小（或不大於 $x$）的元素有
+幾個」。 \texttt{set} 和 \texttt{map} 有同名的成員函式
+\texttt{s.lower\_bound(x)}，意思相同。
+\end{bridgerecap}
+
+兩個函式都很好記，容易搞混的是「要哪一個」。 用下面這個排好的陣列看：
+
+\begin{center}
+\begin{tikzpicture}[x=1.1cm, y=1cm]
+\foreach \v [count=\i from 0] in {90,150,150,275,320,410,480,600} {
+  \ifnum\i>0 \ifnum\i<5 \node[hlcell] (c\i) at (\i,0) {\v}; \else \node[cell] (c\i) at (\i,0) {\v}; \fi
+  \else \node[cell] (c\i) at (\i,0) {\v}; \fi
+  \node[idxlbl] at (\i,-0.7) {\i};
+}
+\draw[diagarrow] (1,1.3) node[above, font=\small] {\texttt{lower\_bound(150)}} -- (c1.north);
+\draw[diagarrow] (5,1.3) node[above, font=\small] {\texttt{upper\_bound(400)}} -- (c5.north);
+\end{tikzpicture}
+\diagcaption{在 $[150, 400]$ 之間的元素（橘色）剛好是 $[$\texttt{lower\_bound(150)}, \texttt{upper\_bound(400)}$)$ 這個半開區間，共 $5 - 1 = 4$ 個。}
+\label{fig:srt-bounds}
+\end{center}
+
+記法是看邊界本身要不要算進去：
+
+\begin{itemize}
+\item 「$\ge x$ 的第一個」「$x$ 能插入的最前面」用 \texttt{lower\_bound(x)}。
+\item 「$> x$ 的第一個」用 \texttt{upper\_bound(x)}。
+\item 「$\le x$ 的最後一個」是 \texttt{upper\_bound(x)} 的前一格；「$< x$ 的最
+後一個」是 \texttt{lower\_bound(x)} 的前一格。 往前一格之前，先確定它不是
+\texttt{begin()}。
+\item 值落在 $[lo, hi]$（兩端都算）的個數是
+\texttt{upper\_bound(hi) - lower\_bound(lo)}；$x$ 出現的次數是
+\texttt{upper\_bound(x) - lower\_bound(x)}。
+\end{itemize}
+
+最後一條寫成程式：倉庫有 $n$ 件包裹的重量，每次查詢問重量在 $lo$ 到 $hi$ 公克
+之間（兩端都算）的有幾件。
+
+\begin{example}[label=ex:srt-range]{cpp}{(rangecount.cpp) 重量在某個範圍內的包裹數}
+#include <algorithm>
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n, q;
+    cin >> n >> q;
+    vector<int> w(n);
+    for (int &x : w) {
+        cin >> x;
+    }
+    sort(w.begin(), w.end());
+    while (q--) {
+        int lo, hi;
+        cin >> lo >> hi;
+        auto first = lower_bound(w.begin(), w.end(), lo);   // 第一個 >= lo
+        auto last = upper_bound(w.begin(), w.end(), hi);    // 第一個 > hi
+        cout << last - first << '\n';
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+8 3 \\
+320 150 480 150 275 600 90 410 \\
+150 400 \\
+500 900 \\
+100 140 \\
+}{
+4 \\
+1 \\
+0 \\
+}
+
+第三個查詢 $[100, 140]$ 裡沒有包裹：\texttt{lower\_bound(100)} 和
+\texttt{upper\_bound(140)} 都指著索引 $1$（$150$），相減是 $0$。 如果
+$lo > hi$，\texttt{last} 會在 \texttt{first} 前面，相減變成負數；題目沒有保證
+$lo \le hi$ 時要先檢查。
+
+\subsection{例題：湊滿免運的最少超額}
+\label{sec:srt-ex-topup}
+
+\textbf{題意}（\akiref{free-shipping-top-up}{湊滿免運的最少超額}）
+
+\begin{itemize}
+\item 網路商店規定購物車滿 $K$ 元免運。 加購區有 $n$ 件商品，第 $i$ 件 $a_i$
+元，價格可能相同。
+\item 有 $m$ 位顧客，第 $j$ 位的購物車目前是 $b_j$ 元，每位各自獨立處理，商
+品不會被買完。
+\item $b_j \ge K$ 的顧客已經免運，答案是 $0$。 否則顧客從加購區\textbf{恰好挑
+一件}，讓 $b_j + a_i \ge K$，並且讓超出的金額 $b_j + a_i - K$ 最小，這個最小
+值就是答案；沒有任何一件夠的話，答案是 $-1$。
+\item $n, m \le 2 \times 10^5$，$K \le 3 \times 10^9$，$a_i, b_j \le 2 \times
+10^9$。
+\end{itemize}
+
+例如 $K = 500$，商品是 $60, 180, 250, 180, 400$。 購物車 $320$ 元的顧客還差
+$180$ 元，剛好有 $180$ 元的商品，超額 $0$；$499$ 元的顧客差 $1$ 元，最便宜的
+$60$ 元就夠了，超額 $59$；$50$ 元的顧客差 $450$ 元，最貴的也只有 $400$，答案
+$-1$。
+
+\textbf{想法}
+
+暴力解：每位顧客把 $n$ 件商品都試一次，留下夠的裡面超額最小的。 $O(nm)$，兩
+者都是 $2 \times 10^5$ 時是 $4 \times 10^{10}$ 次，來不及。
+
+先把條件改寫。 顧客還差 $need = K - b_j$ 元，挑的商品要滿足 $a_i \ge need$，
+超額是 $a_i - need$。 要超額最小，就是在「價格 $\ge need$」的商品裡挑最便宜
+的。 兩件商品的條件變成只看一個陣列：把價格排序之後，「價格 $\ge need$ 的最便
+宜一件」就是 \texttt{lower\_bound(need)}。 找不到（回傳 \texttt{end()}）就表
+示最貴的也不夠。
+
+範例排序後的價格是 $60, 180, 180, 250, 400$：
+
+\begin{center}
+\begin{tabular}{ccccc}
+\toprule
+購物車 $b_j$ & $need = K - b_j$ & \texttt{lower\_bound(need)} & 價格 & 答案 \\
+\midrule
+$320$ & $180$ & 索引 $1$ & $180$ & $0$ \\
+$499$ & $1$ & 索引 $0$ & $60$ & $59$ \\
+$650$ & （已經免運） & & & $0$ \\
+$50$ & $450$ & \texttt{end()} & & $-1$ \\
+$500$ & （剛好達到） & & & $0$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+第一列是這題最需要注意的地方：剛好湊滿的 $180$ 元必須被找到。 要的是「$\ge$」，
+所以用 \texttt{lower\_bound}。
+
+同樣的模型也出現在別的地方：預算還差多少，從一批方案裡找最便宜但夠用的那一個；
+包裹要寄，從幾種尺寸的紙箱裡挑最小但裝得下的。 這種「在一群固定的候選裡，找
+不小於某個門檻的最小值」，都是排序加 \texttt{lower\_bound}。
+
+\textbf{程式}
+
+\begin{example}[label=ex:srt-topup]{cpp}{(topup.cpp) 湊滿免運的最少超額}
+#include <algorithm>
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n, m;
+    long long k;
+    cin >> n >> m >> k;
+    vector<long long> price(n);
+    for (long long &x : price) {
+        cin >> x;
+    }
+    sort(price.begin(), price.end());
+    for (int j = 0; j < m; j++) {
+        long long cart;
+        cin >> cart;
+        long long ans;
+        if (cart >= k) {
+            ans = 0;                                   // 已經免運
+        } else {
+            long long need = k - cart;                 // 至少還要多少
+            auto it = lower_bound(price.begin(), price.end(), need);
+            if (it == price.end()) {
+                ans = -1;                              // 最貴的也不夠
+            } else {
+                ans = *it - need;
+            }
+        }
+        cout << ans << '\n';
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+5 5 500 \\
+60 180 250 180 400 \\
+320 499 650 50 500 \\
+}{
+0 \\
+59 \\
+0 \\
+-1 \\
+0 \\
+}
+
+\begin{itemize}
+\item 先判斷 \texttt{it == price.end()}，確定找到了才用 \texttt{*it} 取值。
+\texttt{end()} 不指向任何元素，對它取值是未定義行為，程式可能印出奇怪的數字，
+也可能當掉。
+\item $K$ 到 $3 \times 10^9$，超過 \texttt{int}，所以 \texttt{k}、
+\texttt{cart}、價格都用 \texttt{long long}。
+\item 輸出用 \texttt{'\textbackslash n'} 而不是 \texttt{endl}，加上前兩行的輸
+入加速，$2 \times 10^5$ 行的輸出才不會拖慢（銜接書第~10~章）。
+\end{itemize}
+
+\textbf{複雜度}
+
+排序 $O(n \log n)$，每位顧客一次 \texttt{lower\_bound} $O(\log n)$，合計
+$O((n + m) \log n)$。 最大的測試資料在本書測試的環境下約 $0.04$ 秒。
+
+\begin{apcsnote}
+實作題由程式自動評分，只比對輸出，所以 \texttt{sort}、\texttt{lower\_bound}
+這些函式庫寫好的函式直接用，比自己寫二分搜尋快又不容易錯。 用之前確認兩件事：
+範圍已經排好序，以及找不到時（回傳 \texttt{end()}）的處理。
+\end{apcsnote}
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{用 \texttt{upper\_bound}}：找的變成「$> need$ 的第一個」，剛好
+湊滿的商品被跳過。 範例第一位顧客會挑到 $250$ 元，印出 \texttt{70}。 範例如
+果沒有剛好湊滿的情況，這個錯誤看不出來。
+\item \textbf{金額用 \texttt{int} 讀}：\texttt{k} 和 \texttt{cart} 改成
+\texttt{int}，輸入 \texttt{K = 3000000000} 時讀取就失敗了，之後所有的讀取都失
+敗。 在本書測試的環境下，正確答案是 \texttt{0}、\texttt{500000000}、
+\texttt{-1} 的輸入，印出三行 \texttt{-1}。
+\item \textbf{已經免運還加購}：沒有先判斷 \texttt{cart >= k}，\texttt{need}
+是 $0$ 或負數，\texttt{lower\_bound} 找到最便宜的商品，印出正的超額。
+\item \textbf{對 \texttt{set} 用 \texttt{std::lower\_bound}}：資料放在
+\texttt{set} 裡時，要寫 \texttt{s.lower\_bound(x)}。 寫成
+\texttt{lower\_bound(s.begin(), s.end(), x)} 也會得到對的答案，但
+\texttt{set} 的迭代器只能一格一格走，這個寫法每次查詢是 $O(n)$，資料一多就超
+過時間限制。
+\end{itemize}
+
+\subsection{什麼時候用、什麼時候不用}
+
+\begin{itemize}
+\item \textbf{適合的訊號}：先給一批資料，再有很多次查詢，每次問「不小於 $x$ 的
+最小值」「不大於 $x$ 的最大值」「在某個範圍內的有幾個」。 兩個東西湊出一個條
+件時（像這題的 $b + a \ge K$），固定其中一個，把條件改寫成對另一個陣列的門檻。
+\item \textbf{資料會變動時}：查詢之間還會插入或刪除，排好的 \texttt{vector}
+每插入一次要搬動很多元素，改用 \texttt{set}、\texttt{multiset} 的成員函式
+\texttt{lower\_bound}。
+\item \textbf{題目問的是門檻}：題目問「最小要多大才夠」「最多能
+到多少」，而且答案越大越容易（或越難）滿足時，二分搜尋的對象是答案本身，這是
+第~3~章的主題。
+\end{itemize}
+
+\section{本章常見錯誤}
+\label{sec:srt-pitfalls}
+
+前面各節的錯誤，歸納起來是四類。 寫排序相關的題目時，交出去之前逐項檢查一次。
+
+\begin{center}
+\begin{tabular}{p{0.2\linewidth}p{0.48\linewidth}p{0.2\linewidth}}
+\toprule
+錯誤 & 例子 & 見 \\
+\midrule
+重複值沒處理 & 維修段沒去重被切斷；離散化沒去重，名次被撐大；只寫
+\texttt{unique} 沒寫 \texttt{erase} & 第~\ref{sec:srt-adjacent}、\ref{sec:srt-compress}~節 \\
+比較函式寫錯 & 用 \texttt{<=}；用 \texttt{||} 串接兩個欄位；回傳相減的結果 &
+第~\ref{sec:srt-multikey}~節 \\
+邊界與相等 & 相接的區間沒合併；兩端都算的區間少算一格；\texttt{lower\_bound}
+和 \texttt{upper\_bound} 用反 & 第~\ref{sec:srt-merge}、\ref{sec:srt-query}~節 \\
+掃描的頭尾 & 迴圈結束忘了最後一段；\texttt{j < n} 和取值的順序寫反；對
+\texttt{end()} 取值 & 第~\ref{sec:srt-adjacent}、\ref{sec:srt-merge}、\ref{sec:srt-query}~節 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+另外兩個每一題都會遇到的問題：總和或差值超過 \texttt{int}，以及只用範例測試。
+前者在動手前先估答案最大多少；後者自己造幾組有重複值、有相等值、只有一筆資料
+的小輸入，和暴力解的結果比較。 這種「用暴力解和正式的程式跑同一批小輸入，比
+對兩邊輸出」的做法俗稱\textbf{對拍}，第~7~章會再用到。
+
+\section{本章練習}
+\label{sec:srt-exercises}
+
+\begin{drills}[label=drills:ch2]
+\item 用範例~\ref{ex:srt-insertion} 的插入排序排 $5, 3, 4, 1, 2$。
+\begin{enumerate}
+\item 寫出每一輪結束後的陣列，以及每一輪挪了幾次。
+\item 不模擬，用逆序對算出總共挪了幾次，和 (a) 比對。
+\item 改用每次交換相鄰兩個元素的氣泡排序，總共要交換幾次？
+\end{enumerate}
+
+\item \texttt{v = \{2, 4, 4, 4, 7, 9, 12\}}。 寫出下列運算回傳的索引（找不到
+時寫 \texttt{end()}，也就是 $7$）。
+\begin{enumerate}
+\item \texttt{lower\_bound} 和 \texttt{upper\_bound}，分別找 $4$、$5$、$1$、
+$12$、$13$。
+\item 值在 $[3, 9]$（兩端都算）的元素有幾個？ 用 (a) 的寫法列出算式。
+\end{enumerate}
+
+\item 要讓選手依分數由高到低排，同分時座號小的在前。 下面三個比較函式，哪些是
+錯的？ 錯的各給一組讓它出問題的兩位選手。
+\begin{code}{cpp}{練習 3 的三個比較函式}
+struct P { int score, id; };
+// A
+bool cmpA(const P &x, const P &y) {
+    return x.score > y.score || x.id < y.id;
+}
+// B
+bool cmpB(const P &x, const P &y) {
+    if (x.score != y.score) return x.score > y.score;
+    return x.id <= y.id;
+}
+// C
+bool cmpC(const P &x, const P &y) {
+    if (x.score != y.score) return x.score > y.score;
+    return x.id < y.id;
+}
+\end{code}
+
+\item 有五段請假紀錄，每段是「第 $l$ 天到第 $r$ 天，兩端都算」：$[1, 3]$、
+$[5, 6]$、$[4, 4]$、$[9, 10]$、$[7, 7]$。
+\begin{enumerate}
+\item 合併成連續的請假期間，總共請了幾天？
+\item 直接把這五段當成半開區間丟給範例~\ref{ex:srt-merge}，會印出什麼？ 要怎
+麼改一行，才能處理兩端都算的區間？
+\end{enumerate}
+
+\item 下面的程式片段想做和 \texttt{sort} 加 \texttt{unique} 一樣的事，只留下不
+同的值（不需要排好序）。 \texttt{find} 會從頭到尾一個一個比。 $n$ 個數全都不
+同時，\texttt{find} 總共比較幾次？ $n = 2 \times 10^5$ 時大約是多少？
+\begin{code}{cpp}{練習 5}
+vector<int> out;
+for (int x : a) {
+    if (find(out.begin(), out.end(), x) == out.end()) {
+        out.push_back(x);
+    }
+}
+\end{code}
+
+\item 給 $n$ 個整數，要找差最小的兩個數。 說明為什麼排序之後，只要檢查相鄰的
+兩個數，並寫出整個做法的時間複雜度。
+
+\item 把 $10^9, -5, 37, -5, 10^9, 0$ 離散化，寫出排序、去重後的表，以及每個值
+換成的名次。
+\end{drills}
+
+\section{實作練習}
+\label{sec:srt-practice}
+
+下面是 Aki-Judge 上和本章相關的題目，依小節分組。 難度分四階：暖身是直接套用
+本章的寫法；基本要自己想出排序的鍵或查詢的條件；實戰的題敘比較長，要先把題目轉
+換成本章的形狀；挑戰會和其他章的技巧合在一起。
+
+\begin{center}
+\begin{tabular}{llc}
+\toprule
+小節 & 題目 & 難度 \\
+\midrule
+排序後找段 & \akiref{duplicate-and-missing-raffle-tickets}{抽獎號碼的重號與空號} & 暖身 \\
+ & \akiref{double-swipes-at-the-library-gate}{門禁的重複刷卡} & 基本 \\
+ & \akiref{closest-rival-convenience-stores}{兩家超商最近的分店} & 基本 \\
+ & \akiref{bead-bracelet-designs}{串珠手環有幾種設計} & 實戰 \\
+ & \akiref{when-water-reaches-each-compartment}{隔板水箱的進水量} & 挑戰 \\
+\midrule
+多欄位排序 & \akiref{league-ranks-by-win-rate}{校際聯賽勝率名次} & 基本 \\
+ & \akiref{sorting-file-names-the-human-way}{照人的直覺排檔名} & 實戰 \\
+\midrule
+簡單排序 & \akiref{comparisons-and-shifts-when-sorting-sign-up-cards}{報名卡插入的比較與搬移次數} & 暖身 \\
+ & \akiref{bookshelf-swap-log}{書架整理的交換紀錄} & 暖身 \\
+ & \akiref{grading-hand-traced-sorting-passes}{批改三種排序的手算第 k 輪} & 基本 \\
+ & \akiref{total-carrying-distance-of-locker-swaps}{置物櫃換位的總搬運距離} & 實戰 \\
+\midrule
+區間與離散化 & \akiref{club-room-card-reader}{門禁感應卡進出} & 暖身 \\
+ & \akiref{street-sweeping-overlaps}{志工掃街的重複區段} & 基本 \\
+ & \akiref{longest-open-stretch-after-roadworks}{道路施工後最長的通行路段} & 實戰 \\
+\midrule
+有序資料上的查詢 & \akiref{call-numbers-on-the-class-shelf}{書櫃索書號查詢} & 暖身 \\
+ & \akiref{how-far-around-the-trail}{環狀步道能走多遠} & 基本 \\
+ & \akiref{shift-handover-pairs}{值班交接配對} & 實戰 \\
+ & \akiref{seats-in-the-round-study-room}{環形自習室座位} & 實戰 \\
+ & \akiref{capped-income-within-a-few-days}{連續幾天的淨收入不超過門檻} & 挑戰 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+本章的三題例題也在 Aki-Judge 上，讀完各節之後可以先自己寫一次再對照。
+
+\section{讀完你應該會}
+\label{sec:srt-checklist}
+
+\begin{itemize}
+\item 看到「重複」「有幾種」「出現最多次」、值到 $10^9$ 的題目，能用排序加一次
+掃描解決，並寫出「從段的開頭往右走到不同為止」的迴圈，不漏掉最後一段。
+\item 會用 \texttt{sort}、\texttt{unique}、\texttt{erase} 去重，並說得出只寫
+\texttt{unique} 會留下什麼。
+\item 能寫出多欄位的比較函式，每個欄位「不相等就決定，相等就往下」，並指出用
+\texttt{<=} 或 \texttt{||} 串接的寫法錯在哪裡。
+\item 能用表格追蹤插入排序每一輪的陣列，並用逆序對的個數驗算搬移次數。
+\item 會合併區間，先確認端點算不算；會離散化；會依「邊界要不要算進去」選
+\texttt{lower\_bound} 或 \texttt{upper\_bound}，並在取值前檢查 \texttt{end()}。
+\end{itemize}
+
+\textbf{延伸閱讀}（書末會整理完整的參考資料）
+
+\begin{itemize}
+\item Steven S. Skiena，\textit{The Algorithm Design Manual}，第 3 版，4.1
+節：一份「排序之後可以做什麼」的清單，適合想看排序還能用在哪些地方的讀者。
+\item Antti Laaksonen，\textit{Competitive Programmer's Handbook}，第 3 章：
+簡單排序、逆序對、計數排序和 C++ 的排序寫法，篇幅短。
+\item Thomas H. Cormen 等，\textit{Introduction to Algorithms}，第 4 版，2.1、
+2.3 節與第 8 章：插入排序和合併排序的嚴謹分析，以及不靠比較的計數排序。
+\end{itemize}
+
+\addcontentsline{toc}{section}{練習解答}
+\section*{練習解答}
+
+\begin{enumerate}
+\item
+\begin{enumerate}
+\item $i = 1$：$3, 5, 4, 1, 2$，挪 $1$ 次。 $i = 2$：$3, 4, 5, 1, 2$，挪
+$1$ 次。 $i = 3$：$1, 3, 4, 5, 2$，挪 $3$ 次。 $i = 4$：$1, 2, 3, 4, 5$，
+挪 $3$ 次。 總共 $8$ 次。
+\item 逐一數每個數後面有幾個比它小的：$5$ 後面有 $3, 4, 1, 2$，共 $4$ 個；$3$
+後面有 $1, 2$，$2$ 個；$4$ 後面有 $1, 2$，$2$ 個；$1$ 後面沒有。 合計 $8$，
+和 (a) 相同。
+\item 也是 $8$ 次。 每次交換相鄰兩個前大後小的元素，剛好消掉一個逆序對。
+\end{enumerate}
+
+\item
+\begin{enumerate}
+\item $4$：\texttt{lower\_bound} 是 $1$，\texttt{upper\_bound} 是 $4$。 $5$：
+兩個都是 $4$（指著 $7$）。 $1$：兩個都是 $0$。 $12$：\texttt{lower\_bound}
+是 $6$，\texttt{upper\_bound} 是 \texttt{end()}（$7$）。 $13$：兩個都是
+\texttt{end()}。
+\item \texttt{upper\_bound(9) - lower\_bound(3)} $= 6 - 1 = 5$，就是 $4, 4, 4,
+7, 9$。
+\end{enumerate}
+
+\item A 和 B 是錯的，C 是對的。
+\begin{itemize}
+\item A：選手 $x = (90, 2)$、$y = (80, 1)$。 \texttt{cmpA(x, y)} 因為 $90 > 80$
+是 \texttt{true}；\texttt{cmpA(y, x)} 的前半是假，但後半 $1 < 2$ 是真，也回傳
+\texttt{true}。 兩位都說自己排在對方前面，不是嚴格弱序。 錯在用 \texttt{||}
+把兩個欄位串起來：第二個欄位只應該在第一個欄位相等時才比。
+\item B：任何一位選手和自己比，\texttt{cmpB(x, x)} 回傳 \texttt{true}，違反
+「相等時回傳 \texttt{false}」。 同分同座號的兩筆資料（例如重複輸入）也一樣。
+\end{itemize}
+
+\item
+\begin{enumerate}
+\item 排序後是 $[1, 3]$、$[4, 4]$、$[5, 6]$、$[7, 7]$、$[9, 10]$。 前四段一天
+接一天，合成 $[1, 7]$；第 $8$ 天沒請假，$[9, 10]$ 自己一段。 總共 $7 + 2 = 9$
+天。
+\item 每一段的 $s$ 都等於前一段的 $R + 1$，不滿足 \texttt{s <= R}，五段都不會
+合併。 程式印出五段，最後一行的總長是 $(3 - 1) + (4 - 4) + (6 - 5) + (7 - 7)
++ (10 - 9) = 4$，少算了每段最後一天。 要改兩件事：條件改成
+\texttt{s <= R + 1}，總長改成加 \texttt{r - l + 1}。
+\end{enumerate}
+
+\item 第 $i$ 個數（從 $0$ 數）要和 \texttt{out} 裡已經有的 $i$ 個數全部比過，
+總共 $0 + 1 + \cdots + (n - 1) = n(n-1)/2$ 次。 $n = 2 \times 10^5$ 時大約是
+$2 \times 10^{10}$ 次。 排序加 \texttt{unique} 只要 $O(n \log n)$。 這個寫法
+唯一的好處是保留第一次出現的順序；需要這個順序時，改用 \texttt{set} 記錄看過的
+值。
+
+\item 排序後是 $a_0 \le a_1 \le \cdots \le a_{n-1}$。 任取不相鄰的兩個
+$a_i$、$a_j$（$j \ge i + 2$），中間的 $a_{i+1}$ 滿足 $a_i \le a_{i+1} \le
+a_j$，所以 $a_{i+1} - a_i \le a_j - a_i$：相鄰的那一對不會比較大。 因此最小的
+差一定出現在某一對相鄰的數上，排序後掃一遍 $n - 1$ 對即可，總共
+$O(n \log n)$。
+
+\item 表是 $-5, 0, 37, 10^9$。 名次依序是 $3, 0, 2, 0, 3, 1$。
+\end{enumerate}
