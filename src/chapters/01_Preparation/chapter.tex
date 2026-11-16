@@ -1,4 +1,1469 @@
-% 佔位：本章尚未開始。book.tex 裡先註解掉。
 \chapter{解題前的準備}
+\label{ch:prep}
 
-本章尚未開始。
+一間小診所早上收到一疊掛號單，順序是亂的。 護理師有兩種叫號的做法。 第一種：
+每次要叫下一位，就把還沒叫的單子從頭翻一遍，找出號碼最小的那張。 第二種：開診
+前先把每張單子插進一個照號碼分好格的架子，之後每次叫號只要從架子上依序拿下一
+張。 插一張單子比翻一張慢，大約要花翻十張的時間。 病人只有五位時，哪一種比較省
+事？ 如果有一百位、一千位呢？ 往下讀之前，先自己估估看，人數到多少時第二種開始
+划算。
+
+這個問題沒有用到任何演算法，只用到一件事：數清楚一個做法要做幾次動作，再看這個
+次數隨人數怎麼長大。 寫解題程式也是一樣。 動手之前先算程式大約要做多少次運算，
+就知道它在題目的時間限制內跑不跑得完；這比寫完、送出、等結果，再回頭改快得多。
+
+這一章不教特定的演算法，教的是後面每一章都會用到的四件事：
+
+\begin{itemize}
+\item 數清楚一段程式執行幾次，以及這個次數隨資料量怎麼長大（第~\ref{sec:count-loops}、\ref{sec:growth}~節）。
+\item 從題目給的資料範圍，判斷需要多快的做法（第~\ref{sec:growth}~節）。
+\item 避開兩種和演算法無關、卻很常讓答案錯掉的問題：整數溢位和輸入輸出（第~\ref{sec:overflow}、\ref{sec:io}~節）。
+\item 自己產生測試資料，用一個慢但簡單的程式來檢查快的程式（第~\ref{sec:testing}~節）。
+\end{itemize}
+
+這一章會用到《C++ 程式設計：給學過 C 的人》（以下簡稱銜接書）裡的幾個地方：
+解題程式的骨架、從資料範圍估計時間的表、用檔案測試、\texttt{long long} 的溢位在
+第~10~章 10.1 節；輸入加速的兩行在第~1~章；\texttt{getline} 在第~3~章；
+\texttt{vector}、\texttt{pair}、\texttt{sort}、\texttt{set}／\texttt{map}、
+\texttt{lower\_bound} 分別在第~3、8、9~章。 本書從第~2~章開始會一直用到這些容器
+和函式，章末的實作練習也放了一組複習題。 沒讀過銜接書的讀者，只要會寫一支從標準
+輸入讀資料、把答案印到標準輸出的 C++ 程式，就能讀這一章。
+
+\section{數一數程式做了幾次}
+\label{sec:count-loops}
+
+先把章首的第一種叫號方法寫成程式。 \texttt{num} 存著 $n$ 張單子的號碼，每次叫號，
+都在還沒叫過的單子裡找最小的，找到後換到前面，表示已經叫過：
+
+\begin{code}[label=code:call-loop]{cpp}{第一種叫號方法：每次翻遍還沒叫的單子}
+long long flips = 0;                      // 比較了幾次號碼
+for (int call = 0; call < n; call++) {    // 第 call 次叫號
+    int best = call;
+    for (int i = call + 1; i < n; i++) {  // 只翻還沒叫過的
+        flips++;
+        if (num[i] < num[best]) {
+            best = i;
+        }
+    }
+    swap(num[call], num[best]);           // 叫過的換到前面
+}
+\end{code}
+
+內層迴圈的範圍從 \texttt{call + 1} 開始，跟著外層變。 這種迴圈不能用「外層 $n$ 次
+乘內層 $n$ 次」來算，要一輪一輪列出來。 $n = 5$ 時：
+
+\begin{center}
+\begin{tabular}{cccc}
+\toprule
+\texttt{call} & 內層的 \texttt{i} & 這一輪的 \texttt{flips++} & 累計 \\
+\midrule
+0 & 1, 2, 3, 4 & 4 & 4 \\
+1 & 2, 3, 4 & 3 & 7 \\
+2 & 3, 4 & 2 & 9 \\
+3 & 4 & 1 & 10 \\
+4 & （不執行） & 0 & 10 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+每一輪少一次，加起來是 $4 + 3 + 2 + 1 + 0 = 10$。 一般的 $n$ 是
+\[
+(n - 1) + (n - 2) + \cdots + 1 + 0 = \frac{n(n - 1)}{2}.
+\]
+這裡數的是 \texttt{flips++} 這一行，也就是比較號碼的次數。 迴圈本身的 \texttt{i++}、
+\texttt{i < n} 也要花時間，但它們的次數跟 \texttt{flips++} 差不多，數最內層那一行
+就足夠代表整段程式的工作量。
+
+\subsection{三種常見的迴圈形狀}
+
+大部分迴圈的次數，可以拆成下面三種形狀來算。
+
+\begin{itemize}
+\item \textbf{固定範圍。} \texttt{for (i = 0; i < n; i++)} 跑 $n$ 次；兩層都是固定範
+圍時相乘，跑 $n \times m$ 次。
+\item \textbf{內層範圍跟著外層變。} 像上面的叫號程式，要一輪一輪加起來。 常見的結果
+是 $1 + 2 + \cdots + n = n(n + 1)/2$，大約是 $n^2/2$。
+\item \textbf{每次乘或除一個數。} \texttt{for (i = 1; i <= n; i *= 2)} 的 \texttt{i}
+依序是 $1, 2, 4, 8, \ldots$，到超過 $n$ 為止。 $n = 20$ 時是 $1, 2, 4, 8, 16$，跑
+$5$ 次；$n = 1000$ 時只跑 $10$ 次。 一般來說是 $\lfloor \log_2 n \rfloor + 1$
+次，也就是 $n$ 寫成二進位的位數。 每次除以 $3$ 的迴圈也一樣，次數大約是
+$\log_3 n$。
+\end{itemize}
+
+第三種形狀的次數長得非常慢：$n$ 從一千變成一百萬，次數只從 $10$ 變成 $20$。 所以
+看到「兩層迴圈」先別急著說它很慢，要看清楚每一層的變數是怎麼變的。 下面的例題就
+是三段看起來都是兩層、實際次數卻差很多的程式。
+
+\subsection{例題：迴圈到底跑幾次}
+\label{sec:ex-loop-count}
+
+\textbf{題意}（\akiref{how-many-times-does-the-loop-run}{迴圈到底跑幾次}）
+
+\begin{itemize}
+\item 有三段程式片段，變數都是 \texttt{long long}，\texttt{cnt} 從 $0$ 開始（見下面的
+片語）。
+\item 有 $q$ 個問題，每個問題給片段編號 $t$ 和正整數 $n$，問那一段跑完後
+\texttt{cnt} 是多少。
+\item $q \le 10^5$，$n \le 10^{18}$。 題目保證片段裡的變數不會溢位。
+\end{itemize}
+
+\begin{code}[label=code:three-pieces]{cpp}{例題的三段片段}
+// 片段 1
+for (i = 1; i <= n; i++) {
+    j = i;
+    while (j <= n) {
+        cnt++;
+        j *= 2;
+    }
+}
+// 片段 2
+for (i = 1; i <= n; i *= 2)
+    for (j = 1; j <= i; j++)
+        cnt++;
+// 片段 3（i /= 3 是整數除法）
+for (i = n; i > 0; i /= 3)
+    for (j = 0; j <= i; j++)
+        cnt++;
+\end{code}
+
+例如 $n = 9$ 時，片段 3 的外層 \texttt{i} 依序是 $9, 3, 1$，下一個是 $0$ 就停了。
+內層的 \texttt{j} 從 $0$ 跑到 \texttt{i}，三輪分別跑 $10$、$4$、$2$ 次，答案是
+$16$。
+
+\textbf{想法}
+
+最直接的做法，是把三段片段原封不動放進程式裡跑：寫一個函式
+\texttt{run(t, n)}，裡面用 \texttt{if} 分成三段，每一段就是上面的片語照抄，最後回傳
+\texttt{cnt}；\texttt{main} 讀每個問題、印出 \texttt{run(t, n)}。 這就是這題的
+\textbf{暴力解}（brute force）：照題目的字面意思做，不動任何腦筋，所以幾乎不會錯。
+
+這個程式要做的事，跟答案一樣多：答案是多少，\texttt{cnt++} 就執行幾次。 片段 1
+在 $n = 10^9$ 時的答案大約是 $2 \times 10^9$，在本書測試的環境下這支程式跑一筆要
+$1.1$ 秒左右。 $n$ 到 $10^{18}$ 時是它的十億倍，而且最多有 $10^5$ 筆，完全不可能。
+所以要找一個不必真的跑完、就能算出次數的方法。
+
+\textbf{片段 2 和片段 3：只跑外層。} 片段 2 的外層 \texttt{i} 每次乘 $2$，片段 3 的
+外層每次除以 $3$，外層最多跑六十幾輪。 內層的次數直接寫得出來：片段 2 是 \texttt{i}
+次，片段 3 是 \texttt{i + 1} 次（\texttt{j} 從 $0$ 開始）。 所以只要跑外層，每一輪
+把內層的次數加上去。
+
+\textbf{片段 1：換一個方向數。} 片段 1 的外層是 \texttt{i++}，要跑 $n$ 輪，只跑外層
+也來不及。 先看 $n = 6$ 時每一輪的 \texttt{j}：
+
+\begin{center}
+\begin{tikzpicture}[x=1cm, y=1cm]
+\foreach \i in {1,...,6} {\node[idxlbl] at (\i,0.75) {\texttt{i} = \i};}
+\node[left, font=\small] at (0.4,0) {乘 $0$ 次};
+\node[left, font=\small] at (0.4,-1) {乘 $1$ 次};
+\node[left, font=\small] at (0.4,-2) {乘 $2$ 次};
+\foreach \i in {1,...,6} {\node[hlcell] at (\i,0) {\i};}
+\foreach \i/\j in {1/2,2/4,3/6} {\node[hlcell] at (\i,-1) {\j};}
+\foreach \i in {4,5,6} {\node[cell, draw=black!20] at (\i,-1) {};}
+\node[hlcell] at (1,-2) {4};
+\foreach \i in {2,...,6} {\node[cell, draw=black!20] at (\i,-2) {};}
+\node[font=\small] at (7.4,0) {$6$ 格};
+\node[font=\small] at (7.4,-1) {$3$ 格};
+\node[font=\small] at (7.4,-2) {$1$ 格};
+\end{tikzpicture}
+\diagcaption{片段 1 在 $n = 6$ 時，每一格是 \texttt{cnt++} 執行時 \texttt{j} 的值。
+直著看是一輪外層，橫著看是「乘了幾次 $2$」。}
+\label{fig:piece1-grid}
+\end{center}
+
+題目問的是格子總數。 直著一行一行數（照程式的順序）是 $3 + 2 + 2 + 1 + 1 + 1 = 10$，
+要數 $n$ 行。 改成橫著一列一列數：第 $k$ 列是 \texttt{j} 已經乘了 $k$ 次 $2$ 的那
+些格子，\texttt{j} $= i \times 2^k$。 這一格存在，剛好是 $i \times 2^k \le n$，也就
+是 $i \le n / 2^k$，所以第 $k$ 列有 $\lfloor n / 2^k \rfloor$ 格。 總數是
+\[
+n + \left\lfloor \frac{n}{2} \right\rfloor + \left\lfloor \frac{n}{4} \right\rfloor + \cdots,
+\]
+加到 $\lfloor n / 2^k \rfloor = 0$ 為止。 $n = 6$ 時是 $6 + 3 + 1 = 10$，和直著數一
+樣。 這個和最多六十幾項，用一個 \texttt{m /= 2} 的迴圈就能算出來。 而且
+$\lfloor n / 2^k \rfloor$ 也等於 $\lfloor \lfloor n / 2^{k-1} \rfloor / 2 \rfloor$，
+所以 \texttt{m} 從 $n$ 開始一直除以 $2$ 就好，不用算 $2^k$。
+
+順便看出一件事：這個和小於 $n + n/2 + n/4 + \cdots = 2n$。 片段 1 雖然有兩層迴圈，
+\texttt{cnt++} 只執行不到 $2n$ 次，跟 $n^2$ 差得很遠。
+
+\textbf{程式}
+
+\begin{example}[label=ex:loop-count]{cpp}{(loop\_count.cpp) 迴圈到底跑幾次}
+#include <iostream>
+using namespace std;
+
+// 片段 1：第 k 列的 j 是 i 乘上 2 的 k 次方，
+// 這一列有 n / 2^k 格（整數除法）
+long long piece1(long long n) {
+    long long total = 0;
+    for (long long m = n; m > 0; m /= 2) {
+        total += m;
+    }
+    return total;
+}
+
+// 片段 2：外層 i = 1, 2, 4, ...，內層各跑 i 次
+long long piece2(long long n) {
+    long long total = 0;
+    for (long long i = 1; i <= n; i *= 2) {
+        total += i;
+    }
+    return total;
+}
+
+// 片段 3：外層 i = n, n/3, n/9, ...，內層 j 從 0 到 i，跑 i + 1 次
+long long piece3(long long n) {
+    long long total = 0;
+    for (long long i = n; i > 0; i /= 3) {
+        total += i + 1;
+    }
+    return total;
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int q;
+    cin >> q;
+    while (q--) {
+        int t;
+        long long n;
+        cin >> t >> n;
+        long long ans;
+        if (t == 1) {
+            ans = piece1(n);
+        } else if (t == 2) {
+            ans = piece2(n);
+        } else {
+            ans = piece3(n);
+        }
+        cout << ans << '\n';
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+5 \\
+3 1 \\
+2 7 \\
+2 8 \\
+3 9 \\
+1 10 \\
+}{
+2 \\
+7 \\
+15 \\
+16 \\
+18 \\
+}
+
+\begin{itemize}
+\item 把同一組輸入拿給暴力解跑，輸出也相同。 兩支程式做法完全不同，答案卻一樣，這本
+身就是一種檢查；第~\ref{sec:testing}~節會把這個想法變成固定的流程。
+\item 三個函式的迴圈都和原本的片段很像，差別只在內層被換成一個加法。 這樣寫比較容
+易和原本的片段逐行對照。
+\item 答案最大大約是 $2 \times 10^{18}$，在 \texttt{long long} 的範圍內（上限大約
+$9.2 \times 10^{18}$）；\texttt{int} 只到大約 $2.1 \times 10^9$，一定不夠。
+\end{itemize}
+
+\textbf{複雜度}
+
+每個問題的三個函式各最多跑 $\log_2 10^{18} \approx 60$ 輪，$10^5$ 個問題總共幾百
+萬次加法。 最大的測試資料在本書測試的環境下約 $0.01$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{看到兩層就套公式}：把片段 1 當成「外層 $n$ 次、內層 $\log_2 n$ 次」，寫成
+$n \times (\lfloor \log_2 n \rfloor + 1)$。 範例 \texttt{1 10} 會印出 \texttt{40}，正確
+是 \texttt{18}。 內層的 \texttt{j} 從 \texttt{i} 開始而不是從 $1$ 開始，\texttt{i}
+越大，內層越短。
+\item \textbf{漏掉從 $0$ 開始的那一次}：片段 3 寫成 \texttt{total += i}，範例
+\texttt{3 1} 會印出 \texttt{1}，正確是 \texttt{2}。 \texttt{j} 從 $0$ 跑到
+\texttt{i} 是 $i + 1$ 個數。
+\item \textbf{用浮點數算次數}：片段 2 的外層跑 $\lfloor \log_2 n \rfloor + 1$ 輪，有人
+用 \texttt{log2((double)n)} 算出輪數，再套 $2^{m+1} - 1$。 輸入 \texttt{2
+576460752303423487}（$n = 2^{59} - 1$）時，正確答案是
+\texttt{576460752303423487}，這樣寫在本書測試的環境下印出
+\texttt{1152921504606846975}，多算了一輪。 原因在第~\ref{sec:overflow}~節：
+\texttt{double} 存不下這麼大的整數，$2^{59} - 1$ 被捨入成 $2^{59}$。
+\item \textbf{直接跑片段 1}：只把片段 2、3 改成只跑外層，片段 1 還是照原樣跑。 範例都
+會對，但 $n = 10^{18}$ 的資料永遠跑不完。
+\end{itemize}
+
+\section{從次數到成長速度}
+\label{sec:growth}
+
+回到章首的診所。 第一種方法翻單子 $n(n - 1)/2$ 次。 第二種方法每張單子插一次、拿
+一次，插一張算翻十張的時間，總共相當於翻 $10n + n = 11n$ 張。 兩種方法在幾個人數下
+的比較：
+
+\begin{center}
+\begin{tabular}{rrrl}
+\toprule
+人數 $n$ & 第一種 $n(n-1)/2$ & 第二種 $11n$ & 比較省事的 \\
+\midrule
+$5$ & $10$ & $55$ & 第一種 \\
+$20$ & $190$ & $220$ & 第一種 \\
+$23$ & $253$ & $253$ & 一樣 \\
+$24$ & $276$ & $264$ & 第二種 \\
+$100$ & $4950$ & $1100$ & 第二種 \\
+$1000$ & $499500$ & $11000$ & 第二種 \\
+$10^5$ & 約 $5 \times 10^9$ & $1.1 \times 10^6$ & 第二種 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+人少的時候，第一種方法比較省事，因為它不用花插單子的那段固定成本。 兩邊在 $23$
+人時剛好打平，從 $24$ 人起第二種方法一直比較快，而且差距越拉越大：一千人時差了
+四十多倍，十萬人時差了四千多倍。
+
+\begin{center}
+\begin{tikzpicture}[x=0.25cm, y=0.0075cm]
+\draw[->, black!60] (0,0) -- (42,0) node[right, font=\small] {$n$};
+\draw[->, black!60] (0,0) -- (0,800) node[above, font=\small] {翻單子的次數};
+\foreach \t in {10,20,30,40} {\draw[black!60] (\t,0) -- (\t,-15) node[below, font=\scriptsize] {\t};}
+\foreach \t in {200,400,600} {\draw[black!60] (0,\t) -- (-0.4,\t) node[left, font=\scriptsize] {\t};}
+\draw[thick, optStroke, domain=0:40, samples=60] plot (\x, {\x*(\x-1)/2});
+\draw[thick, coreStroke, domain=0:40] plot (\x, {11*\x});
+\draw[dashed, black!50] (23,0) -- (23,253);
+\fill[black] (23,253) circle (2.5pt);
+\node[font=\small, optStroke] at (29,620) {第一種};
+\node[font=\small, coreStroke] at (39,350) {第二種};
+\node[font=\scriptsize, above left] at (23,253) {$n = 23$};
+\end{tikzpicture}
+\diagcaption{兩種叫號方法翻單子的次數。 交叉點左邊第一種較少，右邊第二種較少。}
+\label{fig:crossover}
+\end{center}
+
+如果插單子更慢，例如一張算翻一百張，交叉點會往右移到兩百人左右，但右邊最後還是第
+二種贏。 理由是兩個次數長大的方式不一樣：第二種和 $n$ 成正比，人數變十倍，次數也
+變十倍；第一種大約是 $n^2/2$，人數變十倍，次數變一百倍。 只要 $n$ 夠大，前面的係數
+$10$ 或 $100$ 都追不上這個差距。
+
+\subsection{只看最大的那一項}
+
+把上面的觀察寫成一般的規則：$n$ 很大時，決定次數的是長得最快的那一項，係數和比較
+小的項都不重要。 $n(n - 1)/2 = n^2/2 - n/2$，最大的項是 $n^2/2$，去掉係數就是
+$n^2$，記作 $O(n^2)$；$11n$ 記作 $O(n)$。 這種寫法叫\textbf{時間複雜度}（time
+complexity），讀作「big-O」。 白話的意思是：$n$ 夠大以後，次數不超過括號裡那個式
+子的某個固定倍數。
+
+\begin{itemize}
+\item 兩段程式先後執行，複雜度取比較大的那段。 先排序 $O(n \log n)$、再掃一遍
+$O(n)$，合起來是 $O(n \log n)$。
+\item 一段 $O(f)$ 的程式被執行 $g$ 次，合起來是 $O(f \times g)$。
+\item 次數會隨輸入的內容變（例如找到就 \texttt{break}）時，看最壞的情況。
+\item $\log$ 的底數只差一個固定倍數（$\log_3 n$ 大約是 $\log_2 n$ 的 $0.63$ 倍），所以
+$O(\log n)$ 不寫底數。
+\end{itemize}
+
+要分清楚兩種問題。 「這段程式的 \texttt{cnt++} 執行幾次」要的是精確的次數，例如
+$n(n - 1)/2$，上一節的例題和本章練習的追蹤題都是這種。 「這個做法來不來得及」只要
+量級，例如 $O(n^2)$，接下來估時間用的都是這種。 兩者都要會：精確的次數算錯了，量
+級常常也跟著錯。
+
+\subsection{實際量一量}
+
+量級只說次數怎麼長大，沒說一秒能做幾次。 拿一個 $O(n^2)$ 的雙層迴圈來量：
+對每一對 $i < j$ 檢查 \texttt{a[i] + a[j]} 是否等於某個數，共比較 $n(n - 1)/2$ 次。
+在本書測試的環境下，三種大小各跑一次：
+
+\begin{center}
+\begin{tabular}{rrr}
+\toprule
+$n$ & 比較次數 $n(n-1)/2$ & 時間 \\
+\midrule
+$10^4$ & 約 $5 \times 10^7$ & $0.02$ 秒 \\
+$3 \times 10^4$ & 約 $4.5 \times 10^8$ & $0.16$ 秒 \\
+$10^5$ & 約 $5 \times 10^9$ & $1.8$ 秒 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+$n$ 變三倍，時間大約變九倍；$n$ 變十倍，時間大約變一百倍，和 $O(n^2)$ 的預測一致。
+照這個比例，$n = 2 \times 10^5$ 會要七秒左右，大部分題目的時間限制是一兩秒，來不及。
+
+一秒能做幾次，要看迴圈裡做的是什麼。 同一台機器上，另外量了兩種比較慢的操作：
+
+\begin{center}
+\begin{tabular}{lr}
+\toprule
+迴圈裡做的事 & 每秒大約幾次 \\
+\midrule
+加法和比較，依序讀一個陣列（上面的迴圈） & $3 \times 10^9$ \\
+在一個 64 MB 的陣列裡，照亂數跳著讀 & $10^8$ \\
+在約 60 萬個鍵的 \texttt{map} 裡插入或查詢 & $2 \times 10^6$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+最快和最慢差了上千倍。 依序讀陣列時，電腦可以一次搬一大塊資料、同時做好幾個比較；
+跳著讀時，每次都要等資料從記憶體送過來；\texttt{map} 的每次操作本身就要跳十幾二十
+次。 銜接書 10.1 節的表用「一秒大約 $10^8$ 次簡單運算」來估，這個數字對單純的迴圈
+很保守，但加上這些慢的操作之後剛好合用。 本書也用它：算出來在 $10^8$ 以下，一定
+來得及；到 $10^9$ 附近，要看迴圈裡做的事有多單純；超過 $10^{10}$，換做法。
+
+\subsection{從資料範圍反推需要的複雜度}
+\label{sec:from-limits}
+
+題目的限制欄寫著 $n \le 2 \times 10^5$，這個數字除了告訴你陣列要開多大，也在告訴你
+需要多快的做法。 銜接書 10.1 節有一張「$n$ 的上限 $\to$ 可以接受的複雜度」的表，
+本書不重印，只把用法整理成步驟：
+
+\begin{enumerate}
+\item 找出所有會讓工作量變大的數：資料筆數 $n$、詢問數 $q$、測試資料的組數、數值的
+範圍。
+\item 寫出你的做法的複雜度，把\textbf{每一個}數的上限都代進去。 詢問 $q$ 次、每次
+$O(n)$，就是 $n \times q$，不是 $n$。
+\item 和 $10^8$ 比。
+\end{enumerate}
+
+第二步最容易漏。 下面是幾個例子：
+
+\begin{center}
+\begin{tabular}{p{0.32\linewidth}p{0.22\linewidth}p{0.36\linewidth}}
+\toprule
+限制 & 想用的做法 & 估計 \\
+\midrule
+$n \le 2 \times 10^5$ & 排序後掃一遍 & $n \log_2 n \approx 3.6 \times 10^6$，可以 \\
+$n, q \le 2 \times 10^5$ & 每個詢問掃一遍陣列 & $n \times q = 4 \times 10^{10}$，不行 \\
+$n \le 5000$ & 檢查每一對 & $n^2/2 \approx 1.3 \times 10^7$，可以 \\
+組數 $\le 10^5$，所有組的 $n$ 總和 $\le 10^6$ & 每組 $O(n)$ & 加起來 $O(10^6)$，可以 \\
+同上，但每組都清空一個大小 $10^6$ 的陣列 & & $10^5 \times 10^6 = 10^{11}$，不行 \\
+$n \le 20$ & 枚舉所有子集合 & $2^{20} \approx 10^6$，可以 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+倒數第二列是第~\ref{sec:ex-vote}~小節例題的重點：題目給「總和」的限制時，每一組
+的工作量也要跟那一組的大小成正比，不能跟陣列宣告的大小成正比。
+
+反過來，限制也會透露出題者想要的做法。 $n \le 20$ 幾乎是在說「可以試遍所有子集
+合」；$n \le 5000$ 通常是 $O(n^2)$；$n$ 到 $10^5$ 以上就要 $O(n \log n)$ 或 $O(n)$；
+$n$ 到 $10^{18}$ 時連 $O(n)$ 都不行，像上一節的例題，只能找公式或 $O(\log n)$ 的做法。
+
+\begin{apcsnote}
+實作題的題目會寫出資料範圍。 如果題目把測試資料分成幾個子題，範圍小的子題通常是給
+比較直接的做法。 想不到夠快的做法時，先寫一個暴力解把小範圍的子題拿下來；這個暴力
+解等一下也能拿來檢查你的快速版本（第~\ref{sec:testing}~節）。
+\end{apcsnote}
+
+\section{整數溢位與浮點數}
+\label{sec:overflow}
+
+\texttt{int} 能存的範圍大約是正負 $2.1 \times 10^9$，\texttt{long long} 大約是正負
+$9.2 \times 10^{18}$。 有號整數算出超過範圍的值，叫\textbf{溢位}（overflow）。 在
+C++ 裡這是未定義行為：程式不會停下來，也不會有錯誤訊息，只是印出一個錯的數字，而
+且同一支程式換個編譯選項，錯的數字可能還不一樣。 銜接書 10.1 節的常見錯誤示範過
+總和用 \texttt{int} 存的情形，這一節看幾種比較隱蔽的。
+
+\subsection{先估最大值}
+
+動手之前先算答案和中間值最大可能多大。 常見的幾種：
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+算的東西 & 最大大約是 & 例子（$n = 2 \times 10^5$，值 $\le 10^9$） \\
+\midrule
+$n$ 個數的總和 & $n \times$ 最大值 & $2 \times 10^{14}$ \\
+兩個數的乘積 & 最大值的平方 & $10^{18}$ \\
+有幾對 & $n^2/2$ & $2 \times 10^{10}$ \\
+$1 + 2 + \cdots + n$ & $n^2/2$ & $2 \times 10^{10}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+超過 $2 \times 10^9$ 就用 \texttt{long long}。 超過 $9 \times 10^{18}$ 時連
+\texttt{long long} 都不夠，要換個算法，例如下面的「用除法比大小」。
+
+\subsection{結果存進 \texttt{long long} 也沒用}
+
+下面這段程式的變數都宣告成 \texttt{long long} 了，可是三行裡有兩行是錯的：
+
+\begin{code}[label=code:overflow-demo]{cpp}{三種在算式裡發生的溢位}
+int w, h, n, b;
+cin >> w >> h >> n >> b;               // 輸入 100000 100000 80000 36
+long long area = w * h;                // 錯
+long long area2 = (long long)w * h;    // 對
+long long pairs = n * (n - 1) / 2;     // 錯
+long long pairs2 = (long long)n * (n - 1) / 2;
+long long mask = (1 << b) - 1;         // 錯
+long long mask2 = (1LL << b) - 1;      // 對
+\end{code}
+
+在本書測試的環境下，用 \texttt{-O2} 編譯，印出這六個變數是：
+
+\begin{code}{text}{上面六個變數的值}
+area  = 1410065408     area2  = 10000000000
+pairs = 1052476352     pairs2 = 3199960000
+mask  = 15             mask2  = 68719476735
+\end{code}
+
+C++ 算 \texttt{w * h} 時只看兩個運算元的型別：兩個都是 \texttt{int}，就用
+\texttt{int} 乘，乘完已經溢位，才轉成 \texttt{long long} 存起來。 等號左邊是什麼型
+別，影響不到右邊怎麼算。 修正的方法是在相乘之前，先把其中一個運算元轉成
+\texttt{long long}，另一個會自動跟著轉。 下面兩種寫法要分清楚：
+
+\begin{itemize}
+\item \texttt{(long long)w * h}：先轉 \texttt{w}，再乘，對。
+\item \texttt{(long long)(w * h)}：先用 \texttt{int} 乘完，再轉，跟沒轉一樣。
+\end{itemize}
+
+\texttt{1 << b} 也是同一回事：\texttt{1} 是 \texttt{int}，左移 $36$ 位超過了
+\texttt{int} 的 $32$ 位。 要寫 \texttt{1LL << b}，\texttt{LL} 讓這個 \texttt{1} 一開
+始就是 \texttt{long long}。 這一行在加上 \texttt{-fsanitize=undefined} 編譯時印出
+的是 \texttt{-1}，不是 \texttt{15}，這就是「未定義行為」的意思：結果沒有任何保證。
+
+\subsection{用除法比大小}
+
+有時候乘出來的值連 \texttt{long long} 都存不下，但我們只想知道它有沒有超過某個數。
+例如想檢查 $n^2 \le T$，$T$ 到 $10^{18}$，$n$ 也可能到 $10^{18}$。 這時把乘法換成除
+法：
+\[
+n \times n \le T \quad\text{等於}\quad n \le \left\lfloor \frac{T}{n} \right\rfloor
+\qquad (n \ge 1).
+\]
+因為 $n$ 是整數，「$n \le T/n$」和「$n$ 不超過 $T/n$ 的整數部分」是同一件事。 右邊
+是整數除法，結果不會比 $T$ 大，一定不會溢位。 三個數相乘也一樣，$n^3 \le T$ 可以
+寫成 \texttt{n <= T / n / n}。
+
+另一個常見的地方是兩個數的中點。 \texttt{lo} 和 \texttt{hi} 都是 \texttt{int}、可能
+到 $2 \times 10^9$ 附近時，\texttt{(lo + hi) / 2} 的加法就溢位了。 改寫成
+\texttt{lo + (hi - lo) / 2}，算出來的值一樣，但中間值不會超過 \texttt{hi}。 第~3~章
+的二分搜尋會一直用到這個寫法。
+
+\subsection{浮點數存不下大整數}
+
+\texttt{double} 有 $53$ 個二進位位數存數字，能精確表示的整數只到
+$2^{53} \approx 9 \times 10^{15}$。 再大的整數會被捨入成最接近的可表示值，例如
+$2^{53} + 1 = 9007199254740993$ 轉成 \texttt{double} 再轉回來，會變成
+$9007199254740992$。
+
+這會讓「用 \texttt{sqrt}、\texttt{log2} 算整數答案」的程式在大數上差一：
+
+\begingroup\sloppy
+\begin{itemize}
+\item $T = 10^{18} - 1$，想求最大的 $n$ 使 $n^2 \le T$，答案是 $999999999$。
+\texttt{(long long)sqrt((double)T)} 卻得到 $1000000000$，因為 $10^{18} - 1$ 轉成
+\texttt{double} 時被捨入成 $10^{18}$。
+\item $n = 2^{59} - 1$，$\lfloor \log_2 n \rfloor = 58$。
+\texttt{(long long)log2((double)n)} 得到 $59$，理由一樣。
+\end{itemize}
+\endgroup
+
+浮點數還是有用處：拿它估一個大概的值，再用整數修正。 下一小節的例題會示範：
+先用 \texttt{sqrt} 估，再用上一小節的除法檢查，大了就減一、小了就加一。
+
+\subsection{例題：預算內的最大規模}
+\label{sec:ex-max-size}
+
+\textbf{題意}（\akiref{largest-size-within-the-budget}{預算內的最大規模}）
+
+\begin{itemize}
+\item 有六個函式：$f_1(n) = n$；$f_2(n) = n \times b(n)$，$b(n)$ 是 $n$ 的二進位位數，
+$f_2(0) = 0$；$f_3(n) = n^2$；$f_4(n) = n^3$；$f_5(n) = 2^n$；$f_6(n) = n!$。
+\item 有 $q$ 個詢問，每個給代號 $t$ 和預算 $T$，求最大的非負整數 $n$ 使
+$f_t(n) \le T$。
+\item $q \le 10^5$，$1 \le T \le 10^{18}$。
+\end{itemize}
+
+$T = 10^8$ 時六個答案依序是 $10^8$、$4347826$、$10^4$、$464$、$26$、$11$。 這一列
+就是銜接書那張表的由來：一秒做 $10^8$ 次的話，$O(n^2)$ 的做法能處理一萬筆，$O(2^n)$
+的做法只能處理二十幾筆。 $f_2$ 是 $n \log n$ 的一種精確版本。
+
+\textbf{想法}
+
+暴力解是 $n$ 從 $0$ 開始一個一個試，直到 $f(n) > T$。 $f_5$、$f_6$ 長得很快，試幾十
+個就停了；可是 $f_1$ 在 $T = 10^{18}$ 時要試 $10^{18}$ 次，$f_3$ 要試 $10^9$ 次，再乘上
+$10^5$ 個詢問，不可能。 六個函式分開處理：
+
+\begin{itemize}
+\item \textbf{$f_1$}：答案就是 $T$。
+\item \textbf{$f_5$、$f_6$}：照暴力解一個一個試，最多六十步。 判斷「下一個還在預算內」
+時用除法：$2^{n+1} \le T$ 寫成 \texttt{value <= T / 2}，$(n+1)! \le T$ 寫成
+\texttt{value <= T / (n + 1)}。 這兩題其實直接乘也不會溢位，但要確定這件事得自己算
+一遍；用除法就不用算。
+\item \textbf{$f_3$、$f_4$}：用 \texttt{sqrt}、\texttt{cbrt} 估一個 $n$，再用除法修正：
+$n^2 > T$ 就往下減，$(n+1)^2 \le T$ 就往上加。 浮點數只差一兩個，修正的迴圈只跑幾
+次。
+\item \textbf{$f_2$}：依位數分組。 有 $b$ 位的數是 $2^{b-1}$ 到 $2^b - 1$，這一組裡
+$f_2(n) = n \times b$，條件 $n \times b \le T$ 等於 $n \le \lfloor T / b \rfloor$，
+所以這一組最大的答案是 $\min(2^b - 1, \lfloor T / b \rfloor)$，前提是它不小於
+$2^{b-1}$（否則這一組沒有任何數在預算內）。 $f_2$ 隨 $n$ 遞增，所以位數越多、還能
+在預算內的組，答案越大；$b$ 從 $1$ 試到 $62$，留下最後一個合格的就好。
+\end{itemize}
+
+$f_2$ 的上限為什麼試到 $62$？ $T \le 10^{18} < 2^{60}$，答案不超過 $T$，最多 $60$
+位；$62$ 只是留一點餘裕，而且 \texttt{1LL << 62} 還在 \texttt{long long} 的範圍內。
+
+\textbf{程式}
+
+\begin{example}[label=ex:max-size]{cpp}{(max\_size.cpp) 預算內的最大規模}
+#include <cmath>
+#include <iostream>
+using namespace std;
+
+// 每個函式回答：最大的 n，使 f(n) <= T。比大小一律用除法，不做會溢位的乘法。
+// f(n) = n 的答案就是 T，直接寫在 main 裡。
+
+long long nLogN(long long T) {              // f(n) = n * (n 的二進位位數)
+    long long best = 0;
+    for (int b = 1; b <= 62; b++) {         // 有 b 位的 n：2^(b-1) 到 2^b - 1
+        long long lo = 1LL << (b - 1), hi = (1LL << b) - 1;
+        long long n = min(hi, T / b);       // n * b <= T  等於  n <= T / b
+        if (n >= lo) {
+            best = n;
+        }
+    }
+    return best;
+}
+
+long long square(long long T) {             // f(n) = n^2
+    long long n = (long long)sqrt((double)T);   // 先用浮點數估一個大概
+    while (n > 0 && n > T / n) {            // n * n > T：太大，往下修
+        n--;
+    }
+    while (n + 1 <= T / (n + 1)) {          // (n+1)^2 <= T：還能再大
+        n++;
+    }
+    return n;
+}
+
+long long cube(long long T) {               // f(n) = n^3
+    long long n = (long long)cbrt((double)T);
+    while (n > 0 && n > T / n / n) {        // n^3 > T
+        n--;
+    }
+    while (n + 1 <= T / (n + 1) / (n + 1)) {    // (n+1)^3 <= T
+        n++;
+    }
+    return n;
+}
+
+long long power2(long long T) {             // f(n) = 2^n
+    long long n = 0, value = 1;             // value = 2^n
+    while (value <= T / 2) {                // 2^(n+1) <= T
+        value *= 2;
+        n++;
+    }
+    return n;
+}
+
+long long factorial(long long T) {          // f(n) = n!
+    long long n = 1, value = 1;             // value = n!，0! = 1! = 1
+    while (value <= T / (n + 1)) {          // (n+1)! <= T
+        n++;
+        value *= n;
+    }
+    return n;
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int q;
+    cin >> q;
+    while (q--) {
+        int t;
+        long long T;
+        cin >> t >> T;
+        long long ans;
+        if (t == 1) {
+            ans = T;
+        } else if (t == 2) {
+            ans = nLogN(T);
+        } else if (t == 3) {
+            ans = square(T);
+        } else if (t == 4) {
+            ans = cube(T);
+        } else if (t == 5) {
+            ans = power2(T);
+        } else {
+            ans = factorial(T);
+        }
+        cout << ans << '\n';
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+6 \\
+1 100000000 \\
+2 100000000 \\
+3 100000000 \\
+4 100000000 \\
+5 100000000 \\
+6 100000000 \\
+}{
+100000000 \\
+4347826 \\
+10000 \\
+464 \\
+26 \\
+11 \\
+}
+
+\begin{itemize}
+\item \texttt{square} 的第一個 \texttt{while} 要先檢查 \texttt{n > 0}，因為除數不能是
+$0$。 第二個 \texttt{while} 的除數是 \texttt{n + 1}，至少是 $1$，不用檢查。
+\item \texttt{factorial} 從 $n = 1$ 開始，因為 $0! = 1! = 1 \le T$，答案至少是 $1$。
+\texttt{power2} 從 $n = 0$ 開始：$T = 1$ 時 $2^1 = 2 > 1$，答案是 $0$。
+\item \texttt{nLogN} 裡的 \texttt{1LL << b} 不能寫成 \texttt{1 << b}，$b \ge 31$ 時就
+是上一小節的位移溢位。
+\end{itemize}
+
+\textbf{複雜度}
+
+每個詢問最多六十幾步（$f_2$ 的 $62$ 組、$f_5$ 的六十次倍增），修正迴圈只跑幾次。
+$10^5$ 個詢問大約 $6 \times 10^6$ 步，最大的測試資料在本書測試的環境下約 $0.01$ 秒。
+
+\subsection{常見錯誤}
+
+\begingroup\sloppy
+\begin{itemize}
+\item \textbf{只用浮點數}：$f_3$ 寫成 \texttt{(long long)sqrt((double)T)} 就回傳，輸入
+\texttt{3 999999999999999999} 會印出 \texttt{1000000000}，正確是 \texttt{999999999}。
+$f_4$ 用 \texttt{cbrt} 也一樣，同一個 $T$ 印出 \texttt{1000000}，正確是
+\texttt{999999}。 $f_5$ 用 \texttt{log2}，輸入 \texttt{5 576460752303423487} 會印出
+\texttt{59}，正確是 \texttt{58}。 範例的 $T$ 都很小，這三種寫法都會通過範例。
+\item \textbf{修正時直接乘}：把 \texttt{n + 1 <= T / (n + 1) / (n + 1)} 寫成
+\texttt{(n + 1) * (n + 1) * (n + 1) <= T}。 這裡 $n$ 只到 $10^6$ 左右，乘起來還在範圍
+內；但同樣的寫法搬到 $f_2$ 的 \texttt{hi * b} 上，$b = 62$ 時 \texttt{hi} 大約
+$4.6 \times 10^{18}$，乘上 $62$ 就溢位了。 與其每次都去確認會不會溢位，不如一律用
+除法。
+\item \textbf{位數算少一位}：把 $b(n)$ 當成 $\lfloor \log_2 n \rfloor$，也就是從 $0$
+開始數位數。 範例的第二列會印出 \texttt{4545454}，比正確的 \texttt{4347826} 大。
+$8 = 1000_2$ 有 $4$ 位，不是 $3$ 位。
+\item \textbf{小的邊界}：忘了 $0! = 1$，或以為 $T = 1$ 時 $f_5$ 的答案是 $1$。 這些
+在範例 2 裡都有，交出去前把範例全部跑過一次。
+\end{itemize}
+\endgroup
+
+\section{輸入與輸出}
+\label{sec:io}
+
+演算法再快，資料讀得太慢一樣會超過時間限制；答案算對了，多印一個空白也可能被判錯。
+這一節講三件事：讀寫的速度、讀到檔案結束、多組資料。
+
+\subsection{讀寫的速度}
+
+\begin{bridgerecap}[輸入加速的兩行]
+\texttt{main} 一開頭加上
+\texttt{ios::sync\_with\_stdio(false);} 和 \texttt{cin.tie(nullptr);}（銜接書第~1~章）。
+第一行關掉 \texttt{cin}／\texttt{cout} 和 C 的 \texttt{scanf}／\texttt{printf} 之間的同
+步；第二行讓 \texttt{cin} 讀資料前不再先把 \texttt{cout} 的緩衝區送出去。 加了之後
+不要再混用 \texttt{scanf}／\texttt{printf}，否則輸出的順序可能會亂掉。 換行用
+\texttt{'\textbackslash n'}，不要用 \texttt{endl}：\texttt{endl} 除了換行，還會把緩
+衝區立刻送出去，每一行都送一次就很慢。
+\end{bridgerecap}
+
+這三件事的效果，在本書測試的環境下量了一次。 程式讀 $10^6$ 個整數，每讀一個就印一
+行，輸入和輸出都是檔案：
+
+\begin{center}
+\begin{tabular}{lr}
+\toprule
+寫法 & 時間 \\
+\midrule
+什麼都不加，換行用 \texttt{'\textbackslash n'} & $0.70$ 秒 \\
+只加 \texttt{sync\_with\_stdio(false)} & $0.44$ 秒 \\
+兩行都加，但換行用 \texttt{endl} & $0.47$ 秒 \\
+兩行都加，換行用 \texttt{'\textbackslash n'} & $0.10$ 秒 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+少做任何一件，都會慢四倍以上。 只讀不印的時候，讀 $2 \times 10^6$ 個整數，不加速要
+$0.33$ 秒，加了兩行是 $0.06$ 秒，和 \texttt{scanf} 的 $0.07$ 秒差不多。 一題的時間
+限制常常只有一秒，這幾倍的差距可能就是過與不過的差別。 所以本書每一支讀大量資料的程
+式，開頭都有這兩行。
+
+\subsection{讀到檔案結束}
+
+有些題目不告訴你有幾筆資料，資料一直到檔案結束為止。 \texttt{cin >> x} 這個運算式
+本身有值：讀到東西時當成 \texttt{true}，讀不到（檔案結束，或內容不是數字）時當成
+\texttt{false}。 所以 \texttt{while (cin >> x)} 會一直讀，讀到檔案結束就停。
+
+\begin{code}[label=code:delivery]{cpp}{讀到檔案結束：不知道有幾筆的外送距離}
+long long d, total = 0;
+int count = 0;
+while (cin >> d) {              // 讀不到數字（檔案結束）時停下
+    count++;
+    total += d;
+}
+cout << count << ' ' << total << '\n';
+\end{code}
+
+每個數字是一筆外送的距離（公尺），輸入 \texttt{1200}、\texttt{3500 800}、
+\texttt{2750}（三行）時印出 \texttt{4 8250}。 \texttt{>>} 會跳過所有空白和換行，所
+以一行有幾個數字都沒關係，檔案最後有沒有換行也沒關係。 在鍵盤上手動輸入時，要按
+Ctrl+D（Windows 是 Ctrl+Z 再按 Enter）表示輸入結束；用 \texttt{./a.out < in.txt}
+從檔案讀時，讀完檔案自然就結束了。
+
+如果資料是「一行一筆」，而一行裡的個數不固定，就要知道哪些數字在同一行。 這時用
+\texttt{getline} 讀一整行，再用 \texttt{istringstream} 把這一行當成一個小的輸入來拆。
+\texttt{istringstream} 在 \texttt{<sstream>} 裡，用法和 \texttt{cin} 一樣：
+
+\begin{example}[label=ex:orders]{cpp}{(orders.cpp) 每位客人點了幾樣}
+#include <iostream>
+#include <sstream>
+#include <string>
+using namespace std;
+
+int main() {
+    int n;
+    cin >> n;
+    string line;
+    getline(cin, line);             // 讀掉 n 後面剩下的換行
+    for (int i = 1; i <= n; i++) {
+        getline(cin, line);         // 一整行：這位客人點的所有品項
+        istringstream in(line);
+        string item;
+        int count = 0;
+        while (in >> item) {        // 從這一行裡一個一個拆出品項
+            count++;
+        }
+        cout << "#" << i << ' ' << count << '\n';
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+3 \\
+latte bagel \\
+tea \\
+mocha muffin scone \\
+}{
+\#1 2 \\
+\#2 1 \\
+\#3 3 \\
+}
+
+第 10 行的 \texttt{getline} 是必要的。 \texttt{cin >> n} 讀完 \texttt{3} 就停下來，後
+面的換行還留在輸入裡；少了這一行，第一次 \texttt{getline} 會讀到那個空的行尾，程式
+印出 \texttt{\#1 0}、\texttt{\#2 2}、\texttt{\#3 1}，整個錯開一行。 這是銜接書第~3~章
+講過的陷阱，在混用 \texttt{>>} 和 \texttt{getline} 的題目裡一定會遇到。
+
+\subsection{例題：校慶攤位主題票選}
+\label{sec:ex-vote}
+
+\textbf{題意}（\akiref{voting-on-school-fair-booth-themes}{校慶攤位主題票選}）
+
+\begin{itemize}
+\item 輸入有很多組，每組是一個班級：第一行是選票張數 $n$ 和主題數 $k$；$n \ge 1$ 時下
+一行有 $n$ 個主題編號（$1$ 到 $k$），$n = 0$ 時沒有這一行。
+\item 最後一行是 \texttt{0 0}，表示輸入結束。
+\item 每組輸出得票最多的主題編號，同票時取編號最小的；沒有人投票時輸出 $0$。
+\item 組數最多 $5 \times 10^5$，每組的 $n$、$k$ 最多 $5 \times 10^5$，所有組的 $n + k$
+加起來不超過 $10^6$。
+\end{itemize}
+
+例如輸入是 \texttt{3 5}、\texttt{5 5 2}、\texttt{0 4}、\texttt{1 2}、\texttt{2}、
+\texttt{0 0}（每項一行）。 第一組主題 $5$ 得兩票，輸出 $5$；第二組有四個主題、沒有
+人投票，輸出 $0$；第三組輸出 $2$。
+
+\textbf{想法}
+
+每一組的計票很直接：開一個計數陣列，\texttt{cnt[c]} 是主題 $c$ 的票數，讀一張票就加
+一，最後從 $1$ 到 $k$ 找最大的。 這題要想清楚的是另外三件事。
+
+\textbf{結束的條件。} 第二組的 \texttt{0 4} 是一組合法的資料：有四個主題，只是沒有人
+投票。 只有 $n$ 和 $k$ 都是 $0$ 才是結束標記。 讀到 $n = 0$ 時也不用特別處理「沒有
+選票那一行」，因為 \texttt{>>} 本來就會跳過換行，直接讀下一組的 $n$、$k$。
+
+\textbf{每一組的工作量。} 用第~\ref{sec:from-limits}~小節的方法估。 如果宣告一個大小
+$5 \times 10^5 + 1$ 的陣列，每組開始前整個清成 $0$，最壞的情況是 $5 \times 10^5$ 組
+都要清一次，共 $2.5 \times 10^{11}$ 次，來不及。 題目限制的是所有組的 $n + k$ 總和，
+所以每一組的工作量要和這一組的 $n + k$ 成正比。 最簡單的做法，是每一組各自開一個大小
+$k + 1$ 的 \texttt{vector}：開的時候順便清成 $0$，花 $O(k)$；讀票 $O(n)$；找最大值
+$O(k)$。 所有組加起來是 $O(\sum (n + k)) = O(10^6)$。
+
+\textbf{同票和沒有票。} 從 \texttt{best = 0} 開始，主題 $c$ 的票數嚴格大於
+\texttt{cnt[best]} 時才換成 $c$。 \texttt{cnt[0]} 永遠是 $0$，所以沒有人投票時
+\texttt{best} 一直是 $0$，剛好是題目要的輸出；有人投票時，第一個票數大於 $0$ 的主題
+會換上來。 用嚴格大於，同票時就會留下編號小的那個。
+
+同樣的模型也出現在別的地方：客服系統每天統計哪一類問題被反映得最多，外送平台統計每
+家店當天最多人點的品項。 資料一天一組、類別數每天不同，就是這題的形狀。
+
+\textbf{程式}
+
+\begin{example}[label=ex:vote]{cpp}{(vote.cpp) 校慶攤位主題票選}
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n, k;
+    while (cin >> n >> k) {
+        if (n == 0 && k == 0) {           // 兩個都是 0 才是結束標記
+            break;
+        }
+        vector<int> cnt(k + 1, 0);        // 這一組自己的計數，大小跟著 k
+        for (int i = 0; i < n; i++) {
+            int a;
+            cin >> a;
+            cnt[a]++;
+        }
+        int best = 0;                     // cnt[0] 一定是 0
+        for (int c = 1; c <= k; c++) {
+            if (cnt[c] > cnt[best]) {     // 嚴格大於才換，同票留小的編號
+                best = c;
+            }
+        }
+        cout << best << '\n';
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+3 5 \\
+5 5 2 \\
+0 4 \\
+1 2 \\
+2 \\
+0 0 \\
+}{
+5 \\
+0 \\
+2 \\
+}
+
+\begin{itemize}
+\item \texttt{while (cin >> n >> k)} 同時處理兩種結束：讀到 \texttt{0 0}，或是檔案在那
+之前就結束了。 題目保證有 \texttt{0 0}，多這一層保護不花任何成本。
+\item \texttt{vector<int> cnt(k + 1, 0)} 每一組都重新建立，上一組的票數不會留下來，也
+不用自己清。
+\end{itemize}
+
+\textbf{複雜度}
+
+所有組加起來 $O(\sum (n + k))$，最多大約 $10^6$ 次操作，加上讀 $10^6$ 個整數。 最大
+的測試資料在本書測試的環境下約 $0.03$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{看到 $n = 0$ 就結束}：結束條件寫成 \texttt{if (n == 0) break;}，上面的範
+例只會印出 \texttt{5}，第二組和第三組都漏掉了。
+\item \textbf{每組清空整個大陣列}：宣告一個大小 $5 \times 10^5 + 1$ 的計數陣列，每組都
+整個清成 $0$。 答案是對的，但組數很多的測試資料在本書測試的環境下要跑 $9$ 秒左右，
+正確的程式只要 $0.03$ 秒。
+\item \textbf{忘了清}：計數陣列宣告在迴圈外面，每一組都沒有清。 上面的範例會印出
+\texttt{5}、\texttt{2}、\texttt{2}：第二組沒有人投票，卻讀到第一組留下的票數。
+\item \textbf{同票用 \texttt{>=}}：比較寫成 \texttt{cnt[c] >= cnt[best]}，同票時會換成
+編號大的。 輸入 \texttt{4 3}、\texttt{1 3 3 1}、\texttt{0 0} 會印出 \texttt{3}，正確
+是 \texttt{1}。
+\end{itemize}
+
+\subsection{輸出的格式}
+
+評分系統拿你的輸出和正確答案比對。 有些系統會忽略行尾的空白和最後多出來的空行，有
+些逐字比對；寫程式時照最嚴格的那種準備，就不用去猜。
+
+\begin{itemize}
+\item 數字之間有幾個空白、要不要換行，照題目的輸出格式寫。 \texttt{Case \#1: 5} 這種
+格式，大小寫、冒號後面的空白都要一樣。
+\item 一行印好幾個數字時，常見的錯誤是每個數字後面都接一個空白，最後一個也接。 可以
+在數字「前面」印空白，第一個數字除外。
+\item 題目沒有要求的提示文字（例如「請輸入 n：」）一個字都不要印。
+\item 除錯用的輸出改印到 \texttt{cerr}。 評分系統只看標準輸出，\texttt{cerr} 的內容不
+會被比對；交出去之前還是刪掉比較好，因為印太多也會花時間。
+\end{itemize}
+
+\section{自己測試：範例之外}
+\label{sec:testing}
+
+題目給的範例是用來說明題意的，通常很小，也不會故意去碰每一個邊界。 本章前面的常見
+錯誤裡，有好幾個錯法都能通過全部範例：用 \texttt{sqrt} 求整數平方根、片段 1 直接跑、
+清空整個大陣列。 交出去之前，至少要做兩件事：自己補邊界的輸入，以及在大量的隨機小輸
+入上，拿暴力解來比對。
+
+\subsection{手造邊界輸入}
+
+想邊界輸入時，從題目的每一個限制下手：
+
+\begin{itemize}
+\item \textbf{最小}：$n = 1$、$n = 0$（題目允許的話）、只有一組資料。
+\item \textbf{最大}：每個數都取上限，檢查溢位和時間。 迴圈次數的例題要測
+$n = 10^{18}$，主題票選要測「很多組、每組很小」和「一組、很大」兩種。
+\item \textbf{剛好在分界上}：題目的條件用到 $\le$ 或 $<$ 的地方，取剛好相等的值。 例如
+$T$ 剛好是某個完全平方數、比它少一，或 $n$ 剛好是 $2$ 的次方、比它少一。
+\item \textbf{全部相同、已經排好、完全反過來}：很多錯誤只在這些情況出現。
+\item \textbf{格式的邊界}：結束標記前一組是空的（\texttt{0 4}）、檔案最後沒有換行。
+\end{itemize}
+
+每一筆都要先手算出正確答案，再和程式比。 手算不出來的大輸入，至少看程式有沒有在時
+間內跑完，答案的大小合不合理。
+
+\subsection{用暴力解比對}
+
+手造的輸入受限於你想得到的情況。 想不到的那些，交給電腦：寫一個慢但簡單的暴力解，
+產生幾千組隨機的小輸入，看兩支程式的輸出是否完全相同。 這種做法俗稱
+\textbf{對拍}。 需要三個程式和一個腳本：
+
+\begin{center}
+\begin{tikzpicture}[node distance=0.8cm and 0.8cm, font=\small]
+\node[process] (gen) {產生器};
+\node[ioNode, right=of gen] (in) {\texttt{test.in}};
+\node[process, above right=0.2cm and 0.8cm of in] (mine) {要測的程式};
+\node[process, below right=0.2cm and 0.8cm of in] (brute) {暴力解};
+\node[decision, right=3.4cm of in, aspect=1.8, inner sep=1pt] (cmp) {相同？};
+\draw[flowarrow] (gen) -- (in);
+\draw[flowarrow] (in) -- (mine.west);
+\draw[flowarrow] (in) -- (brute.west);
+\draw[flowarrow] (mine.east) -- (cmp);
+\draw[flowarrow] (brute.east) -- (cmp);
+\draw[flowarrow] (cmp.south) -- ++(0,-1.3) -| node[pos=0.25, below] {相同：換下一個種子} (gen.south);
+\node[right=0.4cm of cmp, align=left] (stop) {不同：印出\\\texttt{test.in}，停下};
+\draw[flowarrow] (cmp) -- (stop);
+\end{tikzpicture}
+\diagcaption{用暴力解比對的流程。 每一輪用不同的亂數種子產生一組輸入。}
+\label{fig:check-loop}
+\end{center}
+
+以主題票選為例。 暴力解要寫得和正式的程式越不一樣越好，這樣兩邊才不會犯同一個錯。
+正式的程式用計數陣列，暴力解就對每個主題把整組票從頭數一次，$O(nk)$，很慢，但幾乎
+不可能寫錯：
+
+\begin{example}[label=ex:vote-brute]{cpp}{(vote\_brute.cpp) 主題票選的暴力解}
+#include <iostream>
+#include <vector>
+using namespace std;
+
+// 暴力解：每個主題都把整組票從頭數一次
+int main() {
+    int n, k;
+    while (cin >> n >> k) {
+        if (n == 0 && k == 0) {
+            break;
+        }
+        vector<int> a(n);
+        for (int &x : a) {
+            cin >> x;
+        }
+        int best = 0, bestVotes = 0;
+        for (int c = 1; c <= k; c++) {
+            int votes = 0;
+            for (int x : a) {
+                if (x == c) {
+                    votes++;
+                }
+            }
+            if (votes > bestVotes) {
+                best = c;
+                bestVotes = votes;
+            }
+        }
+        cout << best << '\n';
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+5 3 \\
+2 3 2 1 3 \\
+4 4 \\
+4 1 4 1 \\
+0 0 \\
+}{
+2 \\
+1 \\
+}
+
+產生器從命令列讀一個亂數種子，產生一組合法的小輸入。 同一個種子一定產生同一組輸入，
+出錯時才能重現：
+
+\begin{example}[label=ex:vote-gen]{cpp}{(vote\_gen.cpp) 主題票選的隨機輸入產生器}
+#include <iostream>
+#include <random>
+#include <string>
+using namespace std;
+
+// 用法：./vote_gen 種子
+// 產生 1 到 3 組小資料，最後一行是 0 0
+int main(int argc, char *argv[]) {
+    if (argc < 2) {
+        cerr << "usage: vote_gen seed\n";
+        return 1;
+    }
+    mt19937 rng(stoul(argv[1]));
+    auto randInt = [&](int lo, int hi) {   // lo 到 hi 之間的整數
+        return uniform_int_distribution<int>(lo, hi)(rng);
+    };
+    int groups = randInt(1, 3);
+    for (int g = 0; g < groups; g++) {
+        int n = randInt(0, 5), k = randInt(1, 4);
+        cout << n << ' ' << k << '\n';
+        for (int i = 0; i < n; i++) {
+            cout << randInt(1, k) << (i + 1 < n ? ' ' : '\n');
+        }
+    }
+    cout << "0 0\n";
+    return 0;
+}
+\end{example}
+
+\begin{itemize}
+\item \texttt{main} 的兩個參數是命令列引數：\texttt{argc} 是個數，\texttt{argv[1]} 是
+程式名稱後面的第一個字串。 執行 \texttt{./vote\_gen 7} 時，\texttt{argv[1]} 是
+\texttt{"7"}，用 \texttt{stoul} 轉成整數當種子。
+\item \texttt{mt19937} 是 \texttt{<random>} 裡的亂數產生器，
+\texttt{uniform\_int\_distribution<int>(lo, hi)} 把它的輸出變成 \texttt{lo} 到
+\texttt{hi} 之間平均分布的整數。 不要用 \texttt{rand() \% k}，它在有些環境下範圍很小，
+而且種子要另外用 \texttt{srand} 設。
+\item 範圍故意設得很小：最多三組、每組最多五張票、四個主題。 小輸入出錯時容易手算，
+而且同票、沒有票、\texttt{n = 0} 這些情況會經常出現。
+\end{itemize}
+
+最後是把它們串起來的腳本。 下面是 Linux 和 macOS 的 bash 寫法；Windows 可以在 WSL
+或 Git Bash 裡執行同一個腳本：
+
+\begin{code}[label=code:check-sh]{bash}{check.sh：用暴力解比對}
+#!/bin/bash
+# 用法：./check.sh 要測的程式 暴力解 產生器 次數
+for ((i = 1; i <= $4; i++)); do
+    ./$3 $i > test.in
+    ./$1 < test.in > mine.out
+    ./$2 < test.in > brute.out
+    if ! diff -q mine.out brute.out > /dev/null; then
+        echo "第 $i 組不一樣"
+        cat test.in
+        exit 1
+    fi
+done
+echo "$4 組都一樣"
+\end{code}
+
+先 \texttt{chmod +x check.sh} 讓它可以執行，再用 \texttt{./check.sh vote vote\_brute
+vote\_gen 1000} 跑一千組。 範例~\ref{ex:vote} 的 \texttt{vote} 會印出
+\texttt{1000 組都一樣}。
+
+來看它抓到錯誤的樣子。 有人用全域的計數陣列，每組結束時把用過的格子清掉，可是清的
+範圍寫錯了：
+
+\begin{code}[label=code:vote-bug]{cpp}{清錯範圍的計數（錯誤示範）}
+int cnt[500001];                          // 全域陣列，一開始全是 0
+// ……讀票、找最大值、輸出，和 vote.cpp 相同……
+for (int c = 1; c <= n; c++) {            // 應該是 c <= k
+    cnt[c] = 0;
+}
+\end{code}
+
+把 $k$ 寫成 $n$ 是很容易打錯的地方，而且兩個範例都會通過：範例裡每一組清掉的範圍剛
+好都蓋住了投過票的主題。 用腳本比對，在本書測試的環境下第 46 組就出現不同：
+
+\begin{code}{text}{check.sh 印出的輸入}
+第 46 組不一樣
+1 3
+3
+1 4
+4
+1 2
+2
+0 0
+\end{code}
+
+暴力解印出 \texttt{3}、\texttt{4}、\texttt{2}，這支程式印出 \texttt{3}、\texttt{3}、
+\texttt{2}。 第一組 $n = 1$，只清掉 \texttt{cnt[1]}，主題 $3$ 的那一票留到了第二組，
+和主題 $4$ 同票，於是輸出較小的 $3$。 這組輸入只有七行，手算一遍就能看出錯在哪裡。
+
+用暴力解比對時，幾件事要注意：
+
+\begin{itemize}
+\item \textbf{暴力解要直接。} 照題目的字面意思枚舉，不要在暴力解裡用同一個「聰明的觀
+察」。 兩邊都用了同一個錯的想法，就會一起錯，比對不出來。
+\item \textbf{兩邊不同時，先手算。} 有時候錯的是暴力解，或是產生器產生了題目不允許的輸
+入。
+\item \textbf{比對全部相同不等於證明。} 範圍小的隨機資料抓不到溢位和浮點數誤差，也抓
+不到太慢。 這些要靠上一小節的最大輸入，以及下面的工具。
+\end{itemize}
+
+迴圈次數的例題也能這樣做：暴力解就是第~\ref{sec:ex-loop-count}~小節照字面跑的那支程式，產生器隨機產生
+$n \le 1000$ 的詢問。 不過它的浮點數錯誤只在 $n$ 超過 $2^{53}$ 時才會出現，暴力解根本
+跑不到那裡，只能靠手造的輸入（$n = 2^{59} - 1$）抓。 兩種測試方法要一起用。
+
+\subsection{讓編譯器幫忙}
+
+練習時用下面的選項編譯：
+
+\begin{code}{bash}{練習時的編譯選項}
+g++ -std=c++17 -O2 -Wall -Wextra -fsanitize=address,undefined vote.cpp -o vote
+\end{code}
+
+\texttt{-Wall -Wextra} 讓編譯器對可疑的寫法提出警告，例如比較有號和無號的整數、變數
+沒有初始化就使用。 \texttt{-fsanitize=address,undefined} 會在執行時檢查陣列越界和有
+號整數溢位，出事時印出是哪一行（銜接書第~10~章 10.1 節有示範）。 第~\ref{sec:overflow}~
+節的溢位程式這樣編譯後執行，會先印出類似下面的訊息（前面還有檔名和行號），指出
+\texttt{w * h} 溢位了：
+\begin{code}{text}{-fsanitize=undefined 抓到的溢位}
+runtime error: signed integer overflow: 100000 * 100000 cannot be represented in type 'int'
+\end{code}
+加了這些選項，程式會慢好幾倍，所以只在測試時用；量時間時拿掉。
+
+量時間用 \texttt{time} 指令，例如 \texttt{time ./vote < big.in > /dev/null}，看
+\texttt{real} 那一行。 \texttt{big.in} 可以用另一個產生器做出來：把
+\texttt{vote\_gen} 的範圍改成題目的上限，就是一個最大輸入的產生器。
+
+\begin{apcsnote}
+實作題由系統用測試資料評分，考場上看不到這些測試資料，只有題目的範例。 練習時就養
+成習慣：寫完先跑範例，再手造幾筆邊界輸入；時間夠的話，寫一個暴力解在小範圍比對。 考
+試時不一定有時間寫完整的腳本，但手造最小、最大、剛好相等這三種輸入，幾分鐘就做得完。
+\end{apcsnote}
+
+\section{本章常見錯誤}
+\label{sec:prep-pitfalls}
+
+前面各節的錯誤，歸納起來是五類。 寫每一題時，交出去之前逐項檢查一次。
+
+\begin{center}
+\begin{tabular}{p{0.2\linewidth}p{0.48\linewidth}p{0.2\linewidth}}
+\toprule
+錯誤 & 例子 & 見 \\
+\midrule
+估錯工作量 & 看到兩層迴圈就說 $O(n^2)$ 或 $n \log n$；只看 $n$ 沒看詢問數 $q$；每組都清空整個大陣列 &
+第~\ref{sec:ex-loop-count}、\ref{sec:from-limits}、\ref{sec:ex-vote}~節 \\
+溢位 & \texttt{int} 乘完才轉 \texttt{long long}；\texttt{1 << b}；比大小時直接相乘 &
+第~\ref{sec:overflow}~節 \\
+浮點數誤差 & 用 \texttt{sqrt}、\texttt{cbrt}、\texttt{log2} 求整數答案，沒有修正 &
+第~\ref{sec:ex-loop-count}、\ref{sec:ex-max-size}~節 \\
+輸入輸出 & 沒加速、用 \texttt{endl}；\texttt{>>} 後面直接 \texttt{getline}；結束標記判斷錯；多印空白 &
+第~\ref{sec:io}~節 \\
+只用範例測試 & 清錯範圍、浮點數誤差、太慢，範例都會通過 &
+第~\ref{sec:testing}~節 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{本章練習}
+\label{sec:ch1-exercises}
+
+\begin{drills}[label=drills:ch1]
+\item 下面三段程式，$n = 10$ 時 \texttt{cnt++} 各執行幾次？ 一般的 $n$ 時，複雜度是多少？
+\begin{code}{cpp}{練習 1}
+// (a)
+for (int i = 1; i <= n; i++)
+    for (int j = i; j <= n; j += i)
+        cnt++;
+// (b)
+for (int i = n; i >= 1; i /= 2)
+    for (int j = 1; j <= n; j++)
+        cnt++;
+// (c) a 已經由小到大排好
+int i = 0, j = 0;
+while (i < n) {
+    if (j < n && a[j] - a[i] <= k) {
+        j++;
+    } else {
+        i++;
+    }
+    cnt++;
+}
+\end{code}
+(c) 的次數會隨 \texttt{a} 和 \texttt{k} 而變，回答最少和最多各是幾次。
+
+\item 程式甲處理 $n$ 筆資料要 $2n^2$ 步，程式乙要 $200n + 5000$ 步。
+\begin{enumerate}
+\item $n = 50$ 和 $n = 1000$ 時，哪一支比較快？
+\item 找出最小的 $n$，使得從這個 $n$ 開始，程式乙一直都嚴格比程式甲快。
+\end{enumerate}
+
+\item 下面每一題，判斷想用的做法來不來得及（用每秒 $10^8$ 次估），並說明理由。
+\begin{enumerate}
+\item $n \le 2 \times 10^5$ 個數、$q \le 2 \times 10^5$ 個詢問，每個詢問把陣列從頭掃
+一遍。
+\item 最多 $10^4$ 組資料，每組 $n \le 1000$，每組用 $O(n^2)$ 的做法。
+\item 同 (b)，但題目另外保證所有組的 $n$ 加起來不超過 $10^5$。
+\item $n \le 20$，枚舉所有子集合，每個子集合花 $O(n)$ 檢查。
+\end{enumerate}
+
+\item 下面的程式片段中，$n \le 10^5$，$0 \le$ \texttt{a[i]} $\le 10^6$。 哪幾行可能
+溢位？ 怎麼改？
+\begin{code}{cpp}{練習 4}
+long long sum = 0, sq = 0;
+for (int i = 0; i < n; i++) {
+    sum += a[i];                       // (1)
+    sq += a[i] * a[i];                 // (2)
+}
+int avg = sum / n;                     // (3)
+long long total = n * (n + 1) / 2;     // (4)
+\end{code}
+
+\item 一支程式要讀 $10^6$ 個整數，每讀一個就印一行。 加速的兩行它只寫了
+\texttt{cin.tie(nullptr);}，輸出用的是 \texttt{endl}。 在本書測試的環境下它要
+$0.4$ 秒左右。 要改哪些地方？ 各自是什麼原因讓它慢？
+
+\item 為第~\ref{sec:ex-loop-count}~小節的例題設計五筆手造的輸入，每一筆寫出它要檢查的
+是哪一種錯誤，以及正確的輸出。
+\end{drills}
+
+\section{實作練習}
+\label{sec:ch1-practice}
+
+下面是 Aki-Judge 上和本章相關的題目。 難度分四階：暖身是直接套用本章的寫法；基本要
+自己想一下怎麼估計或怎麼讀輸入；實戰的題敘比較長，要先把題目轉換成本章的形狀；挑戰
+需要再多一步觀察。
+
+\begin{center}
+\begin{tabular}{llc}
+\toprule
+小節 & 題目 & 難度 \\
+\midrule
+估計次數與複雜度 & \akiref{stage-runs-under-the-entry-cap}{依入口上限計算的連續關卡} & 基本 \\
+ & \akiref{items-ordered-exactly-once}{只出現一次的值} & 實戰 \\
+ & \akiref{rectangles-with-an-even-number-of-stamps}{章數為偶數的矩形} & 實戰 \\
+ & \akiref{partner-pairs-at-two-scales}{兩種規模的搭檔配對} & 實戰 \\
+ & \akiref{faster-from-here-on}{從此以後都比較快} & 挑戰 \\
+\midrule
+整數運算與溢位 & \akiref{sheets-for-a-saddle-stitched-booklet}{騎馬釘小冊子的紙張數} & 暖身 \\
+ & \akiref{position-on-a-circular-track}{環形跑道上的位置} & 暖身 \\
+ & \akiref{splitting-the-class-trip-bill}{班遊費用分攤} & 基本 \\
+ & \akiref{download-progress-bar}{下載進度條} & 基本 \\
+ & \akiref{stairs-or-the-express-elevator}{樓梯還是快速電梯} & 實戰 \\
+ & \akiref{per-purchase-vs-monthly-loyalty-points}{逐筆給點與月結給點的差距} & 挑戰 \\
+\midrule
+輸入與輸出 & \akiref{jump-rope-record-breaks}{跳繩計數器的破紀錄次數} & 暖身 \\
+ & \akiref{ballots-of-unknown-count}{不知道有幾行的投票紀錄} & 暖身 \\
+ & \akiref{steps-walked-during-each-break}{每天各節下課的步數} & 暖身 \\
+ & \akiref{drink-shop-sales-per-shift}{飲料店每班的營業額} & 暖身 \\
+ & \akiref{study-group-sign-in-sheets}{讀書會簽到表} & 基本 \\
+ & \akiref{study-room-seat-log}{自習室的座位登記} & 實戰 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+本章的三題例題也在 Aki-Judge 上，讀完各節之後可以先自己寫一次再對照。
+
+下面這組是 STL 的複習題，用到的是銜接書第~3、8、9~章的 \texttt{vector}、
+\texttt{pair}、\texttt{sort} 與比較函式、\texttt{set}／\texttt{map}。 從第~2~章起，
+這些容器會直接拿來用，不再說明。 寫起來卡住的話，先回頭翻銜接書對應的那一章。
+
+\begin{center}
+\begin{tabular}{llc}
+\toprule
+小節 & 題目 & 難度 \\
+\midrule
+排序與比較函式 & \akiref{sorting-the-camp-roster}{營隊報名名冊排序} & 暖身 \\
+ & \akiref{graduation-photo-rows}{畢業照的分排站位} & 暖身 \\
+ & \akiref{league-ranks-by-win-rate}{校際聯賽勝率名次} & 基本 \\
+ & \akiref{sorting-file-names-the-human-way}{照人的直覺排檔名} & 基本 \\
+ & \akiref{clicking-column-headers}{試算表連點欄位標題} & 實戰 \\
+ & \akiref{winter-break-reading-marathon-standings}{寒假閱讀馬拉松結算} & 實戰 \\
+ & \akiref{order-of-the-lighthouse-sweep}{燈塔光束掃過的順序} & 挑戰 \\
+\midrule
+\texttt{set} 與 \texttt{map} & \akiref{hallway-light-switch-log}{走廊燈的開關紀錄} & 暖身 \\
+ & \akiref{the-calculators-variable-table}{小算盤的變數表} & 暖身 \\
+ & \akiref{class-bonus-and-personal-bonus}{全班加分與個人加分} & 基本 \\
+ & \akiref{cone-squares-on-the-field}{操場上的方格標記} & 基本 \\
+ & \akiref{transposed-or-mirrored}{移調與倒影} & 實戰 \\
+ & \akiref{matching-prefixes-of-two-attendance-lists}{兩份點名單的前綴配對} & 實戰 \\
+ & \akiref{left-and-right-socks-in-a-row}{左右腳都配成雙的區段} & 挑戰 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{讀完你應該會}
+\label{sec:ch1-checklist}
+
+\begin{itemize}
+\item 給一段內層範圍跟著外層變、或變數每次乘除一個數的迴圈，能列表算出它的精確執行次
+數，並寫出它的複雜度。
+\item 看到題目的限制，能把 $n$、$q$、組數都代進自己的做法，判斷來不來得及；題目限制
+「總和」時，能讓每一組的工作量跟那一組的大小成正比。
+\item 寫程式前能估出答案和中間值的最大值，在需要的地方用 \texttt{long long}、
+\texttt{1LL}，並用除法比較可能溢位的乘積。
+\item 會用 \texttt{while (cin >> x)} 讀到檔案結束、用 \texttt{getline} 加
+\texttt{istringstream} 逐行拆資料，並正確處理多組資料的結束標記。
+\item 能為一題寫出暴力解、隨機產生器和比對腳本，找出一組讓兩支程式輸出不同的小輸入。
+\end{itemize}
+
+\textbf{延伸閱讀}（書末會整理完整的參考資料）
+
+\begin{itemize}
+\item Antti Laaksonen，\textit{Competitive Programmer's Handbook}，第 1、2 章：輸入輸
+出、整數型別和時間複雜度的簡短整理，並用最大子陣列和示範一個做法怎麼一步步變快。
+\item Steven Halim 等，\textit{Competitive Programming 4}，Book 1 的 1.3 節：怎麼從
+限制估計複雜度，以及測試時該準備哪些輸入。
+\item Steven S. Skiena，\textit{The Algorithm Design Manual}，第 3 版，第 2 章：
+big-O 的定義和常見的成長速度，寫得比本章嚴謹。
+\end{itemize}
+
+\addcontentsline{toc}{section}{練習解答}
+\section*{練習解答}
+
+\begin{enumerate}
+\item
+\begin{enumerate}
+\item $27$ 次。 外層是 \texttt{i} 時，\texttt{j} 是 $i, 2i, 3i, \ldots$，共
+$\lfloor n / i \rfloor$ 次，$n = 10$ 時是 $10 + 5 + 3 + 2 + 2 + 1 + 1 + 1 + 1 + 1
+= 27$。 一般的 $n$ 是 $\lfloor n/1 \rfloor + \lfloor n/2 \rfloor + \cdots +
+\lfloor n/n \rfloor$，大約是 $n$ 乘上 $1 + 1/2 + \cdots + 1/n$，而這個和大約是
+$\ln n$，所以是 $O(n \log n)$。
+\item $40$ 次。 外層 \texttt{i} 是 $10, 5, 2, 1$，共 $4$ 輪，每輪內層 $10$ 次。 一般
+的 $n$ 是 $n \times (\lfloor \log_2 n \rfloor + 1)$，$O(n \log n)$。 和
+\ref{sec:ex-loop-count}~小節的片段 1 對照：這裡的內層每次都從 $1$ 跑到 $n$，不會變短。
+\item 最少 $n$ 次，最多 $2n$ 次。 每一次迴圈不是 \texttt{j++} 就是 \texttt{i++}。
+\texttt{i} 從 $0$ 加到 $n$ 才停，一共加 $n$ 次；\texttt{j} 不超過 $n$，最多加 $n$ 次。
+所以總次數在 $n$ 和 $2n$ 之間，是 $O(n)$。 雖然只有一個 \texttt{while}，看起來也不像
+兩層，但這種「兩個變數都只往前走」的寫法是第~5~章雙指標的基礎。
+\end{enumerate}
+
+\item
+\begin{enumerate}
+\item $n = 50$ 時甲要 $5000$ 步，乙要 $15000$ 步，甲比較快。 $n = 1000$ 時甲要
+$2 \times 10^6$ 步，乙要 $205000$ 步，乙比較快。
+\item $121$。 $n = 120$ 時甲 $28800$、乙 $29000$，甲還是比較快；$n = 121$ 時甲
+$29282$、乙 $29200$，乙比較快。 兩者的差 $2n^2 - 200n - 5000$ 在 $n \ge 50$ 之後只
+會越來越大，所以從 $121$ 起乙一直比較快。
+\end{enumerate}
+
+\item
+\begin{enumerate}
+\item 不行。 $n \times q = 4 \times 10^{10}$。 要換成第~5~章的前綴和這類先處理好、
+每個詢問 $O(1)$ 或 $O(\log n)$ 的做法。
+\item 不行。 每組最多 $10^6$ 步，$10^4$ 組是 $10^{10}$。
+\item 可以。 每組 $n_i^2 \le n_i \times 1000$，加起來不超過
+$1000 \times \sum n_i = 1000 \times 10^5 = 10^8$。 總和的限制讓「很多組都很大」的情況
+不會發生。
+\item 可以。 $2^{20} \times 20 \approx 2 \times 10^7$。
+\end{enumerate}
+
+\item 第 (2) 行和第 (4) 行。
+\begin{itemize}
+\item (1) 沒問題：\texttt{sum} 是 \texttt{long long}，\texttt{a[i]} 會先轉成
+\texttt{long long} 再加，總和最多 $10^{11}$。
+\item (2) \texttt{a[i] * a[i]} 用 \texttt{int} 乘，最大 $10^{12}$，溢位。 改成
+\texttt{(long long)a[i] * a[i]}。 加起來最多 $10^{17}$，\texttt{sq} 存得下。
+\item (3) 沒問題：平均值不超過 $10^6$，存進 \texttt{int} 不會溢位。
+\item (4) \texttt{n * (n + 1)} 用 \texttt{int} 乘，$n = 10^5$ 時大約 $10^{10}$，溢位。
+改成 \texttt{(long long)n * (n + 1) / 2}。
+\end{itemize}
+
+\item 三個地方。 加上 \texttt{ios::sync\_with\_stdio(false);}：\texttt{cin}／\texttt{cout}
+不用再和 C 的輸入輸出保持同步，讀寫都變快；\texttt{endl} 換成
+\texttt{'\textbackslash n'}：\texttt{endl} 每一行都把緩衝區送出去一次，$10^6$ 行就送
+$10^6$ 次；\texttt{cin.tie(nullptr)} 已經有了，保留。 第~\ref{sec:io}~節的表裡，三件事都
+做到之後是 $0.10$ 秒。
+
+\item 一種答法（輸入的第一行 $q$ 省略）：
+\begin{itemize}
+\item \texttt{3 1}：$n$ 最小，片段 3 的 \texttt{j} 從 $0$ 開始，答案 $2$。 漏掉
+$+1$ 會印 $1$。
+\item \texttt{1 1}：片段 1 只有一格，答案 $1$。
+\item \texttt{2 7} 和 \texttt{2 8}：$n$ 剛好在 $2$ 的次方前後，答案 $7$ 和 $15$，檢查
+迴圈條件的 $\le$。
+\item \texttt{1 1000000000000000000}：最大的 $n$，檢查時間和溢位。 答案是
+$\sum_k \lfloor 10^{18} / 2^k \rfloor = 1999999999999999976$，可以先用暴力解的想法在小
+的 $n$ 上確認公式，再相信這個大數。
+\item \texttt{2 576460752303423487}：$n = 2^{59} - 1$，檢查有沒有用浮點數算輪數，答案
+是 $576460752303423487$。
+\end{itemize}
+\end{enumerate}

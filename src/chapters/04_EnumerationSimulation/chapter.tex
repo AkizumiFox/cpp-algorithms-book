@@ -1,4 +1,1443 @@
-% 佔位：本章尚未開始。book.tex 裡先註解掉。
 \chapter{枚舉、模擬與回溯}
+\label{ch:enumeration}
 
-本章尚未開始。
+出門旅行前，行李箱的三位數密碼鎖打不開了。 你只記得兩件事：三個數字加起來
+是 $20$，而且三個數字都不一樣。 從 \texttt{000} 轉到 \texttt{999} 全部試一
+遍要轉一千次，有沒有辦法少試一點？ 往下讀之前，先想想：符合這兩個條件的密碼
+到底有幾個，你會怎麼把它們全部列出來？
+
+這種問題沒有什麼巧妙的公式，最可靠的做法是把所有可能一個一個列出來檢查。 這
+叫\textbf{枚舉}（enumeration），用這種方式寫成的程式叫\textbf{暴力解}
+（brute force）。 電腦一秒可以檢查上千萬種情況，所以只要情況的總數不太大，
+暴力解就是最快寫完、也最不容易錯的解法。 密碼鎖只有一千種組合，電腦一下子就
+列完了，答案是 $24$ 個，第~\ref{sec:count-cases}~節會寫出這支程式。
+
+這一章教三件事。 第一是怎麼有系統地列出所有可能：所有數字組合、所有子集合、
+所有排列，以及列出之前先數一數總共有多少種，判斷來不來得及。 第二是
+\textbf{回溯}（backtracking）：一步一步做選擇，發現走不下去就退回上一步換
+一個選擇，搭配\textbf{剪枝}（pruning）提早放棄不可能的方向。 第三是
+\textbf{模擬}（simulation）：題目給了一套規則，照著規則一步一步算出結果；
+重點在「同時更新」怎麼寫，以及狀態重複出現時怎麼找出週期、直接跳到很遠的未來。
+
+用到的語法在《C++ 程式設計：給學過 C 的人》（以下簡稱銜接書）都講過：
+\texttt{next\_permutation} 在第~9~章，lambda 也在第~9~章，遞迴和用遞迴走格
+子在第~10~章 10.2 節，從資料範圍估計時間在第~10~章 10.1 節。 沒讀過銜接書的
+讀者，只要會寫遞迴函式、會用 \texttt{vector} 和 \texttt{string}，就能讀這一
+章。 遞迴本身在第~8~章會再深入講，這一章只用到「函式呼叫自己、一層處理一個
+決定」這種最基本的寫法。
+
+\section{先數有幾種可能}
+\label{sec:count-cases}
+
+寫暴力解之前，先回答一個問題：總共要試幾種？ 這個數字決定暴力解來不來得及。
+銜接書 10.1 節的表給了一個粗略的標準：在一般的時間限制下，大約可以做
+$10^7$ 到 $10^8$ 次簡單的運算。 下表是幾種常見的「所有可能」，以及它們長得
+多快：
+
+\begin{center}
+\small
+\begin{tabular}{lllll}
+\toprule
+要列出的東西 & 個數 & $n = 10$ & $n = 20$ & $n = 30$ \\
+\midrule
+$n$ 個位置、每個位置 $0$ 到 $9$ & $10^n$ & $10^{10}$ & $10^{20}$ & $10^{30}$ \\
+$n$ 個東西的子集合（每個選或不選） & $2^n$ & $1024$ & 約 $10^6$ & 約 $10^9$ \\
+$n$ 個東西排成一列 & $n!$ & 約 $3.6 \times 10^6$ & 約 $2.4 \times 10^{18}$ & --- \\
+從 $n$ 個裡挑 $3$ 個 & $n(n-1)(n-2)/6$ & $120$ & $1140$ & $4060$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+從表可以讀出幾個常用的門檻：子集合大約到 $n = 20$，排列大約到 $n = 10$，
+每一種還要乘上檢查一種情況的時間。 題目的 $n$ 剛好落在這些數字附近（例如
+$n \le 20$、$n \le 10$），常常就是在暗示可以全部試一遍。 反過來，$n$ 到
+$10^5$ 的題目，就算只是「挑兩個」也有 $5 \times 10^9$ 種，要用後面章節的
+方法。
+
+\subsection{少列一點：能算出來的就不要列}
+
+回到章首的密碼鎖。 最直接的做法是三層迴圈，三個位置都從 $0$ 試到 $9$，共
+$1000$ 種。 可是第三個數字其實不用試：前兩個決定之後，第三個只能是
+$20 - a - b$，算出來看它在不在 $0$ 到 $9$ 之間就好。 這樣只要兩層迴圈、
+$100$ 種。
+
+\begin{example}[label=ex:lock]{cpp}{(lock.cpp) 密碼鎖有幾種可能}
+#include <iostream>
+using namespace std;
+
+int main() {
+    // 做法一：三個位置都枚舉，共 10 * 10 * 10 種
+    int count1 = 0, checks1 = 0;
+    for (int a = 0; a <= 9; a++) {
+        for (int b = 0; b <= 9; b++) {
+            for (int c = 0; c <= 9; c++) {
+                checks1++;
+                if (a + b + c == 20 && a != b && b != c && a != c) {
+                    count1++;
+                }
+            }
+        }
+    }
+    // 做法二：只枚舉前兩位，第三位由總和直接算出來
+    int count2 = 0, checks2 = 0;
+    for (int a = 0; a <= 9; a++) {
+        for (int b = 0; b <= 9; b++) {
+            checks2++;
+            int c = 20 - a - b;
+            if (c >= 0 && c <= 9 && a != b && b != c && a != c) {
+                count2++;
+            }
+        }
+    }
+    cout << count1 << ' ' << checks1 << '\n';
+    cout << count2 << ' ' << checks2 << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{}{
+24 1000 \\
+24 100 \\
+}
+
+每一行是「符合條件的密碼個數、檢查了幾次」。 兩種做法找到的都是 $24$ 個，第
+二種少檢查了九成。 做法二要多注意一件事：算出來的 $c$ 可能是負數或大於 $9$
+（例如 $a = b = 1$ 時 $c = 18$），一定要先檢查範圍。
+
+密碼鎖只有三位，省下的時間微不足道。 但同樣的想法在位數多的時候差很多：六位
+數密碼、只記得總和，全部列出是 $10^6$ 種，只列前五位是 $10^5$ 種。 一般的原
+則是：先想清楚哪些東西是「選擇」，哪些東西一旦前面選好就被決定了；只枚舉真正
+的選擇，被決定的用算的。
+
+\subsection{什麼時候用暴力解}
+
+情況的總數乘上檢查一種的時間在 $10^7$ 左右或更少，就可以用；先照上表算一算，
+不要憑感覺。 題目的 $n$ 很小（$20$ 以下）卻問「最多」「最少」「有幾種」，通
+常就是要你全部試一遍。 反過來，$n$ 到 $10^5$ 的題目，暴力解一定來不及，要想
+排序、二分搜、貪心或動態規劃。 即使如此，暴力解仍然有用：在小的輸入上和正式
+的解法比對輸出，俗稱\textbf{對拍}，第~7~章找貪心的反例時會大量用到。
+
+\begin{apcsnote}
+實作題的題目常常會列出子題配分，例如「第 1 子題 $n \le 10$」。 這種小範圍的
+子題通常用暴力解就能拿到分數。 想不出完整解法時，先把暴力解寫好交出去，再慢
+慢改進；暴力解之後也可以拿來和改進的版本比對。
+\end{apcsnote}
+
+\section{子集合枚舉}
+\label{sec:subsets}
+
+很多問題的答案是「從 $n$ 個東西裡挑一些」。 例如：搬家公司的貨車最多載
+$W$ 公斤，你有 $n$ 箱東西，第 $i$ 箱重 $w_i$ 公斤，這一趟要挑哪些箱子，才能
+在不超重的前提下載得最重？ 每一箱都只有「選」和「不選」兩種，$n$ 箱一共有
+$2^n$ 種挑法，每一種挑法叫一個\textbf{子集合}（subset）。 $n \le 20$ 時，
+$2^{20}$ 大約一百萬種，全部試一遍來得及。
+
+下面用四箱東西當例子：重量 $12, 7, 9, 5$，貨車限重 $20$。 列出子集合有兩
+種常見的寫法：用整數的二進位表示，或用遞迴一箱一箱決定。
+
+\subsection{用二進位表示一種挑法}
+
+把 $n$ 箱東西編號 $0$ 到 $n - 1$，一種挑法寫成一個 $n$ 位的二進位數：第 $i$
+位是 $1$ 表示選第 $i$ 箱，是 $0$ 表示不選。 這樣每一種挑法剛好對應
+$0$ 到 $2^n - 1$ 之間的一個整數，這個整數叫\textbf{位元遮罩}（bitmask）。
+只看前三箱（$12, 7, 9$），八種挑法如下，二進位由右往左是第 $0, 1, 2$ 位：
+
+\begin{center}
+\begin{tabular}{cccl}
+\toprule
+\texttt{mask} & 二進位 & 選了哪幾箱 & 總重 \\
+\midrule
+0 & \texttt{000} & 都不選 & 0 \\
+1 & \texttt{001} & 第 0 箱 & 12 \\
+2 & \texttt{010} & 第 1 箱 & 7 \\
+3 & \texttt{011} & 第 0、1 箱 & 19 \\
+4 & \texttt{100} & 第 2 箱 & 9 \\
+5 & \texttt{101} & 第 0、2 箱 & 21（超重） \\
+6 & \texttt{110} & 第 1、2 箱 & 16 \\
+7 & \texttt{111} & 第 0、1、2 箱 & 28（超重） \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+寫程式只需要兩個位元運算：
+
+\begin{itemize}
+\item \texttt{1 << n} 是 $2^n$，也就是挑法的總數。 所以
+\texttt{for (int mask = 0; mask < (1 << n); mask++)} 恰好走過每一種挑法一次。
+\item \texttt{mask >> i \& 1} 取出 \texttt{mask} 的第 $i$ 位：先右移 $i$ 位，
+讓第 $i$ 位跑到最右邊，再和 $1$ 做位元 AND，只留下最右邊那一位。 結果是
+$1$ 就表示第 $i$ 箱被選了。 位移的優先順序比 \texttt{\&} 高，所以不用加括
+號；寫成 \texttt{(mask >> i) \& 1} 也可以，比較好讀。
+\end{itemize}
+
+\begin{example}[label=ex:trucks-bits]{cpp}{(trucks\_bits.cpp) 用位元遮罩列出所有挑法}
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    int n, limit;
+    cin >> n >> limit;
+    vector<int> w(n);
+    for (int &x : w) {
+        cin >> x;
+    }
+    int best = 0, bestMask = 0;
+    for (int mask = 0; mask < (1 << n); mask++) {   // 每個 mask 是一種挑法
+        int total = 0;
+        for (int i = 0; i < n; i++) {
+            if (mask >> i & 1) {                     // 第 i 位是 1：選第 i 箱
+                total += w[i];
+            }
+        }
+        if (total <= limit && total > best) {
+            best = total;
+            bestMask = mask;
+        }
+    }
+    cout << best << '\n';
+    bool first = true;
+    for (int i = 0; i < n; i++) {
+        if (bestMask >> i & 1) {
+            cout << (first ? "" : " ") << w[i];
+            first = false;
+        }
+    }
+    cout << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+4 20 \\
+12 7 9 5 \\
+}{
+19 \\
+12 7 \\
+}
+
+最重能載 $19$ 公斤，選第 $0$、$1$ 箱。 外層 $2^n$ 次、內層 $n$ 次，總共
+$O(2^n \cdot n)$；$n = 20$ 時大約 $2 \times 10^7$ 次，來得及。
+
+\subsection{用遞迴一箱一箱決定}
+
+另一種寫法是遞迴：寫一個函式 \texttt{choose(i, total)}，意思是「第 $0$ 到
+$i - 1$ 箱已經決定好了，選上的重量合計 \texttt{total}，現在要決定第 $i$ 箱」。
+它做兩件事：不選第 $i$ 箱，往下呼叫 \texttt{choose(i + 1, total)}；選第 $i$
+箱，往下呼叫 \texttt{choose(i + 1, total + w[i])}。 等到 $i = n$，每一箱都
+決定好了，就是一種完整的挑法。
+
+\begin{example}[label=ex:trucks-rec]{cpp}{(trucks\_rec.cpp) 用遞迴列出所有挑法}
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int n, limit, best = 0;
+vector<int> w;
+
+// 已經決定好前 i 箱，選上的重量合計 total
+void choose(int i, int total) {
+    if (i == n) {                      // 每一箱都決定好了
+        if (total <= limit && total > best) {
+            best = total;
+        }
+        return;
+    }
+    choose(i + 1, total);              // 不選第 i 箱
+    choose(i + 1, total + w[i]);       // 選第 i 箱
+}
+
+int main() {
+    cin >> n >> limit;
+    w.resize(n);
+    for (int &x : w) {
+        cin >> x;
+    }
+    choose(0, 0);
+    cout << best << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+4 20 \\
+12 7 9 5 \\
+}{
+19 \\
+}
+
+把每一次呼叫畫成一個點，呼叫誰就從誰連一條線下去，會得到一棵樹。 下圖是只看
+前三箱時的樣子，點裡的數字是 \texttt{total}：
+
+\begin{center}
+\begin{tikzpicture}[
+    every node/.style={draw=black!55, circle, minimum size=7mm, inner sep=0pt, font=\small},
+    level 1/.style={sibling distance=6.4cm, level distance=1.25cm},
+    level 2/.style={sibling distance=3.2cm, level distance=1.25cm},
+    level 3/.style={sibling distance=1.6cm, level distance=1.25cm},
+    over/.style={draw=optStroke, thick, fill=optFill},
+    bestnode/.style={draw=memStroke, thick, fill=memFill},
+    edge from parent/.style={draw=black!50},
+    lbl/.style={draw=none, rectangle, font=\scriptsize, text=black!60, minimum size=0pt, inner sep=1pt},
+]
+\node {0}
+  child { node {0}
+    child { node {0}
+      child { node {0} edge from parent node[lbl, left] {不選} }
+      child { node {9} edge from parent node[lbl, right] {選} } }
+    child { node {7}
+      child { node {7} }
+      child { node {16} } }
+    edge from parent node[lbl, above left] {不選 12}
+  }
+  child { node {12}
+    child { node {12}
+      child { node {12} }
+      child { node[over] {21} } }
+    child { node[bestnode] {19}
+      child { node[bestnode] {19} }
+      child { node[over] {28} } }
+    edge from parent node[lbl, above right] {選 12}
+  };
+\end{tikzpicture}
+\diagcaption{前三箱（$12, 7, 9$）的遞迴樹。 每一層決定一箱，往左是不選、往右
+是選。 最下面一排的八個點就是八種挑法；粉紅色的超重，橘色是最好的 $19$。}
+\label{fig:subset-tree}
+\end{center}
+
+兩種寫法列出的挑法完全一樣，只是順序不同。 位元遮罩的寫法短，而且一種挑法就
+是一個整數，方便存起來或當陣列的索引（第~\ref{sec:cycle}~節會用到）。 遞迴
+的寫法比較容易加條件提早停下來，例如一超重就不再往下選，這就是第
+~\ref{sec:pruning}~節的剪枝。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{$n$ 太大時 \texttt{1 << n} 出錯}：\texttt{1} 是 \texttt{int}，
+只有 $32$ 位。 $n = 31$ 時，在本書測試的環境下 \texttt{1 << 31} 是
+$-2147483648$，\texttt{mask < (1 << n)} 一開始就不成立，迴圈一次都不跑，程式
+直接印出 \texttt{0}，加了 \texttt{-Wall -Wextra} 也沒有警告；$n \ge 32$ 時
+連結果都沒有保證。 真的需要時改寫成 \texttt{1LL << n}。 不過 $2^{31}$ 已經
+是二十億種，暴力解本來就來不及了，看到這種 $n$ 要換方法。
+\item \textbf{位元運算和比較的優先順序}：想判斷第 $i$ 箱沒選，寫成
+\texttt{if (mask \& 1 << i == 0)}。 \texttt{==} 比 \texttt{\&} 先算，這行其
+實是 \texttt{mask \& ((1 << i) == 0)}，也就是 \texttt{mask \& 0}，永遠是
+假。 \texttt{-Wall} 會警告「suggest parentheses around comparison」。 有
+\texttt{\&} 又有比較時，一律加括號：\texttt{((mask >> i) \& 1) == 0}。
+\end{itemize}
+
+\section{回溯}
+\label{sec:backtracking}
+
+子集合的每一步只有「選、不選」兩種。 很多問題每一步的選擇比較多，而且前面的
+選擇會限制後面能選什麼：排座位時，坐了人的位置不能再坐；排值日表時，同一個人
+不能連續兩天。 這類問題的通用寫法是\textbf{回溯}：
+
+\begin{itemize}
+\item 一步一步把答案填進去，每一步試所有還能用的選擇。
+\item 每試一個選擇，先把它記下來（做選擇），往下填下一步；下一步全部試完回
+來之後，把剛才的記錄擦掉（撤銷選擇），再試下一個選擇。
+\item 填到一半發現不合規則，就不再往下，直接退回上一步。
+\end{itemize}
+
+把每一個「填到一半的答案」當成一個點，就是第~\ref{sec:subsets}~節那種樹，
+叫\textbf{搜尋樹}。 回溯就是從樹根出發，一路往下走到底，走不通就退回上一個
+岔路口換一條路。 這也是銜接書 10.2 節深度優先搜尋的走法，只是這裡的「地圖」
+是所有填到一半的答案。
+
+\subsection{排列}
+
+最基本的例子是列出 $1$ 到 $n$ 的所有排列。 用 \texttt{used[x]} 記錄 $x$ 是
+不是已經排進去了，每一步試所有還沒用過的數：
+
+\begin{example}[label=ex:perm]{cpp}{(perm.cpp) 用回溯列出所有排列}
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int n;
+vector<int> seq;           // 目前排好的前幾個數
+vector<bool> used;         // used[x]：x 是否已經在 seq 裡
+int printed = 0;           // 印了幾個；每 6 個換一行
+
+void build() {
+    if ((int)seq.size() == n) {          // 排滿了：印出一個排列
+        for (int x : seq) {
+            cout << x;
+        }
+        cout << (++printed % 6 == 0 ? '\n' : ' ');
+        return;
+    }
+    for (int x = 1; x <= n; x++) {
+        if (used[x]) {
+            continue;
+        }
+        used[x] = true;                  // 做選擇
+        seq.push_back(x);
+        build();                         // 往下填
+        seq.pop_back();                  // 撤銷選擇
+        used[x] = false;
+    }
+}
+
+int main() {
+    cin >> n;
+    used.assign(n + 1, false);
+    build();
+    return 0;
+}
+\end{example}
+
+\iosample{
+3 \\
+}{
+123 132 213 231 312 321 \\
+}
+
+重點在迴圈裡成對的兩組動作：\texttt{used[x] = true} 配
+\texttt{used[x] = false}，\texttt{push\_back} 配 \texttt{pop\_back}。 呼叫
+\texttt{build()} 回來時，\texttt{seq} 和 \texttt{used} 必須回到呼叫之前的樣
+子，下一輪試別的 $x$ 才不會被這一輪的選擇干擾。 少了 \texttt{used[x] = false}
+這一行，程式只會印出 \texttt{123}：排完第一個排列之後，$1$、$2$、$3$ 全部被
+標成用過，再也沒有別的選擇。
+
+\begin{bridgerecap}[next\_permutation]
+\texttt{next\_permutation(first, last)} 把範圍改成字典順序的下一個排列，已經
+是最後一個時回傳 \texttt{false}（銜接書第~9~章）。 從排好序的 \texttt{vector}
+開始，用 \texttt{do}-\texttt{while} 呼叫到它回傳 \texttt{false}，就恰好走過
+每一個排列。 只是要列出所有排列時，它比自己寫回溯短。 但它一定會走完全部
+$n!$ 個排列，沒辦法在排到一半時發現不行就跳過一大片；需要提早放棄時，要自己
+寫回溯。
+\end{bridgerecap}
+
+\subsection{例題：聚光燈位置統計}
+\label{sec:ex-spotlight}
+
+\textbf{題意}（\akiref{spotlight-placement-map}{聚光燈位置統計}）
+
+\begin{itemize}
+\item 展覽廳的地板是 $N \times N$ 的方格，有些格子立著柱子（\texttt{\#}），其
+他是空地（\texttt{.}）。
+\item 要在空地上放 $N$ 盞聚光燈：每一列恰好一盞、每一行恰好一盞，任兩盞不能
+在同一條斜線上（往右下、往左下兩個方向都算；柱子不會擋住斜線）。
+\item 輸出合法擺法的總數，以及一張 $N \times N$ 的表：每一格在幾種合法擺法裡
+放著燈。
+\item $1 \le N \le 12$。
+\end{itemize}
+
+例如 $N = 4$、沒有柱子時，只有兩種擺法：從第 $1$ 列到第 $4$ 列，燈依序在第
+$2, 4, 1, 3$ 行，或第 $3, 1, 4, 2$ 行。 格子 $(1, 2)$ 只出現在第一種，所以表
+上那一格是 $1$；$(1, 1)$ 兩種都沒用到，是 $0$。
+
+\textbf{想法}
+
+每一列恰好一盞、每一行恰好一盞，所以一種擺法可以寫成一個排列：第 $r$ 列的燈
+放在第 $p_r$ 行，$p_1, p_2, \ldots, p_N$ 剛好是 $1$ 到 $N$ 各一次。 最直接的
+暴力解是用 \texttt{next\_permutation} 列出全部 $N!$ 個排列，每個排列檢查柱子
+和任兩盞燈的斜線。 $N = 12$ 時 $12! \approx 4.8 \times 10^8$ 個排列，每個還
+要花 $O(N^2)$ 檢查，來不及。
+
+浪費在哪裡？ 假設第 $1$ 列放第 $1$ 行、第 $2$ 列放第 $2$ 行，這兩盞已經在同
+一條斜線上了，後面十列不管怎麼排都不合法。 可是 \texttt{next\_permutation}
+不知道，會把開頭是 $1, 2$ 的 $10! = 3628800$ 個排列一個一個列出來再丟掉。
+
+回溯的做法是一列一列放，每放一盞就檢查它和已經放好的燈有沒有衝突，有衝突就
+不往下。 這樣開頭是 $1, 2$ 的那一大片，在第 $2$ 列就被跳過了。
+
+剩下的問題是：怎麼快速知道一格能不能放？ 行好處理，用 \texttt{colUsed[c]}
+記錄第 $c$ 行有沒有燈。 斜線要找一個「同一條斜線上都相同」的量：
+
+\begin{itemize}
+\item 往右下的斜線上，列和行同時加一，所以 $r - c$ 不變。
+\item 往左下的斜線上，列加一、行減一，所以 $r + c$ 不變。
+\end{itemize}
+
+所以兩盞燈在同一條斜線上，剛好是 $r_1 - c_1 = r_2 - c_2$ 或
+$r_1 + c_1 = r_2 + c_2$ 的時候。 列和行都從 $0$ 編到 $N - 1$ 時，$r + c$ 在
+$0$ 到 $2N - 2$ 之間，$r - c$ 在 $-(N - 1)$ 到 $N - 1$ 之間；後者加上
+$N - 1$ 也變成 $0$ 到 $2N - 2$，就能當陣列索引。 用兩個長度 $2N - 1$ 的陣列
+\texttt{sumUsed}、\texttt{diffUsed} 記錄每一條斜線有沒有燈，檢查一格只要看
+三個陣列，$O(1)$。
+
+\begin{center}
+\begin{tikzpicture}[x=0.9cm, y=0.9cm]
+\foreach \r in {0,...,3} {
+  \foreach \c in {0,...,3} {
+    \node[cell] at (\c, -\r) {};
+  }
+}
+\node[hlcell] at (1, 0) {燈};
+\foreach \p in {(1,-1),(1,-2),(1,-3)} {\node[text=black!55] at \p {$\times$};}
+\foreach \p in {(0,-1)} {\node[text=optStroke] at \p {$\times$};}
+\foreach \p in {(2,-1),(3,-2)} {\node[text=coreStroke] at \p {$\times$};}
+\foreach \c in {0,...,3} {\node[idxlbl] at (\c, 0.65) {\c};}
+\foreach \r in {0,...,3} {\node[idxlbl] at (-0.7, -\r) {\r};}
+\node[font=\small, align=left, anchor=west] at (4.2, -0.5) {灰色：同一行};
+\node[font=\small, align=left, anchor=west, text=optStroke] at (4.2, -1.3) {粉紅：$r + c = 1$ 的斜線};
+\node[font=\small, align=left, anchor=west, text=coreStroke] at (4.2, -2.1) {藍色：$r - c = -1$ 的斜線};
+\end{tikzpicture}
+\diagcaption{$N = 4$，燈放在 $(0, 1)$ 之後，下面三列不能放的格子（列、行從 $0$
+編號）。 同一條斜線上 $r + c$ 或 $r - c$ 相同。}
+\label{fig:spot-attack}
+\end{center}
+
+下圖是 $N = 4$、沒有柱子時的完整搜尋樹。 每個點寫著前幾列的燈放在第幾行（從
+$1$ 編號）；打 $\times$ 的點是還沒放滿、下一列卻沒有任何位置可以放的死路，橘
+色的是兩種合法擺法：
+
+\begin{center}
+\begin{tikzpicture}[
+    every node/.style={draw=black!55, rounded corners=2pt, minimum height=6mm, inner sep=2pt, font=\small\ttfamily},
+    level 1/.style={sibling distance=3.4cm, level distance=1.2cm},
+    level 2/.style={sibling distance=1.7cm, level distance=1.2cm},
+    level 3/.style={sibling distance=1.7cm, level distance=1.2cm},
+    dead/.style={draw=black!35, text=black!45},
+    sol/.style={draw=memStroke, thick, fill=memFill},
+    edge from parent/.style={draw=black!50},
+]
+\node[font=\small] {開始}
+  child { node {1}
+    child { node[dead] {1,3 $\times$} }
+    child { node {1,4}
+      child { node[dead] {1,4,2 $\times$} } } }
+  child { node {2}
+    child { node {2,4}
+      child { node {2,4,1}
+        child { node[sol] {2,4,1,3} } } } }
+  child { node {3}
+    child { node {3,1}
+      child { node {3,1,4}
+        child { node[sol] {3,1,4,2} } } } }
+  child { node {4}
+    child { node {4,1}
+      child { node[dead] {4,1,3 $\times$} } }
+    child { node[dead] {4,2 $\times$} } };
+\end{tikzpicture}
+\diagcaption{$N = 4$ 的搜尋樹，共 $17$ 個點（含「開始」）。 全部列出排列要看
+$4! = 24$ 個完整的排列，回溯只走了 $17$ 個點，其中大部分還沒放滿就停了。}
+\label{fig:spot-tree}
+\end{center}
+
+$N = 4$ 時差別不明顯，$N$ 一大就差很多。 沒有柱子時，在本書測試的環境下數過
+函式被呼叫的次數：$N = 8$ 是 $2057$ 次，$N = 12$ 是 $856189$ 次；而
+$12! = 479001600$，是後者的五百多倍。 呼叫次數還要乘上每次的迴圈 $N$，總共
+大約 $10^7$ 次，來得及。
+
+最後是那張統計表。 走到 $r = N$ 時就找到一種完整的擺法，這時每一列的燈放在哪
+一行都還記在 \texttt{colOf} 裡，把這 $N$ 格的計數各加一就好。
+
+同樣的模型也出現在別的地方：考場排座位時，同一排、同一行、斜對角都不能坐同
+一科的考生；機房擺設備時，某些位置有柱子或管線，每一排、每一列各放一台，彼
+此還不能互相干擾。 這類「每一列放一個，彼此有衝突規則」的問題都可以照這一題
+的寫法，一列一列放，用陣列記錄被佔掉的行和斜線。
+
+\textbf{程式}
+
+\begin{example}[label=ex:spotlight]{cpp}{(spotlight.cpp) 聚光燈位置統計}
+#include <iostream>
+#include <string>
+#include <vector>
+using namespace std;
+
+int n;
+vector<string> board;
+vector<int> colOf;                     // colOf[r]：第 r 列的燈放在第幾行
+vector<bool> colUsed, sumUsed, diffUsed;
+int ways = 0;                          // 合法擺法的總數
+vector<vector<int>> lit;               // lit[r][c]：幾種擺法在 (r, c) 放燈
+
+// 在 (r, c) 放燈（on 為 true）或把燈拿走（on 為 false）
+void mark(int r, int c, bool on) {
+    colUsed[c] = on;
+    sumUsed[r + c] = on;               // 往左下的斜線：r + c 相同
+    diffUsed[r - c + n - 1] = on;      // 往右下的斜線：r - c 相同，加 n - 1 避免負數
+}
+
+bool canPlace(int r, int c) {
+    return board[r][c] == '.' && !colUsed[c] && !sumUsed[r + c] &&
+           !diffUsed[r - c + n - 1];
+}
+
+// 第 0 到 r - 1 列都放好了，現在決定第 r 列
+void place(int r) {
+    if (r == n) {                      // 每一列都有燈：找到一種擺法
+        ways++;
+        for (int i = 0; i < n; i++) {
+            lit[i][colOf[i]]++;
+        }
+        return;
+    }
+    for (int c = 0; c < n; c++) {
+        if (!canPlace(r, c)) {
+            continue;
+        }
+        mark(r, c, true);
+        colOf[r] = c;
+        place(r + 1);
+        mark(r, c, false);             // 回來之後把標記還原
+    }
+}
+
+int main() {
+    cin >> n;
+    board.resize(n);
+    for (string &row : board) {
+        cin >> row;
+    }
+    colOf.assign(n, 0);
+    colUsed.assign(n, false);
+    sumUsed.assign(2 * n - 1, false);
+    diffUsed.assign(2 * n - 1, false);
+    lit.assign(n, vector<int>(n, 0));
+    place(0);
+    cout << ways << '\n';
+    for (int r = 0; r < n; r++) {
+        for (int c = 0; c < n; c++) {
+            cout << lit[r][c] << (c + 1 < n ? ' ' : '\n');
+        }
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+4 \\
+.... \\
+.... \\
+.... \\
+.... \\
+}{
+2 \\
+0 1 1 0 \\
+1 0 0 1 \\
+1 0 0 1 \\
+0 1 1 0 \\
+}
+
+\begin{itemize}
+\item \texttt{mark} 把「放燈」和「拿走」寫成同一個函式，只差一個參數。 三個
+陣列一起設、一起還原，不會發生改了兩個、忘了一個的情況。
+\item \texttt{colOf[r] = c} 不用還原：只有在 $r = N$ 時才會讀它，那時每一列
+的值都是這條路上剛剛放的。
+\item 柱子只是「這一格不能放」，所以只在 \texttt{canPlace} 裡多檢查一次
+\texttt{board[r][c]}。 它不影響斜線的標記，正好符合「柱子不會擋住斜線」。
+\item 計數用 \texttt{int} 就夠了：$N = 12$ 沒有柱子時合法擺法最多，是
+$14200$ 種。
+\end{itemize}
+
+\textbf{複雜度}
+
+回溯的時間很難用一個簡單的式子表示，它取決於搜尋樹實際有多少個點。 上面數過
+$N = 12$ 時大約 $8.6 \times 10^5$ 個點，每個點的迴圈 $N$ 次，柱子只會讓樹更
+小。 這題最大的測試資料（俗稱測資），在本書測試的環境下約 $0.06$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{只檢查一個方向的斜線}：把 \texttt{canPlace} 裡的
+\texttt{!sumUsed[r + c]} 拿掉，往左下的斜線就不管了。 範例的輸入會印出
+\texttt{7}，正確是 \texttt{2}。 寫完之後用 $N = 4$ 手算一次，兩個方向都要檢
+查到。
+\item \textbf{回來之後沒有還原}：把 \texttt{mark(r, c, false)} 那一行拿掉，
+範例的輸入會印出 \texttt{0}，整張表也都是 \texttt{0}。 第一次往下試的時候放
+過的燈，標記永遠留著，之後所有的分支都被它們擋住。 做選擇和撤銷選擇要成對寫，
+寫完一個馬上寫另一個。
+\item \textbf{$r - c$ 沒有加位移}：寫成 \texttt{diffUsed[r - c]}，$r < c$
+時索引是負數，讀寫到陣列外面。 這是未定義行為，在本書測試的環境下不一定會當
+掉，可能只是悄悄算錯。 用 \texttt{-fsanitize=address,undefined} 編譯，或在
+寫索引時先想一遍最小和最大值。
+\item \textbf{用 \texttt{next\_permutation} 列出所有排列再檢查}：$N \le 8$ 時
+來得及，所以小的範例都會通過。 $N = 12$ 時有 $4.8 \times 10^8$ 個排列，加上
+檢查，遠遠超過時間限制。
+\end{itemize}
+
+\section{剪枝}
+\label{sec:pruning}
+
+聚光燈的回溯會在發現衝突時停下來，不再往下走。 這種「提早放棄不可能的方向」
+叫\textbf{剪枝}，像是把搜尋樹上整根沒有用的樹枝剪掉。 常見的剪枝有兩種：
+
+\begin{itemize}
+\item \textbf{已經不合法}：填到一半就違反規則，往下怎麼填都不會變合法。 聚光
+燈的衝突檢查、貨車選箱子時一超重就不再往下選，都是這一種。
+\item \textbf{已經不可能更好}：題目要最大值或最小值，而目前這條路就算後面全部
+往最好的方向走，也追不上已經找到的答案。
+\end{itemize}
+
+剪枝的效果用說的很難體會，最好的方法是直接數搜尋樹的點數。 下面把第
+~\ref{sec:subsets}~節的貨車問題加上計數器，比較三種寫法：
+
+\begin{itemize}
+\item 層級 0：不剪枝，所有 $2^n$ 種挑法都走到底。
+\item 層級 1：選第 $i$ 箱之前先檢查，超重就不走「選」那一邊。
+\item 層級 2：再加上「追不上就不走」：先算好 \texttt{rest[i]}，也就是第 $i$
+箱到最後一箱的重量和。 如果 \texttt{total + rest[i]} 都不超過目前最好的答案，
+剩下的箱子全選也追不上，直接回去。
+\end{itemize}
+
+\begin{example}[label=ex:prune]{cpp}{(prune.cpp) 數一數剪枝省下多少點}
+#include <algorithm>
+#include <functional>
+#include <iostream>
+#include <string>
+#include <vector>
+using namespace std;
+
+int n, limit, best;
+vector<int> w, rest;     // rest[i]：第 i 箱到最後一箱的重量和
+long long nodes;         // 呼叫了幾次 choose，也就是搜尋樹的點數
+int level;               // 0：不剪枝；1：超重不走；2：再加上「追不上就不走」
+
+void choose(int i, int total) {
+    nodes++;
+    if (level >= 2 && total + rest[i] <= best) {
+        return;                         // 剩下的全選也追不上目前最好的
+    }
+    if (i == n) {
+        if (total <= limit && total > best) {
+            best = total;
+        }
+        return;
+    }
+    if (level == 0 || total + w[i] <= limit) {
+        choose(i + 1, total + w[i]);    // 選第 i 箱（剪枝時，超重就不走）
+    }
+    choose(i + 1, total);               // 不選第 i 箱
+}
+
+void run(const string &name) {
+    rest.assign(n + 1, 0);
+    for (int i = n - 1; i >= 0; i--) {
+        rest[i] = rest[i + 1] + w[i];
+    }
+    for (level = 0; level <= 2; level++) {
+        best = 0;
+        nodes = 0;
+        choose(0, 0);
+        cout << name << ' ' << level << ' ' << best << ' ' << nodes << '\n';
+    }
+}
+
+int main() {
+    cin >> n >> limit;
+    w.resize(n);
+    for (int &x : w) {
+        cin >> x;
+    }
+    run("input");
+    sort(w.begin(), w.end(), greater<int>());   // 重的箱子先決定
+    run("heavy");
+    return 0;
+}
+\end{example}
+
+\iosample{
+24 4000 \\
+431 254 504 766 149 174 940 648 \\
+196 474 696 159 619 319 138 188 \\
+544 528 171 346 192 664 534 160 \\
+}{
+input 0 4000 33554431 \\
+input 1 4000 9028487 \\
+input 2 4000 4043423 \\
+heavy 0 4000 33554431 \\
+heavy 1 4000 8095555 \\
+heavy 2 4000 1866599 \\
+}
+
+每一行是「箱子的順序、剪枝層級、答案、搜尋樹的點數」，\texttt{input} 是照輸
+入的順序，\texttt{heavy} 是重的箱子先決定。 幾件事值得注意：
+
+\begin{itemize}
+\item 不剪枝時點數是 $2^{25} - 1 = 33554431$：樹有 $25$ 層（$i = 0$ 到 $24$），
+每一層的點數是上一層的兩倍。 順序怎麼排都一樣。
+\item 三種寫法的答案都是 $4000$。 剪枝只是少走一些確定沒用的路，答案不會變；
+如果剪枝之後答案變了，就是剪錯了。
+\item 同樣的剪枝，先決定重的箱子效果比較好。 重的箱子先放，總重很快就接近上
+限，超重的分支早早就被剪掉；好的答案也比較早出現，「追不上」的檢查就能剪掉
+更多。 一般來說，剪枝越早發生在樹的上層，省下的點越多，因為一個上層的點底下
+有一整片子樹。
+\end{itemize}
+
+\subsection{什麼時候用、什麼時候不能用}
+
+\begin{itemize}
+\item 適合：$n$ 小（大約 $30$ 以內），要列出所有合法的方案，或在所有方案裡
+找最好的；而且規則很容易在填到一半時就檢查出不合法。
+\item 剪枝只會讓程式變快，不會改變最壞情況的複雜度。 出題者可以故意造出剪不
+掉的輸入，例如所有箱子加起來都不超重時，層級 1 一刀也剪不掉。 回溯題的時間
+要用最壞的輸入實際測過。
+\item 看起來像回溯、但 $n$ 到幾百幾千的題目，例如「容量 $10^4$ 的背包、
+$100$ 件物品」，要用第~9~章和第~15~章的動態規劃。 回溯的點數隨 $n$ 指數成長，
+剪枝救不回來。
+\end{itemize}
+
+\section{模擬}
+\label{sec:simulation}
+
+有一類題目不需要選擇，也不需要找最好的：題目把規則講得清清楚楚，例如「每一秒
+每顆燈依照鄰居的狀態更新」「每一天火往四周燒」，要你算出照規則跑完之後的結果。
+照著規則一步一步算，叫\textbf{模擬}。
+
+模擬題的難處不在想法，在細節：規則的先後順序、邊界、同一步裡哪些東西要同時
+變。 下面兩件事是大部分模擬題的錯誤來源。
+
+\textbf{同時更新。} 規則常常說「所有格子同時依照上一步的狀態更新」。 如果在同
+一個陣列上由左往右改，算到第 $i$ 格時，左邊的格子已經是這一步的新值了，用到的
+就不是「上一步」的狀態。 正確的寫法是把新狀態寫到另一個陣列，整步算完再換過
+來：
+
+\begin{code}{cpp}{同時更新：新狀態寫在另一個陣列}
+vector<int> nxt(n);
+for (int i = 0; i < n; i++) {
+    nxt[i] = rule(cur, i);   // 只讀 cur，不讀 nxt
+}
+cur = nxt;                   // 整步算完才換過去
+\end{code}
+
+\textbf{只處理會變的東西。} 最直接的模擬是每一步把整張地圖掃一遍。 如果每一步
+只有少數幾格會變，而步數又很多，每一步都掃整張地圖就太慢了。 這時改成記住
+「這一步會影響別人的格子」，只處理它們。 下面的例題同時用到這兩件事。
+
+\subsection{例題：隨風蔓延的山火}
+\label{sec:ex-fire}
+
+\textbf{題意}（\akiref{wildfire-in-the-wind}{隨風蔓延的山火}）
+
+\begin{itemize}
+\item 森林管理處用 $n \times m$ 的地圖模擬山火：\texttt{T} 是還沒燒過的樹，
+\texttt{.} 是空地，\texttt{F} 是第 $0$ 天起火的樹。
+\item 第 $t$ 天起火的樹，在第 $t + 1$、$t + 2$ 天「正在燃燒」，會點燃上下左右
+還沒燒過的樹；之後變成灰燼，不再傳火。
+\item 第 $d$ 天有一個風向（\texttt{0} 無風，\texttt{N}、\texttt{S}、\texttt{E}、
+\texttt{W} 是風往上、下、右、左吹），逆風那一側的鄰格當天不會被點燃。 例如風往
+右吹，左邊的鄰格不會起火。
+\item 同一天所有格子同時更新：第 $d$ 天才起火的樹，第 $d + 1$ 天才開始傳火。
+\item 模擬第 $1$ 到第 $D$ 天，輸出起過火的格子數，以及最後一次有新的樹起火是
+第幾天（沒有就輸出 $0$）。 $n, m \le 500$，$D \le 2 \times 10^5$。
+\end{itemize}
+
+例如下面的地圖，第 $1$ 到第 $3$ 天的風向是 \texttt{0}、\texttt{S}、
+\texttt{E}：
+
+\begin{center}
+\begin{tikzpicture}[
+    sc/.style={draw=black!55, minimum size=0.55cm, inner sep=0pt, font=\small\ttfamily},
+    fresh/.style={sc, draw=optStroke, thick, fill=optStroke, text=white},
+    burning/.style={sc, draw=memStroke, thick, fill=memFill},
+    ash/.style={sc, fill=black!35},
+]
+% 第 0 天
+\begin{scope}[shift={(0,0)}]
+\node[font=\small] at (1.1,0.6) {第 0 天};
+\node[sc] at (0,0) {.}; \node[sc] at (0.55,0) {T}; \node[sc] at (1.1,0) {.}; \node[sc] at (1.65,0) {.}; \node[sc] at (2.2,0) {T};
+\node[fresh] at (0,-0.55) {F}; \node[sc] at (0.55,-0.55) {T}; \node[sc] at (1.1,-0.55) {T}; \node[sc] at (1.65,-0.55) {T}; \node[sc] at (2.2,-0.55) {.};
+\node[sc] at (0,-1.1) {.}; \node[sc] at (0.55,-1.1) {T}; \node[sc] at (1.1,-1.1) {T}; \node[sc] at (1.65,-1.1) {T}; \node[sc] at (2.2,-1.1) {T};
+\end{scope}
+% 第 1 天
+\begin{scope}[shift={(3.4,0)}]
+\node[font=\small] at (1.1,0.6) {第 1 天（無風）};
+\node[sc] at (0,0) {.}; \node[sc] at (0.55,0) {T}; \node[sc] at (1.1,0) {.}; \node[sc] at (1.65,0) {.}; \node[sc] at (2.2,0) {T};
+\node[burning] at (0,-0.55) {F}; \node[fresh] at (0.55,-0.55) {F}; \node[sc] at (1.1,-0.55) {T}; \node[sc] at (1.65,-0.55) {T}; \node[sc] at (2.2,-0.55) {.};
+\node[sc] at (0,-1.1) {.}; \node[sc] at (0.55,-1.1) {T}; \node[sc] at (1.1,-1.1) {T}; \node[sc] at (1.65,-1.1) {T}; \node[sc] at (2.2,-1.1) {T};
+\end{scope}
+% 第 2 天
+\begin{scope}[shift={(6.8,0)}]
+\node[font=\small] at (1.1,0.6) {第 2 天（往下吹）};
+\node[sc] at (0,0) {.}; \node[sc] at (0.55,0) {T}; \node[sc] at (1.1,0) {.}; \node[sc] at (1.65,0) {.}; \node[sc] at (2.2,0) {T};
+\node[ash] at (0,-0.55) {}; \node[burning] at (0.55,-0.55) {F}; \node[fresh] at (1.1,-0.55) {F}; \node[sc] at (1.65,-0.55) {T}; \node[sc] at (2.2,-0.55) {.};
+\node[sc] at (0,-1.1) {.}; \node[fresh] at (0.55,-1.1) {F}; \node[sc] at (1.1,-1.1) {T}; \node[sc] at (1.65,-1.1) {T}; \node[sc] at (2.2,-1.1) {T};
+\end{scope}
+% 第 3 天
+\begin{scope}[shift={(10.2,0)}]
+\node[font=\small] at (1.1,0.6) {第 3 天（往右吹）};
+\node[sc] at (0,0) {.}; \node[fresh] at (0.55,0) {F}; \node[sc] at (1.1,0) {.}; \node[sc] at (1.65,0) {.}; \node[sc] at (2.2,0) {T};
+\node[ash] at (0,-0.55) {}; \node[ash] at (0.55,-0.55) {}; \node[burning] at (1.1,-0.55) {F}; \node[fresh] at (1.65,-0.55) {F}; \node[sc] at (2.2,-0.55) {.};
+\node[sc] at (0,-1.1) {.}; \node[burning] at (0.55,-1.1) {F}; \node[fresh] at (1.1,-1.1) {F}; \node[sc] at (1.65,-1.1) {T}; \node[sc] at (2.2,-1.1) {T};
+\end{scope}
+\end{tikzpicture}
+\diagcaption{每一天結束時的地圖。 深粉紅是當天新起火的樹，橘色是之前起火、隔天
+還會傳火的樹，深灰是灰燼。}
+\label{fig:fire-days}
+\end{center}
+
+第 $1$ 天只有最左邊那棵在燒，點燃右邊一棵。 注意新起火的那一棵當天不會再把火
+往右傳。 第 $2$ 天風往下吹，上方不會被點燃：第二欄那棵點燃了右邊和下面，上面
+那棵逃過一劫；最左邊那棵燒滿兩天，變成灰燼。 第 $3$ 天風往右吹，左方不會被點
+燃，第二欄那棵這次可以點燃上方了。 起過火的一共 $7$ 格，最後一次有新的樹起火
+是第 $3$ 天，答案是 \texttt{7 3}。
+
+\textbf{想法}
+
+最直接的做法是照規則逐日模擬：另外開一個陣列記錄每一格是第幾天起火的，每一天
+把整張地圖掃一遍，找出正在燃燒的格子（起火日是前一天或前兩天），點燃它們的鄰
+格。 新起火的格子記成今天，因為「今天起火」不算正在燃燒，同一天裡不會被當成火
+源，同時更新的問題就解決了。
+
+這個做法是對的，但太慢。 每天掃 $n \times m = 2.5 \times 10^5$ 格，$D$ 天就是
+$5 \times 10^{10}$ 次。 也不能說「火總會很快燒完」：如果樹排成一條來回彎折的長
+蛇，火每天只往前燒一格，可以燒十幾萬天。 用這種地圖實際測過，在本書測試的環
+境下，逐日掃整張地圖的寫法跑 $2000$ 天就要 $0.23$ 秒，這張地圖要燒
+$125249$ 天，推算要十幾秒。
+
+觀察每一天真正有事的格子：只有正在燃燒的樹會點燃別人，而正在燃燒的樹剛好是
+「昨天起火的」和「前天起火的」兩批。 所以只要記住這兩批的格子清單：
+
+\begin{itemize}
+\item 第 $d$ 天，讓 \texttt{twoDaysAgo} 和 \texttt{yesterday} 這兩批樹各自點
+燃四周（跳過逆風方向），新起火的樹放進 \texttt{today}。 被點燃的格子立刻改成
+\texttt{F}，同一天裡另一棵樹再碰到它，就不會重複計算。
+\item 這一天結束後，前天那批燒滿兩天，變成灰燼，丟掉；昨天那批變成前天、今天
+那批變成昨天。
+\item 兩批都空了，表示沒有任何正在燃燒的樹，之後每一天都不會再變，可以直接停。
+\end{itemize}
+
+每棵樹一生只會起火一次，所以只會出現在 \texttt{today} 一次，之後各當一次
+\texttt{yesterday} 和 \texttt{twoDaysAgo}。 全部加起來，每一格最多被處理兩次、
+每次看四個鄰居，總共 $O(nm + D)$。
+
+同時更新為什麼沒有問題？ 第 $d$ 天新起火的樹放在 \texttt{today}，而這一天只有
+\texttt{twoDaysAgo} 和 \texttt{yesterday} 在點火，\texttt{today} 要等到明天才
+會被拿來用。 新舊兩批分開放，就是「新狀態寫在另一個陣列」的變形。
+
+用上面的地圖跑一次，格子用（列，欄）表示，從 $1$ 開始：
+
+\begin{center}
+\begin{tabular}{clll}
+\toprule
+天 & 正在燃燒（前天、昨天起火的） & 今天新起火 & 起過火累計 \\
+\midrule
+1 & $(2,1)$ & $(2,2)$ & 2 \\
+2 & $(2,1)$、$(2,2)$ & $(2,3)$、$(3,2)$ & 4 \\
+3 & $(2,2)$、$(2,3)$、$(3,2)$ & $(1,2)$、$(2,4)$、$(3,3)$ & 7 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+第 $3$ 天的 $(3,3)$ 同時被 $(2,3)$ 和 $(3,2)$ 碰到，先碰到的那次就把它改成
+\texttt{F}，第二次看到時已經不是 \texttt{T}，不會再算一次。
+
+同樣的模型也出現在別的地方：傳染病在社區裡一天傳一圈、病人隔幾天後痊癒不再傳
+染；手機訊息在群組間轉傳，轉過一次就不再轉。 「每一步只有一批會影響別人，而且
+每個東西只會被影響一次」，都可以只記住那一批。
+
+\textbf{程式}
+
+\begin{example}[label=ex:fire]{cpp}{(fire.cpp) 隨風蔓延的山火}
+#include <iostream>
+#include <string>
+#include <utility>
+#include <vector>
+using namespace std;
+
+const int dr[4] = {-1, 1, 0, 0};       // 上、下、左、右
+const int dc[4] = {0, 0, -1, 1};
+
+// 這一天逆風、不會被點燃的方向；無風時回傳 -1
+int blockedDir(char wind) {
+    if (wind == 'N') return 1;         // 風往上吹，下方不點燃
+    if (wind == 'S') return 0;         // 風往下吹，上方不點燃
+    if (wind == 'E') return 2;         // 風往右吹，左方不點燃
+    if (wind == 'W') return 3;         // 風往左吹，右方不點燃
+    return -1;
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n, m, days;
+    cin >> n >> m >> days;
+    vector<string> g(n);
+    for (string &row : g) {
+        cin >> row;
+    }
+    string wind;
+    cin >> wind;
+
+    vector<pair<int, int>> twoDaysAgo, yesterday;   // 前天、昨天起火的格子
+    long long burned = 0;
+    for (int r = 0; r < n; r++) {
+        for (int c = 0; c < m; c++) {
+            if (g[r][c] == 'F') {
+                yesterday.push_back({r, c});        // 第 0 天起火
+                burned++;
+            }
+        }
+    }
+    int lastDay = 0;
+    for (int d = 1; d <= days; d++) {
+        if (twoDaysAgo.empty() && yesterday.empty()) {
+            break;                                  // 沒有正在燒的樹，之後都不會變
+        }
+        int blocked = blockedDir(wind[d - 1]);
+        vector<pair<int, int>> today;               // 今天新起火的格子
+        auto spread = [&](const vector<pair<int, int>> &burning) {
+            for (auto [r, c] : burning) {
+                for (int k = 0; k < 4; k++) {
+                    int nr = r + dr[k], nc = c + dc[k];
+                    if (k == blocked || nr < 0 || nr >= n || nc < 0 || nc >= m) {
+                        continue;
+                    }
+                    if (g[nr][nc] == 'T') {
+                        g[nr][nc] = 'F';            // 起過火，以後不會再被點燃
+                        today.push_back({nr, nc});
+                    }
+                }
+            }
+        };
+        spread(twoDaysAgo);
+        spread(yesterday);
+        if (!today.empty()) {
+            burned += today.size();
+            lastDay = d;
+        }
+        twoDaysAgo = move(yesterday);               // 前天那批燒完，變成灰燼
+        yesterday = move(today);
+    }
+    cout << burned << ' ' << lastDay << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+3 5 3 \\
+.T..T \\
+FTTT. \\
+.TTTT \\
+0SE \\
+}{
+7 3 \\
+}
+
+\begin{itemize}
+\item \texttt{dr}、\texttt{dc} 叫方向陣列：第 $k$ 個方向的鄰格是
+\texttt{(r + dr[k], c + dc[k])}。 四個方向寫成一個迴圈，逆風的方向只要比較
+\texttt{k == blocked}。 第~12~章走格子圖時會一直用到這個寫法。
+\item 越界的檢查一定要放在讀 \texttt{g[nr][nc]} 之前。 \texttt{||} 由左往右算，
+前面有一個成立就不會再算後面，所以 \texttt{continue} 那一行先擋掉越界的格子。
+\item \texttt{spread} 是一個 lambda，用 \texttt{[\&]} 捕獲外面的變數，所以能直
+接改 \texttt{g} 和 \texttt{today}（銜接書第~9~章）。 兩批正在燃燒的樹做的事
+完全一樣，寫成 lambda 呼叫兩次，不用把同一段迴圈抄兩遍。
+\end{itemize}
+
+\textbf{複雜度}
+
+讀地圖 $O(nm)$，之後每棵樹最多當兩天的火源，每次看四個鄰居，加上最多 $D$ 天
+的迴圈，總共 $O(nm + D)$。 前面那張蛇形地圖，和這題最大的測試資料，在本書
+測試的環境下都不到 $0.01$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{在同一張地圖上邊掃邊點火}：每天由上往下、由左往右掃，碰到正在燃
+燒的樹就點燃鄰格，而新點燃的樹在同一次掃描裡被當成火源。 範例的輸入會印出
+\texttt{9 1}：第 $1$ 天就把燒得到的 $8$ 棵樹全部點燃了，正確是 \texttt{7 3}。
+新點燃的格子要記成「今天起火」，今天不能傳火。
+\item \textbf{灰燼繼續傳火}：只記「起過火」，沒有記「哪一天起火」，所有起過火的
+樹每天都去點別人。 第二個範例 \texttt{1 7 4}、\texttt{TTFT.FT}、
+\texttt{WW00} 的正確答案是 \texttt{4 2}，這樣寫會印出 \texttt{6 3}：第 $3$ 天
+風停了，第 $0$ 天起火、早就燒完的兩棵樹又把右邊點燃。
+\item \textbf{風向和逆風方向對反}：把「風往右吹」寫成「右邊不點燃」。 範例的
+輸入會印出 \texttt{6 3}。 讀題時先用一個具體的格子想清楚：火被風往右吹，往右
+燒得到，燒不回左邊。
+\item \textbf{每天掃整張地圖}：答案是對的，題目給的範例和小的測試資料都會通過，
+遇到火燒很多天的大地圖就超過時間限制。 看到步數 $D$ 和地圖大小相乘超過
+$10^8$，就要想辦法只處理會變的格子。
+\end{itemize}
+
+\section{週期偵測}
+\label{sec:cycle}
+
+有些模擬要跑非常多步，例如「第 $10^{18}$ 秒時燈串長什麼樣子」，一步一步跑一定
+來不及。 這時候可以利用一個事實：如果每一步的結果只由目前的\textbf{狀態}
+（state）決定，而狀態的種類有限，那麼跑得夠久，一定會遇到一個以前出現過的狀態。
+從那一刻起，後面的發展會和上次一模一樣，一直重複下去。
+
+假設第 $t$ 步第一次遇到重複，和第 $p$ 步的狀態相同（$p < t$）。 那麼第 $p$ 步
+到第 $t - 1$ 步就是一圈，週期長度 $L = t - p$。 第 $p$ 步之前的那一段只走一次，
+不一定會回來。 畫出來像希臘字母 $\rho$：一條尾巴接上一個圈。
+
+\begin{center}
+\begin{tikzpicture}[
+    st/.style={draw=black!55, rounded corners=2pt, minimum height=6mm, inner sep=3pt, font=\small\ttfamily},
+    hst/.style={st, draw=memStroke, thick, fill=memFill},
+]
+\node[st] (a) at (0,0) {0010};
+\node[st] (b) at (2.2,0) {1010};
+\node[hst] (c) at (4.4,0) {1111};
+\node[hst] (d) at (6.6,0) {0000};
+\node[idxlbl, below=1mm of a] {$t = 0$};
+\node[idxlbl, below=1mm of b] {$t = 1$};
+\node[idxlbl, below=1mm of c] {$t = 2$};
+\node[idxlbl, below=1mm of d] {$t = 3$};
+\draw[diagarrow] (a) -- (b);
+\draw[diagarrow] (b) -- (c);
+\draw[diagarrow] (c) -- (d);
+\draw[diagarrow] (d.north) to[out=135, in=45] node[above, font=\scriptsize] {$t = 4$} (c.north);
+\end{tikzpicture}
+\diagcaption{環狀燈串（下面的例題）從 \texttt{0010} 開始的狀態。 第 $4$ 秒回到
+第 $2$ 秒的 \texttt{1111}，尾巴長 $2$、圈長 $2$。}
+\label{fig:rho}
+\end{center}
+
+找出 $t$ 和 $p$ 的方法很直接：每算出一個狀態，就查它以前有沒有出現過、第一次是
+第幾步。 狀態能編成一個不太大的整數時（例如 $n$ 顆燈編成 $n$ 位的二進位），用
+一個 \texttt{vector<int>} 當表，\texttt{seenAt[x]} 記錄狀態 $x$ 第一次出現的
+步數，$-1$ 表示還沒出現過。 狀態編不成小整數時（例如一個很長的字串），改用
+\texttt{map}，鍵是狀態本身。
+
+知道 $p$ 和 $L$ 之後，就能直接跳到很遠的步數。 想知道第 $K$ 步的狀態：$K < p$
+時直接看紀錄；$K \ge p$ 時，從 $p$ 開始每 $L$ 步回到同一個狀態，所以第 $K$ 步和
+第 $p + (K - p) \bmod L$ 步相同。 只要模擬時把每一步的狀態依序存在
+\texttt{history} 裡：
+
+\begin{code}{cpp}{知道週期之後，直接取第 K 步}
+// history[i] 是第 i 步的狀態，i = 0 .. t - 1；p、L 已經算好
+long long idx = (K < p) ? K : p + (K - p) % L;
+int stateK = history[idx];
+\end{code}
+
+圖~\ref{fig:rho} 裡 $p = 2$、$L = 2$，第 $10^{18}$ 秒是第
+$2 + (10^{18} - 2) \bmod 2 = 2$ 秒的狀態 \texttt{1111}。 $K$ 很大時記得用
+\texttt{long long}。
+
+\subsection{例題：環狀燈串何時重複}
+\label{sec:ex-lamps}
+
+\textbf{題意}（\akiref{when-does-the-lamp-ring-repeat}{環狀燈串何時重複}）
+
+\begin{itemize}
+\item $n$ 顆燈排成一圈，編號 $1$ 到 $n$，第 $1$ 顆的左鄰是第 $n$ 顆，第 $n$ 顆
+的右鄰是第 $1$ 顆。 每顆燈是亮（\texttt{1}）或暗（\texttt{0}）。
+\item 每過一秒，所有燈同時依照上一秒的狀態更新：暗的燈，左右兩鄰「恰好一顆
+亮」時維持暗，否則變亮；亮的燈，左鄰亮就變暗，否則維持亮。
+\item 找出最早的 $t \ge 1$，使第 $t$ 秒的燈串和更早的某個第 $p$ 秒完全相同，輸出
+$t$、$p$、$t - p$。 $3 \le n \le 20$。
+\end{itemize}
+
+例如 $n = 4$，第 $0$ 秒是 \texttt{0010}，之後是 \texttt{1010}、\texttt{1111}、
+\texttt{0000}、\texttt{1111}，就是圖~\ref{fig:rho}，答案是 \texttt{4 2 2}。
+
+\textbf{想法}
+
+燈串的狀態最多 $2^{20} \approx 10^6$ 種，所以 $t$ 不會超過 $2^{20}$，一秒一秒
+模擬一定會停下來。 問題在於怎麼知道「以前出現過」。 最直接的做法是把每一秒的
+燈串存成字串，每算出一個新的就和以前的全部比一次。 $t$ 可能超過 $10^5$，比較
+的次數是 $t^2 / 2 \approx 5 \times 10^9$ 以上，每次還要比 $n$ 個字元，來不及。
+
+改成第~\ref{sec:subsets}~節的位元表示：第 $i$ 顆燈對應第 $i$ 位，整串燈就是
+$0$ 到 $2^n - 1$ 之間的一個整數。 開一個長度 $2^n$ 的 \texttt{seenAt}，查一個
+狀態出現過沒有只要 $O(1)$。 $2^{20}$ 個 \texttt{int} 大約 $4$ MB，記憶體放得
+下。
+
+更新規則要同時套用到每一顆燈。 這裡把新狀態寫在另一個整數 \texttt{nxt} 裡，每顆
+燈都從舊的 \texttt{s} 讀鄰居，算完整串才回傳，和「寫在另一個陣列」是一樣的道
+理。
+
+同樣的模型也出現在別的地方：生產線上的機台照固定規則切換模式，問多久之後會回到
+同一組設定。 只要下一步只由這一步決定、狀態的種類有限，都可以這樣找週期。
+
+\textbf{程式}
+
+\begin{example}[label=ex:lamps]{cpp}{(lamps.cpp) 環狀燈串何時重複}
+#include <iostream>
+#include <string>
+#include <vector>
+using namespace std;
+
+int n;
+
+// 由第 t - 1 秒的狀態 s 算出第 t 秒的狀態；第 i 位是第 i 顆燈
+int nextState(int s) {
+    int nxt = 0;                                // 新狀態寫在另一個變數裡
+    for (int i = 0; i < n; i++) {
+        int left = s >> ((i + n - 1) % n) & 1;
+        int self = s >> i & 1;
+        int right = s >> ((i + 1) % n) & 1;
+        int on;
+        if (self == 0) {
+            on = (left == right);               // 兩鄰同亮或同暗就亮起
+        } else {
+            on = (left == 0);                   // 左鄰亮就熄滅
+        }
+        nxt |= on << i;
+    }
+    return nxt;
+}
+
+int main() {
+    string str;
+    cin >> n >> str;
+    int s = 0;
+    for (int i = 0; i < n; i++) {
+        if (str[i] == '1') {
+            s |= 1 << i;
+        }
+    }
+    vector<int> seenAt(1 << n, -1);             // seenAt[x]：狀態 x 第一次出現的秒數
+    seenAt[s] = 0;
+    for (int t = 1; ; t++) {
+        s = nextState(s);
+        if (seenAt[s] != -1) {
+            int p = seenAt[s];
+            cout << t << ' ' << p << ' ' << t - p << '\n';
+            break;
+        }
+        seenAt[s] = t;
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+4 \\
+0010 \\
+}{
+4 2 2 \\
+}
+
+\begin{itemize}
+\item 編號從 $0$ 開始：字串的第 $i$ 個字元（$i = 0, \ldots, n - 1$）對應第 $i$
+位。 左鄰是 $(i + n - 1) \bmod n$，加 $n$ 是為了 $i = 0$ 時不會變成 $-1$；右鄰
+是 $(i + 1) \bmod n$。
+\item \texttt{nxt |= on << i} 把第 $i$ 位設成 \texttt{on}。 \texttt{nxt} 一開始是
+$0$，每一位只設一次，所以只要處理 \texttt{on} 是 $1$ 的情況，寫成「或」就好。
+\end{itemize}
+
+\textbf{複雜度}
+
+最多 $2^n$ 秒，每秒 $O(n)$，總共 $O(2^n \cdot n)$；$n = 20$ 時大約
+$2 \times 10^7$ 次。 記憶體是 \texttt{seenAt} 的 $2^n$ 個整數。 最大的測試資料
+在本書測試的環境下約 $0.02$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{原地更新}：在同一個整數（或陣列）上由第 $0$ 顆改到第 $n - 1$ 顆，
+算第 $1$ 顆時用到的左鄰已經是新的值。 範例的輸入會變成 \texttt{0010}、
+\texttt{1100}、\texttt{1011}、\texttt{0010}，印出 \texttt{3 0 3}，正確是
+\texttt{4 2 2}。
+\item \textbf{以為一定會回到第 $0$ 秒}：只拿新狀態和第 $0$ 秒的狀態比。 範例的
+燈串永遠不會再出現 \texttt{0010}，程式不會停下來。 重複的可能是中間的任何一個
+狀態，要和全部比，所以才需要 \texttt{seenAt}。
+\item \textbf{狀態沒有記完整}：如果下一步不只看燈，還看別的東西（例如「這是第幾
+輪」「目前輪到誰」），這些也要放進狀態裡。 只記燈串會把兩個其實不同的局面當成
+同一個，算出太短的週期。 判斷的方法是問：只知道我記下來的這些，能不能算出下一
+步？ 不能，就是少記了東西。
+\item \textbf{$K$ 很大時用 \texttt{int}}：用週期跳到第 $K$ 步時，$K$ 到
+$10^{18}$，\texttt{K - p} 要用 \texttt{long long} 算，否則一讀進來就溢位了。
+\end{itemize}
+
+\subsection{什麼時候用、什麼時候不能用}
+
+\begin{itemize}
+\item 適合：題目問「第 $K$ 步」，$K$ 遠大於狀態的種類數；或直接問「什麼時候開
+始重複」。 先估狀態有幾種，確定記得下。
+\item 狀態種類太多、記不下時（例如狀態是 $10^9$ 以內的任意整數），記憶體就
+不夠了，要另外找規律，超出本章範圍。
+\item 規則裡有隨機、或每一步的規則會隨時間改變（例如山火每天的風向不同），
+「同一個狀態」之後的發展就不一定相同，不能用週期跳。 山火那題就只能一天一天
+模擬。
+\end{itemize}
+
+\begin{apcsnote}
+模擬題的題敘通常很長，規則一條一條列出來。 動手寫之前，先拿題目的範例，照規
+則在紙上算一兩步，確認自己對每一條規則的理解和範例的說明一致，特別是「同時」
+「先後」「包含不包含」這幾種字眼。 範例的說明常常會刻意指出原地更新的錯誤
+結果，那就是出題者在提醒你。
+\end{apcsnote}
+
+\section{本章常見錯誤}
+\label{sec:enum-pitfalls}
+
+前面各節的錯誤，歸納起來是下面幾類。 寫枚舉、回溯或模擬的題目時，交出去之前
+逐項檢查一次。
+
+\begin{center}
+\begin{tabular}{p{0.2\linewidth}p{0.44\linewidth}p{0.24\linewidth}}
+\toprule
+錯誤 & 例子 & 見 \\
+\midrule
+沒先數情況數 & 用 \texttt{next\_permutation} 列 $12!$ 個排列；每天掃整張地圖
+& 第~\ref{sec:ex-spotlight}、\ref{sec:ex-fire}~節 \\
+位元運算 & \texttt{1 << n} 在 $n \ge 31$ 時出錯；\texttt{\&} 和 \texttt{==}
+的優先順序 & 第~\ref{sec:subsets}~節 \\
+回溯沒還原 & 少了 \texttt{used[x] = false} 或 \texttt{mark(r, c, false)} &
+第~\ref{sec:backtracking}~節 \\
+陣列索引 & $r - c$ 沒加位移；格子越界檢查放在讀取之後 &
+第~\ref{sec:ex-spotlight}、\ref{sec:ex-fire}~節 \\
+沒有同時更新 & 山火邊掃邊點；燈串原地改 & 第~\ref{sec:ex-fire}、\ref{sec:ex-lamps}~節 \\
+狀態記不完整 & 灰燼繼續傳火（沒記起火日）；週期偵測漏了影響下一步的資訊 &
+第~\ref{sec:ex-fire}、\ref{sec:cycle}~節 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+
+\section{本章練習}
+\label{sec:ch4-exercises}
+
+\begin{drills}[label=drills:ch4]
+\item 把範例~\ref{ex:trucks-rec} 的 \texttt{choose} 改成在 $i = n$ 時印出這種
+挑法選了哪幾箱（用箱子的編號），對三箱 $a, b, c$（編號 $0, 1, 2$），依序會印出
+哪八種挑法？ 如果把「不選」和「選」兩行對調呢？
+
+\item 下面的程式想列出 $1$ 到 $3$ 的所有排列，實際上只印出一行。 印出什麼？ 錯
+在哪裡？
+\begin{code}{cpp}{練習 2}
+void build() {
+    if ((int)seq.size() == n) {
+        for (int x : seq) {
+            cout << x;
+        }
+        cout << '\n';
+        return;
+    }
+    for (int x = 1; x <= n; x++) {
+        if (used[x]) {
+            continue;
+        }
+        used[x] = true;
+        seq.push_back(x);
+        build();
+        seq.pop_back();
+    }
+}
+\end{code}
+
+\item 六格排成一列，格子外面當成 $0$。 每一步，所有格子同時更新：新的值是左右
+兩格舊的值做 XOR（相同為 $0$、不同為 $1$）。
+\begin{enumerate}
+\item 從 \texttt{110000} 開始，寫出第 $1$、$2$ 步的結果。
+\item 如果在同一個陣列上由左往右直接改，第 $1$ 步會得到什麼？
+\end{enumerate}
+
+\item 數列從 $x_0 = 3$ 開始，$x_{k+1} = (x_k^2 + 1) \bmod 10$。
+\begin{enumerate}
+\item 第一次出現重複的是第幾項？ 和第幾項相同？ 週期多長？
+\item 求 $x_{100}$。
+\end{enumerate}
+
+\item 範例~\ref{ex:prune} 的層級 2 剪枝寫成 \texttt{total + rest[i] <= best}。
+\begin{enumerate}
+\item 如果寫成 \texttt{total + rest[i] < best}，答案會不會變？ 點數會變多還是
+變少？
+\item 有人想再加一條：「\texttt{best == limit} 時就什麼都不做，直接回去。」 這
+條剪枝對不對？ 為什麼？
+\end{enumerate}
+\end{drills}
+
+\section{實作練習}
+\label{sec:ch4-practice}
+
+下面是 Aki-Judge 上和本章相關的題目，依小節分組。 難度分四階：暖身是直接套用
+本章的寫法；基本要自己想出枚舉什麼、狀態怎麼記；實戰的題敘比較長，規則比較多；
+挑戰會需要額外的觀察，或和其他章的技巧合在一起。
+
+\begin{center}
+\begin{tabular}{llc}
+\toprule
+小節 & 題目 & 難度 \\
+\midrule
+枚舉與子集合 & \akiref{three-snacks-three-flavors}{三種不同口味的零食組合} & 暖身 \\
+ & \akiref{every-side-dish-combination}{便當配菜全列表} & 暖身 \\
+ & \akiref{flip-cards-to-a-target-sum}{正反面數字卡湊總和} & 暖身 \\
+ & \akiref{recovering-the-answer-key}{從成績反推是非題答案} & 基本 \\
+ & \akiref{balanced-tug-of-war-teams}{拔河分隊的平衡方案} & 基本 \\
+ & \akiref{gift-boxes-that-use-up-the-cardboard}{剛好用完紙板的禮物盒} & 實戰 \\
+ & \akiref{how-many-dishes-can-the-fridge-make}{冰箱裡能做幾道菜} & 實戰 \\
+ & \akiref{lever-controlled-gate-maze}{拉桿控制的閘門迷宮} & 挑戰 \\
+\midrule
+回溯與剪枝 & \akiref{spaced-out-duty-roster}{間隔值日表} & 暖身 \\
+ & \akiref{stage-light-rig}{舞台燈架} & 基本 \\
+ & \akiref{identical-tents}{一模一樣的帳篷} & 基本 \\
+ & \akiref{most-credits-in-a-timetable}{學分最多的選課表} & 實戰 \\
+ & \akiref{covering-the-bulletin-board-with-stickers}{貼滿佈告欄的貼紙} & 實戰 \\
+ & \akiref{no-peeking-from-behind}{不能斜後方偷看的座位數} & 挑戰 \\
+\midrule
+模擬 & \akiref{cold-risk-in-the-classroom}{教室座位的感冒風險} & 暖身 \\
+ & \akiref{turning-a-character-picture}{轉向的字元畫} & 暖身 \\
+ & \akiref{tilting-the-storage-box}{傾斜收納盒} & 基本 \\
+ & \akiref{eight-digit-calculator-keys}{八位數計算機按鍵} & 基本 \\
+ & \akiref{warehouse-carts-moving-in-sync}{倉庫搬運車同步移動} & 實戰 \\
+ & \akiref{cross-shaped-blasts-and-walls}{十字爆風與牆壁} & 挑戰 \\
+\midrule
+週期偵測 & \akiref{how-many-rounds-until-it-comes-back}{操作幾輪會轉回原樣} & 基本 \\
+ & \akiref{day-d-of-the-virtual-pet}{電子寵物的第 D 天} & 實戰 \\
+ & \akiref{k-steps-on-the-arrow-floor}{箭頭地板走 k 步} & 挑戰 \\
+ & \akiref{repeating-the-shuffle-routine}{重複執行的洗牌程序} & 挑戰 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+本章的三題例題也在 Aki-Judge 上，讀完各節之後可以先自己寫一次再對照。
+
+\section{讀完你應該會}
+\label{sec:ch4-checklist}
+
+\begin{itemize}
+\item 看到一題，能先算出暴力解要試幾種情況（$10^n$、$2^n$、$n!$ 或挑幾個），
+判斷來不來得及；並且找出哪些量可以用算的，不必枚舉。
+\item 能用位元遮罩和「選或不選」的遞迴兩種方式列出所有子集合，並說出
+\texttt{1 << n} 在什麼時候會出錯。
+\item 能寫出回溯的程式，做選擇和撤銷選擇成對出現；能用計數器數出搜尋樹的點數，
+比較剪枝前後的差別。
+\item 寫模擬題時，規則要求同時更新就把新狀態寫到另一個地方；步數很多時，只處
+理這一步會變的東西。
+\item 能把狀態編成整數或字串記下來，找出第一次重複的 $t$ 和 $p$，再用
+$p + (K - p) \bmod L$ 跳到第 $K$ 步。
+\end{itemize}
+
+\textbf{延伸閱讀}（書末會整理完整的參考資料）
+
+\begin{itemize}
+\item Antti Laaksonen，\textit{Competitive Programmer's Handbook}，第 5 章：
+子集合、排列、回溯與剪枝，最後還有一個把子集合拆成兩半各自枚舉、再合起來的
+技巧（meet in the middle），可以把 $2^n$ 降到大約 $2^{n/2}$。
+\item 劉汝佳，《算法競賽入門經典》第 2 版，第 7 章：中文，枚舉、子集合、回溯的
+例題很多，適合想多看幾種題型的讀者。
+\end{itemize}
+
+\addcontentsline{toc}{section}{練習解答}
+\section*{練習解答}
+
+\begin{enumerate}
+\item 照原本的順序（先不選再選），$i$ 越大的箱子變化越快：
+$\{\}$、$\{2\}$、$\{1\}$、$\{1, 2\}$、$\{0\}$、$\{0, 2\}$、$\{0, 1\}$、
+$\{0, 1, 2\}$，也就是 $a, b, c$ 的空集合、$\{c\}$、$\{b\}$、$\{b, c\}$、
+$\{a\}$、$\{a, c\}$、$\{a, b\}$、$\{a, b, c\}$。 和圖~\ref{fig:subset-tree} 最下
+面一排由左到右的順序相同。 對調之後每一層都先走「選」，順序剛好反過來：
+$\{0, 1, 2\}$、$\{0, 1\}$、$\{0, 2\}$、$\{0\}$、$\{1, 2\}$、$\{1\}$、$\{2\}$、
+$\{\}$。
+
+\item 只印出 \texttt{123}。 迴圈裡有 \texttt{used[x] = true}，卻少了對應的
+\texttt{used[x] = false}。 第一次一路往下排出 $1, 2, 3$ 之後，三個數都被標成用
+過，退回每一層時都找不到沒用過的數，所以不會再有第二個排列。 在
+\texttt{seq.pop\_back();} 之後補上 \texttt{used[x] = false;}。
+
+\item
+\begin{enumerate}
+\item 第 $1$ 步是 \texttt{111000}，第 $2$ 步是 \texttt{101100}。 例如第 $1$ 步
+的第 $3$ 格（從 $1$ 編號）看第 $2$ 格和第 $4$ 格的舊值 $1$ 和 $0$，不同，所以是
+$1$。
+\item 得到 \texttt{111111}。 第 $1$ 格是 $0 \oplus 1 = 1$；第 $2$ 格用到的左鄰
+已經是新的 $1$，右鄰是 $0$，得到 $1$；之後每一格的左鄰都是剛改好的 $1$、右鄰都
+是 $0$，全部變成 $1$。
+\end{enumerate}
+
+\item
+\begin{enumerate}
+\item 數列是 $3, 0, 1, 2, 5, 6, 7, 0, \ldots$。 $x_7 = 0$ 和 $x_1$ 相同，所以
+$t = 7$、$p = 1$，週期 $L = 6$。 $x_0 = 3$ 只出現一次，是尾巴。
+\item $100 \ge p$，所以 $x_{100} = x_{1 + (100 - 1) \bmod 6} = x_{1 + 3} =
+x_4 = 5$。
+\end{enumerate}
+
+\item
+\begin{enumerate}
+\item 答案不會變：等於 \texttt{best} 時本來就不會更好，改成 \texttt{<} 只是少
+剪一些。 範例照原順序的點數從 $4043423$ 變成 $4050071$。
+\item 對。 總重不會超過 \texttt{limit}，\texttt{best} 等於 \texttt{limit} 時已
+經不可能更好。 在本書測試的環境下，照輸入順序的點數從 $4043423$ 降到 $3054$。
+\end{enumerate}
+\end{enumerate}
