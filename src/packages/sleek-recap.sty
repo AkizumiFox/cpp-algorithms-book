@@ -5,6 +5,7 @@
 %%%%%%%%%%%%%%%%
 
 \RequirePackage{tcolorbox}
+\RequirePackage{xcolor}
 \tcbuselibrary{skins, breakable}
 
 %%%%%%%%%%%%%%%%
@@ -25,6 +26,31 @@
     colback=black!3, colframe=black!65, coltext=black,
     colbacktitle=black!65, coltitle=white, fonttitle=\bfseries,
     title={銜接書回顧\if\relax\detokenize{#1}\relax\else：#1\fi},
+    left=3mm, right=3mm, top=2mm, bottom=2mm,
+    before skip=\medskipamount, after skip=\medskipamount,
+}
+
+% APCS 小提醒：跟 APCS 實作題直接相關的提醒，不考 APCS 的讀者可以跳過。
+% 每章最多兩三個；只寫官方公開、確定的事，以及實作習慣。
+\definecolor{apcsStroke}{HTML}{B72B35}
+\newtcolorbox{apcsnote}{%
+    enhanced jigsaw, breakable,
+    sharp corners, boxrule=0.5mm,
+    colback=apcsStroke!4, colframe=apcsStroke, coltext=black,
+    colbacktitle=apcsStroke, coltitle=white, fonttitle=\bfseries,
+    title={APCS 小提醒（不考 APCS 的讀者可以跳過）},
+    left=3mm, right=3mm, top=2mm, bottom=2mm,
+    before skip=\medskipamount, after skip=\medskipamount,
+}
+
+% 為什麼一定對：較長的正確性論證。第一次讀可以跳過，不影響後面寫程式。
+% 可選參數是小標題。
+\newtcolorbox{whybox}[1][]{%
+    enhanced jigsaw, breakable,
+    sharp corners, boxrule=0.4mm,
+    colback=white, colframe=black!45, coltext=black,
+    colbacktitle=black!12, coltitle=black, fonttitle=\bfseries,
+    title={為什麼一定對\if\relax\detokenize{#1}\relax\else：#1\fi（第一次讀可以跳過）},
     left=3mm, right=3mm, top=2mm, bottom=2mm,
     before skip=\medskipamount, after skip=\medskipamount,
 }
