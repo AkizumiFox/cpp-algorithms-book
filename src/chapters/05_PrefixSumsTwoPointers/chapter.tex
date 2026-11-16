@@ -1,4 +1,1362 @@
-% 佔位：本章尚未開始。book.tex 裡先註解掉。
 \chapter{前綴和、雙指標與滑動視窗}
+\label{ch:prefix}
 
-本章尚未開始。
+% 本章用到的小圖：一排格子。
+%   \psrow{y}{起始 x}{值的清單}{格子樣式}
+% 在高度 y、從 x 開始，每格寬 0.9，依序畫出清單裡的值。
+\newcommand{\psrow}[4]{%
+    \foreach \psv [count=\psi from 0] in {#3} {
+        \node[#4] at ({#2 + \psi*0.9},#1) {\psv};
+    }%
+}
+
+你用手機記帳記了一整年，每天一個數字。 月底朋友問：「三月五號到四月二十號，
+你一共花了多少？」 把那四十幾天一筆一筆加起來，不算難。 可是他接著又問了一
+百個不同的日期範圍，每次都從頭加，就要加好幾千次。 往下讀之前，先想想：有沒有
+辦法事先做一點準備，讓之後每個問題都只要算一兩下？
+
+這一章的題目都和「連續的一段」有關：連續幾天、連續幾格、連續幾筆訂單。 處理
+這類問題有三個常用的工具：
+
+\begin{itemize}
+\item \textbf{前綴和}（prefix sum）：先把「從頭加到這裡」的總和全部算好，之後
+任何一段的總和都是兩個數相減。 反過來的\textbf{差分}（difference array）把
+「一整段都加上某個數」變成只改兩個位置（第~\ref{sec:ps-prefix}、
+\ref{sec:ps-diff}~節）。
+\item \textbf{滑動視窗}（sliding window）：一個固定長度的框從左滑到右，每滑一
+格只處理離開的那一個和進來的那一個，不必整段重算（第~\ref{sec:ps-fixed}~節）。
+\item \textbf{雙指標}（two pointers）：用兩個只往同一個方向走的位置夾住一段，
+長度可以變。 兩個位置都不回頭，所以總共只走 $2n$ 步（第~\ref{sec:ps-two}~節）。
+\end{itemize}
+
+三個工具都能把 $O(n^2)$ 甚至 $O(n^3)$ 的暴力解降到 $O(n)$ 或 $O(n \log n)$，
+但各有用不上的時候。 第~\ref{sec:ps-limits}~節整理哪些題目看起來很像、其實不
+能用。
+
+用到的語法在《C++ 程式設計：給學過 C 的人》（以下簡稱銜接書）都講過：
+\texttt{vector} 在第~3~章，lambda、\texttt{sort}、\texttt{unique}、
+\texttt{lower\_bound} 在第~9~章，從資料範圍估計時間在第~10~章 10.1 節。 第
+~\ref{sec:ps-two}~節的例題會用到本書第~2~章的離散化。 對拍（用暴力解比對）的
+做法在第~1~章 1.5 節講過，本章的每一支程式都用它檢查過，不再重講。 沒讀過銜接
+書的讀者，只要會用 \texttt{vector}、知道 \texttt{long long} 大約存得到
+$9 \times 10^{18}$，就能讀這一章的前半；後半的例題另外需要 lambda 和
+\texttt{sort}。
+
+\section{前綴和：先加好，再相減}
+\label{sec:ps-prefix}
+
+回到章首的記帳本。 假設一週七天的支出是
+\[
+120,\ 45,\ 0,\ 300,\ 80,\ 65,\ 150 .
+\]
+第 $i$ 天的支出記成 $a_i$，天數從 $1$ 開始算。 先做一張新的表：$pre_i$ 是第
+$1$ 天到第 $i$ 天的總和，另外規定 $pre_0 = 0$，代表「一天都還沒過」。 這張表
+叫前綴和，一個迴圈就做得出來，因為
+\[
+pre_i = pre_{i-1} + a_i .
+\]
+
+有了這張表，第 $l$ 天到第 $r$ 天的總和是
+\[
+a_l + a_{l+1} + \cdots + a_r = pre_r - pre_{l-1} .
+\]
+原因是 $pre_r$ 可以拆成兩塊：第 $1$ 天到第 $l - 1$ 天，以及第 $l$ 天到第 $r$
+天。 前一塊剛好是 $pre_{l-1}$，減掉就只剩後一塊。 下圖是第 $2$ 天到第 $4$ 天：
+
+\begin{center}
+\begin{tikzpicture}[x=1cm, y=1cm]
+\node[left, font=\small] at (0.35,1.3) {支出 $a$};
+\node[cell, minimum width=0.85cm] at (0.9,1.3) {120};
+\node[hlcell, minimum width=0.85cm] at (1.8,1.3) {45};
+\node[hlcell, minimum width=0.85cm] at (2.7,1.3) {0};
+\node[hlcell, minimum width=0.85cm] at (3.6,1.3) {300};
+\node[cell, minimum width=0.85cm] at (4.5,1.3) {80};
+\node[cell, minimum width=0.85cm] at (5.4,1.3) {65};
+\node[cell, minimum width=0.85cm] at (6.3,1.3) {150};
+\foreach \i in {1,...,7} {\node[idxlbl] at ({\i*0.9},0.72) {\i};}
+\node[left, font=\small] at (-0.55,0) {前綴和 $pre$};
+\node[cell, minimum width=0.85cm] at (0,0) {0};
+\node[hlcell2, minimum width=0.85cm] at (0.9,0) {120};
+\node[cell, minimum width=0.85cm] at (1.8,0) {165};
+\node[cell, minimum width=0.85cm] at (2.7,0) {165};
+\node[hlcell2, minimum width=0.85cm] at (3.6,0) {465};
+\node[cell, minimum width=0.85cm] at (4.5,0) {545};
+\node[cell, minimum width=0.85cm] at (5.4,0) {610};
+\node[cell, minimum width=0.85cm] at (6.3,0) {760};
+\foreach \i in {0,...,7} {\node[idxlbl] at ({\i*0.9},-0.58) {\i};}
+\end{tikzpicture}
+\diagcaption{第 $2$ 到 $4$ 天的支出（橘色）加起來是 $45 + 0 + 300 = 345$，
+也等於 $pre_4 - pre_1 = 465 - 120$（粉色）。 下方的小字是索引。}
+\label{fig:ps-ledger}
+\end{center}
+
+$pre_0 = 0$ 這一格看起來多餘，其實很重要。 問第 $1$ 天到第 $r$ 天時，公式要
+用到 $pre_0$；有了它，$l = 1$ 就不用另外處理。 所以前綴和的陣列要開 $n + 1$
+格，索引從 $0$ 到 $n$。
+
+\begin{example}[label=ex:ps-ledger]{cpp}{(ledger.cpp) 用前綴和回答很多段的總和}
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n, q;
+    cin >> n >> q;
+    vector<long long> pre(n + 1, 0);   // pre[i] = 前 i 天的總和
+    for (int i = 1; i <= n; i++) {
+        long long x;
+        cin >> x;
+        pre[i] = pre[i - 1] + x;
+    }
+    for (int k = 0; k < q; k++) {
+        int l, r;
+        cin >> l >> r;
+        cout << pre[r] - pre[l - 1] << '\n';
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+7 4 \\
+120 45 0 300 80 65 150 \\
+2 4 \\
+1 7 \\
+5 5 \\
+1 1 \\
+}{
+345 \\
+760 \\
+80 \\
+120 \\
+}
+
+不用前綴和，每個問題都從第 $l$ 天加到第 $r$ 天，一個問題最多加 $n$ 次，總共
+$O(nq)$。 $n$ 和 $q$ 都是 $2 \times 10^5$ 時是 $4 \times 10^{10}$ 次，來不
+及。 用前綴和，建表 $n$ 次，每個問題一次減法，總共 $O(n + q)$。
+
+這裡用的是「從 $1$ 開始編號、$pre_0 = 0$」的寫法。 也有人從 $0$ 開始存資料，
+讓 $pre_i$ 代表前 $i$ 個數的和，這時第 $l$ 個到第 $r - 1$ 個（半開區間
+$[l, r)$）的和是 $pre_r - pre_l$。 兩種都對，混著用就會差一格。 本章的前綴和
+一律用第一種。
+
+\subsection{累加的不一定是原始資料}
+
+前綴和可以套在任何「每一格有一個數、要問一段的總和」的量上，那個數不一定是輸
+入直接給的：
+
+\begin{itemize}
+\item 問一段時間裡有幾筆借書：每一分鐘借書記 $1$、否則記 $0$，對這串 $0$ 和
+$1$ 做前綴和。
+\item 問一段路的總爬升：每一步的爬升量是 $\max(0,\ \text{下一點} -
+\text{這一點})$，對每一步的爬升量做前綴和。
+\item 問一段日子裡有幾天超過 $30$ 度：一樣先換成 $0$ 和 $1$。
+\end{itemize}
+
+先想清楚「每一格要放什麼數」，剩下的都一樣。 下面的例題就要做兩張這樣的表。
+
+\subsection{例題：環湖步道的最少爬升}
+\label{sec:ps-ex-trail}
+
+\textbf{題意}（\akiref{least-climb-on-a-lake-loop}{環湖步道的最少爬升}）
+
+\begin{itemize}
+\item 湖邊的環狀步道上有 $n$ 個測點，順時針編號 $1$ 到 $n$，測點 $n$ 的下一個
+是測點 $1$。 測點 $i$ 的海拔是 $h_i$。
+\item 每一步只能走到相鄰的測點。 從海拔 $a$ 走到海拔 $b$，$b > a$ 時這一步爬
+升 $b - a$，否則爬升 $0$。
+\item 有 $q$ 筆詢問，每筆給起點 $s$ 和終點 $t$。 從 $s$ 到 $t$ 可以一路順時針
+走，也可以一路逆時針走，中途不回頭。 輸出兩種走法裡總爬升比較小的那個。
+$s = t$ 時答案是 $0$。
+\item $n, q \le 2 \times 10^5$，海拔在 $0$ 到 $10^9$ 之間。
+\end{itemize}
+
+例如 $n = 5$，海拔依序是 $30, 80, 50, 90, 20$（下圖）。 從測點 $3$ 到測點
+$5$，順時針走 $50 \to 90 \to 20$，爬升 $40$；逆時針走
+$50 \to 80 \to 30 \to 20$，只有 $50 \to 80$ 是上坡，爬升 $30$。 答案是
+$30$：步數多的走法，爬得反而比較少。
+
+\begin{center}
+\begin{tikzpicture}[x=1cm, y=1cm]
+\foreach \i/\hh [count=\k from 0] in {1/30,2/80,3/50,4/90,5/20} {
+    \node[circle, draw=black!60, thick, minimum size=1.05cm, align=center,
+          font=\small] (p\i) at ({90 - 72*\k}:1.9) {\i\\[-2pt]\scriptsize $\hh$};
+}
+\foreach \a/\b in {1/2,2/3,3/4,4/5,5/1} {
+    \draw[diagarrow, black!45] (p\a) to[bend left=12] (p\b);
+}
+\node[font=\small, align=left] at (4.6,0) {圓圈裡：測點編號\\和海拔\\箭頭：順時針方向};
+\end{tikzpicture}
+\diagcaption{範例的環湖步道。 測點 $5$ 往順時針再走一步就回到測點 $1$。}
+\label{fig:ps-lake}
+\end{center}
+
+\textbf{想法}
+
+暴力解是每筆詢問真的走兩趟，一步一步加。 一趟最多 $n - 1$ 步，$q$ 筆詢問共
+$O(nq)$，最大是 $4 \times 10^{10}$，來不及。 不過它很好寫，拿來對拍正好。
+
+\textbf{第一步：把每一步的爬升算好。} 把「從測點 $k$ 走到測點 $k + 1$」叫做第
+$k$ 步。 同一步順著走和反著走，上坡下坡剛好對調：順著走爬升
+$\max(0, h_{k+1} - h_k)$，反著走（從 $k + 1$ 走回 $k$）爬升
+$\max(0, h_k - h_{k+1})$。 所以要兩張前綴和：$up_k$ 是第 $1$ 到第 $k$ 步順著
+走的總爬升，$down_k$ 是同樣這幾步反著走的總爬升。
+
+\textbf{第二步：處理環。} 從測點 $4$ 順時針走到測點 $2$，經過第 $4$、$5$、$1$
+步，跨過了「測點 $5$ 回到測點 $1$」的接縫，在 $up$ 上不是連續的一段。 一種做
+法是拆成兩段相加。 另一種更簡單：把海拔表再接一圈，測點 $6$ 到 $10$ 的海拔照
+抄測點 $1$ 到 $5$。 這樣從測點 $4$ 順時針到測點 $2$，就是從測點 $4$ 走到測點
+$2 + 5 = 7$，經過第 $4$、$5$、$6$ 步，是連續的一段。
+
+整理成公式。 順時針從 $s$ 走到 $t$：如果 $t < s$，把終點改成 $t + n$；經過的
+是第 $s$ 步到第 $t - 1$ 步（改過的 $t$），爬升是 $up_{t-1} - up_{s-1}$。 逆時
+針從 $s$ 走到 $t$，等於把「順時針從 $t$ 走到 $s$」的每一步反著走：如果
+$s < t$，把 $s$ 改成 $s + n$；爬升是 $down_{s-1} - down_{t-1}$。 改過的終點
+或起點都小於 $2n$，所以表做到第 $2n - 1$ 步就夠了。
+
+用範例做出來的兩張表（第 $6$ 步到第 $9$ 步是接上去的那一圈）：
+
+\begin{center}
+\begin{tabular}{c|ccccccccc}
+\toprule
+第 $k$ 步 & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 \\
+從海拔 $h_k$ & 30 & 80 & 50 & 90 & 20 & 30 & 80 & 50 & 90 \\
+走到 $h_{k+1}$ & 80 & 50 & 90 & 20 & 30 & 80 & 50 & 90 & 20 \\
+\midrule
+$up_k$ & 50 & 50 & 90 & 90 & 100 & 150 & 150 & 190 & 190 \\
+$down_k$ & 0 & 30 & 30 & 100 & 100 & 100 & 130 & 130 & 200 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+$up_0 = down_0 = 0$ 沒有列出來。 從測點 $3$ 到測點 $5$：順時針是
+$up_4 - up_2 = 90 - 50 = 40$；逆時針時 $s = 3 < t = 5$，$s$ 改成 $8$，是
+$down_7 - down_4 = 130 - 100 = 30$，對應第 $5$、$6$、$7$ 步反著走。 和前面手
+算的一樣。
+
+同樣的模型也出現在別的地方：環狀的捷運路線，兩個方向的票價或耗電不同，要問兩
+站之間走哪個方向比較省；一條單行道的外送路線，問任兩點之間要上幾次坡。
+
+\textbf{程式}
+
+\begin{example}[label=ex:ps-trail]{cpp}{(trail.cpp) 環湖步道的最少爬升}
+#include <algorithm>
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n, q;
+    cin >> n >> q;
+    vector<long long> h(2 * n + 1);
+    for (int i = 1; i <= n; i++) {
+        cin >> h[i];
+        h[i + n] = h[i];          // 再接一圈
+    }
+    // 第 k 步：測點 k 走到 k + 1
+    // up[k]：第 1～k 步順著走的爬升
+    // down[k]：同樣這幾步反著走的爬升
+    vector<long long> up(2 * n, 0), down(2 * n, 0);
+    for (int k = 1; k < 2 * n; k++) {
+        long long d = h[k + 1] - h[k];
+        up[k] = up[k - 1] + max(0LL, d);
+        down[k] = down[k - 1] + max(0LL, -d);
+    }
+    for (int j = 0; j < q; j++) {
+        int s, t;
+        cin >> s >> t;
+        int tt = (t >= s) ? t : t + n;  // 順時針
+        int ss = (s >= t) ? s : s + n;  // 逆時針
+        long long cw = up[tt - 1] - up[s - 1];
+        long long ccw = down[ss - 1] - down[t - 1];
+        cout << min(cw, ccw) << '\n';
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+5 4 \\
+30 80 50 90 20 \\
+1 3 \\
+3 5 \\
+4 2 \\
+2 2 \\
+}{
+50 \\
+30 \\
+30 \\
+0 \\
+}
+
+\begin{itemize}
+\item \texttt{h} 開 $2n + 1$ 格，用到索引 $1$ 到 $2n$。 \texttt{up}、
+\texttt{down} 開 $2n$ 格，索引 $0$ 到 $2n - 1$；迴圈的第 $k$ 步要讀
+\texttt{h[k + 1]}，$k$ 最大是 $2n - 1$，剛好讀到 \texttt{h[2 * n]}。
+\item $s = t$ 時 \texttt{tt} 和 \texttt{ss} 都不變，兩個方向都是同一個數減自
+己，印出 $0$，不用另外判斷。
+\item \texttt{max(0LL, d)} 的 \texttt{0LL} 是 \texttt{long long} 的 $0$，
+\texttt{max} 的兩個引數必須同型別（銜接書第~8~章的函式模板）。
+\item 一圈的總爬升最多大約是 $2 \times 10^5 \times 10^9 = 2 \times 10^{14}$，
+\texttt{up}、\texttt{down} 都要用 \texttt{long long}。
+\end{itemize}
+
+\textbf{複雜度}
+
+建表 $O(n)$，每筆詢問 $O(1)$，合計 $O(n + q)$。 最大的測資在本書測試的環境下
+約 $0.05$ 秒，大部分時間花在讀輸入。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{只走步數少的那個方向}：以為步數少就爬得少。 範例的第二筆詢問，
+順時針只要兩步，爬升 $40$；逆時針三步，只爬 $30$。 只走步數少的方向，範例會
+印出 \texttt{50 40 30 0}（四行）。 題目要的是爬升最少，兩個方向都要算。
+\item \textbf{索引差一}：把爬升寫成 \texttt{up[tt] - up[s]}，等於算成第 $s + 1$
+步到第 $tt$ 步。 範例印出 \texttt{40 10 60 0}。 寫公式之前，先用一個很小的例
+子確認「從測點 $s$ 出發，第一步是第幾步」。
+\item \textbf{前綴和用 \texttt{int}}：把 \texttt{up}、\texttt{down} 改成
+\texttt{vector<int>}，加了 \texttt{-Wall -Wextra} 也沒有警告。 輸入
+$n = 2 \times 10^5$、海拔 $0$ 和 $10^9$ 交錯、詢問 \texttt{1 100001}，正確答
+案是 \texttt{50000000000000}，在本書測試的環境下印出 \texttt{-2009260032}。
+\end{itemize}
+
+\subsection{找最大的差：前綴和的另一種用法}
+\label{sec:ps-maxsum}
+
+前面的問題是「給定一段，問總和」。 反過來問「哪一段的總和最大」也常見。 例
+如一位直播主記下每小時追蹤人數的增減：
+\[
+-3,\ 5,\ -2,\ 4,\ -6,\ 1,\ 3,\ -1 ,
+\]
+要找連續的幾個小時（至少一小時），讓淨增加最多。 這叫\textbf{最大區間和}。
+
+最直接的暴力解枚舉每一段 $(l, r)$，再把這段加起來，是 $O(n^3)$。 用前綴和，
+每一段的和是 $pre_r - pre_{l-1}$，一次減法，降到 $O(n^2)$。 $n$ 到
+$2 \times 10^5$ 時仍然要 $2 \times 10^{10}$ 次。
+
+再想一步。 固定右端 $r$，要讓 $pre_r - pre_{l-1}$ 最大，就是在
+$pre_0, pre_1, \ldots, pre_{r-1}$ 裡挑最小的那個減掉。 由左往右掃的時候，順
+便記住「到目前為止最小的前綴和」，每個 $r$ 就只要一次減法：
+
+\begin{center}
+\begin{tabular}{ccccccccc}
+\toprule
+$r$ & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
+這小時 & $-3$ & 5 & $-2$ & 4 & $-6$ & 1 & 3 & $-1$ \\
+$pre_r$ & $-3$ & 2 & 0 & 4 & $-2$ & $-1$ & 2 & 1 \\
+之前最小的前綴和 & 0 & $-3$ & $-3$ & $-3$ & $-3$ & $-3$ & $-3$ & $-3$ \\
+以 $r$ 結尾的最大和 & $-3$ & 5 & 3 & 7 & 1 & 2 & 5 & 4 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+最大是 $7$，在 $r = 4$，減掉的是 $pre_1 = -3$，對應第 $2$ 到第 $4$ 小時
+$5 - 2 + 4$。
+
+\begin{example}[label=ex:ps-maxgain]{cpp}{(maxgain.cpp) 最大區間和}
+#include <algorithm>
+#include <iostream>
+using namespace std;
+
+int main() {
+    int n;
+    cin >> n;
+    long long pre = 0;         // 目前的前綴和 P[r]
+    long long minPre = 0;      // P[0] 到 P[r - 1] 的最小值
+    long long best = 0;
+    for (int r = 1; r <= n; r++) {
+        long long x;
+        cin >> x;
+        pre += x;
+        if (r == 1 || pre - minPre > best) {
+            best = pre - minPre;   // 以第 r 小時結尾的最佳一段
+        }
+        minPre = min(minPre, pre);
+    }
+    cout << best << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+8 \\
+-3 5 -2 4 -6 1 3 -1 \\
+}{
+7 \\
+}
+
+前綴和沒有存成陣列：每個 $r$ 只用到目前的 $pre_r$ 和之前的最小值，一個變數就
+夠了。 兩個容易錯的地方：
+
+\begin{itemize}
+\item \textbf{先更新最小值再相減}：把 \texttt{minPre = min(minPre, pre);} 移到
+\texttt{if} 前面，等於允許 $l - 1 = r$，也就是一小時都不選。 每小時都是負數
+時就會錯：輸入 \texttt{3} 和 \texttt{-4 -2 -7}，正確答案是 \texttt{-2}（只選
+第二小時），這樣寫印出 \texttt{0}。
+\item \textbf{\texttt{best} 從 $0$ 開始比}：拿掉 \texttt{r == 1 ||}，同一組
+輸入也印出 \texttt{0}。 題目要求至少選一小時，最大和可能是負的。
+\end{itemize}
+
+同一題在第~9~章會用動態規劃的角度再看一次，得到另一個也是 $O(n)$ 的寫法。
+
+\subsection{什麼時候用、什麼時候不能用}
+
+\begin{itemize}
+\item \textbf{適合的訊號}：資料一開始就全部給了，之後不會再變；接著有很多筆詢
+問，每筆問某一段的總和、某一段裡符合條件的有幾個。 或是要在所有的段裡找總和
+最大、最小、剛好等於某個值的。
+\item \textbf{資料會在詢問之間改變}：每改一個數，後面的前綴和全部要重算，一次
+$O(n)$。 修改和詢問都很多時，需要更進階的資料結構，不在本書第一部的範圍。
+\item \textbf{問的是一段的最大值或最小值}：最大值不能「相減」。 知道前 $r$ 個
+的最大值和前 $l - 1$ 個的最大值，推不出第 $l$ 到第 $r$ 個的最大值。 長度固定
+的情況用第~6~章的單調佇列。
+\end{itemize}
+
+\begin{apcsnote}
+實作題常見的形式是先給一串資料，再給很多筆詢問。 遇到這種題目，先看詢問的筆數
+乘上一段的長度有多大；乘起來超過 $10^8$ 左右，就要想辦法事先算好一張表，例如
+前綴和。 詢問和輸出都多時，記得加上輸入加速的兩行，輸出用
+\texttt{'\textbackslash n'}（銜接書第~10~章 10.1 節）。
+\end{apcsnote}
+
+\section{差分：把一整段加值變成兩個點}
+\label{sec:ps-diff}
+
+前綴和處理的是「先給資料，再問一段的總和」。 有一類問題剛好反過來：一開始全
+是 $0$，有很多次「把一整段都加上某個數」，最後才問每一格是多少。
+
+例子：一間旅館接下來 $n$ 晚的訂房，一開始都是 $0$ 間。 有 $m$ 筆團體訂房，
+每筆是「第 $l$ 晚到第 $r$ 晚，每晚 $k$ 間」。 全部登記完之後，要印出每一晚訂
+出了幾間。 暴力解每筆訂房把第 $l$ 到第 $r$ 晚各加 $k$，一筆最多 $n$ 次，總共
+$O(nm)$。
+
+換個角度記錄。 不記「每晚有幾間」，改記「這一晚比前一晚多了幾間」。 一筆「第
+$l$ 到 $r$ 晚各加 $k$」只造成兩個地方的變化：第 $l$ 晚比前一晚多了 $k$，第
+$r + 1$ 晚比前一晚少了 $k$；中間每一晚和前一晚都一起加了 $k$，差距不變。 所以
+開一個陣列 \texttt{diff}，每筆訂房只做兩件事：
+\[
+diff_l \mathrel{+}= k, \qquad diff_{r+1} \mathrel{-}= k .
+\]
+全部登記完，再對 \texttt{diff} 由左往右做一次前綴和，就得到每一晚的房間數。
+這個陣列叫\textbf{差分}陣列。 前綴和是「一路加起來」，差分是「和前一格相
+減」，兩者互相還原。
+
+例如 $n = 6$，三筆訂房依序是（第 $2$～$4$ 晚，$5$ 間）、（第 $1$～$3$ 晚，
+$2$ 間）、（第 $4$～$6$ 晚，$3$ 間）。 每登記一筆之後的 \texttt{diff}，以及最
+後的前綴和：
+
+\begin{center}
+\begin{tabular}{l|ccccccc}
+\toprule
+索引 & 1 & 2 & 3 & 4 & 5 & 6 & 7 \\
+\midrule
+第 $2$～$4$ 晚 $+5$ 之後 & 0 & 5 & 0 & 0 & $-5$ & 0 & 0 \\
+第 $1$～$3$ 晚 $+2$ 之後 & 2 & 5 & 0 & $-2$ & $-5$ & 0 & 0 \\
+第 $4$～$6$ 晚 $+3$ 之後 & 2 & 5 & 0 & 1 & $-5$ & 0 & $-3$ \\
+\midrule
+前綴和：每晚的房間數 & 2 & 7 & 7 & 8 & 3 & 3 & \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+第 $4$ 晚是 $8$ 間：第一筆的 $5$ 間加第三筆的 $3$ 間，第二筆在第 $3$ 晚結束，
+所以第 $4$ 格記了 $-2$。 索引 $7$ 只是用來放「第 $6$ 晚結束」的 $-3$，不印出
+來。
+
+\begin{example}[label=ex:ps-rooms]{cpp}{(rooms.cpp) 用差分登記團體訂房}
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n, m;
+    cin >> n >> m;
+    vector<long long> diff(n + 2, 0);   // 多開一格給 r + 1
+    for (int j = 0; j < m; j++) {
+        int l, r;
+        long long k;
+        cin >> l >> r >> k;
+        diff[l] += k;                   // 從第 l 晚起多 k 間
+        diff[r + 1] -= k;               // 從第 r + 1 晚起恢復
+    }
+    long long cur = 0;
+    for (int i = 1; i <= n; i++) {
+        cur += diff[i];                 // 第 i 晚訂出的房間數
+        cout << cur << (i == n ? '\n' : ' ');
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+6 3 \\
+2 4 5 \\
+1 3 2 \\
+4 6 3 \\
+}{
+2 7 7 8 3 3 \\
+}
+
+每筆訂房 $O(1)$，最後掃一次 $O(n)$，合計 $O(n + m)$。
+
+\begin{itemize}
+\item \texttt{diff} 開 $n + 2$ 格。 $r = n$ 時要寫 \texttt{diff[n + 1]}，只
+開 $n + 1$ 格就寫到陣列外面，這種錯誤不一定當掉，可能悄悄改到別的變數。 用
+\texttt{-fsanitize=address} 編譯（第~1~章 1.5 節）可以抓到。
+\item 還原時一樣用 \texttt{long long}：$m$ 筆、每筆 $k$ 都很大時，中間的總和會
+超過 \texttt{int}。
+\end{itemize}
+
+\textbf{什麼時候用。} 很多次「一段都加上同一個數」，而且所有的加值都做完才問。
+如果加值和詢問交錯（加一次、問一次、再加一次），每次詢問都要重做前綴和，又回到
+$O(n)$ 一次。 另外，時刻或位置到 $10^9$ 時開不了這麼大的陣列，改成把每個「從
+這裡起加 $k$」「從這裡起減 $k$」當成事件排序再掃過去，這是第~7~章的掃描線，
+想法完全一樣。
+
+\section{固定長度的視窗}
+\label{sec:ps-fixed}
+
+很多題目問「連續 $L$ 個」：連續 $L$ 天的雨量、照片拍進的連續 $L$ 格、連續 $L$
+首歌。 長度 $L$ 的連續段共有 $n - L + 1$ 個。 想像一個剛好框住 $L$ 格的窗框，
+從最左邊開始，每次往右滑一格。 滑一格的時候，框裡只變了兩格：最左邊那一格出去，
+右邊新的一格進來，中間的 $L - 2$ 格都沒動。
+
+\begin{center}
+\begin{tikzpicture}[x=1cm, y=1cm]
+\node[left, font=\small] at (-0.55,1.2) {起點 $1$};
+\psrow{1.2}{0}{3,1,3,6,1,6,2,4,2}{cell}
+\draw[very thick, memStroke, rounded corners=2pt] (-0.5,0.7) rectangle (3.1,1.7);
+\node[left, font=\small] at (-0.55,0) {起點 $2$};
+\psrow{0}{0}{3,1,3,6,1,6,2,4,2}{cell}
+\node[hlcell2] at (0,0) {3};
+\node[hlcell] at (3.6,0) {1};
+\draw[very thick, memStroke, rounded corners=2pt] (0.4,-0.5) rectangle (4.0,0.5);
+\node[font=\small, anchor=west] at (8.0,0.05) {粉：出框};
+\node[font=\small, anchor=west] at (8.0,-0.45) {橘：進框};
+\foreach \i in {1,...,9} {\node[idxlbl] at ({(\i-1)*0.9},-0.72) {\i};}
+\end{tikzpicture}
+\diagcaption{長度 $4$ 的窗框從起點 $1$ 滑到起點 $2$：第 $1$ 格出去，第 $5$ 格進來，
+第 $2$ 到 $4$ 格不動。}
+\label{fig:ps-slide}
+\end{center}
+
+所以只要能「一格進、一格出」地更新框裡的狀態，滑完全部 $n - L + 1$ 個位置總
+共只做 $O(n)$ 次更新。 如果每個位置都把框裡的 $L$ 格重新看一遍，是
+$O((n - L + 1) \cdot L)$，$L$ 在 $n / 2$ 附近時大約 $n^2 / 4$。
+
+框裡要記的如果只是總和，用上一節的前綴和也能算。 這一節的工具在需要記更多狀態
+時才顯出用處：框裡每一種東西各有幾個、有幾種東西、有幾種只出現一次。 這些量不
+能用兩個前綴和相減得到，但一格進、一格出時很好更新。 下面的例題就是這樣。
+
+\subsection{例題：取景框裡的獨一款}
+\label{sec:ps-ex-frame}
+
+\textbf{題意}（\akiref{one-of-a-kind-in-the-frame}{取景框裡的獨一款}）
+
+\begin{itemize}
+\item 文具店的展示架有 $n$ 格，第 $i$ 格放的商品款式是 $a_i$（$1 \le a_i \le
+n$），同一款可能放好幾格。
+\item 相機的取景框一次拍進連續 $L$ 格。 一張照片裡恰好出現一次的款式，叫這張
+照片的「獨一款」；出現兩次以上的不算。
+\item 起點 $s$ 可以是 $1$ 到 $n - L + 1$，照片拍到第 $s$ 到第 $s + L - 1$ 格。
+輸出獨一款最多有幾個，以及達到最多時最小的起點。
+\item $1 \le L \le n \le 2 \times 10^5$。
+\end{itemize}
+
+例如 $n = 9$、$L = 4$，款式依序是 $3, 1, 3, 6, 1, 6, 2, 4, 2$（就是圖
+~\ref{fig:ps-slide} 的那一排）。 起點 $5$ 拍到 $1, 6, 2, 4$，四款都只出現一
+次，其他起點都只有兩個獨一款，答案是 \texttt{4 5}。
+
+\textbf{想法}
+
+暴力解：每個起點把框裡的 $L$ 格數一遍，看每一款出現幾次。 一個起點 $O(L)$，
+全部 $O((n - L + 1) \cdot L)$。 $n = 2 \times 10^5$、$L = 10^5$ 時大約
+$10^{10}$ 次，來不及。
+
+改成滑動。 用一個計數陣列 \texttt{cnt}，\texttt{cnt[x]} 是款式 $x$ 在框裡出現
+幾次；另外用一個變數 \texttt{once} 記框裡有幾款恰好出現一次。 每滑一格，有一款
+的 \texttt{cnt} 減一、一款的 \texttt{cnt} 加一。 \texttt{once} 只在某一款的次
+數「跨過 $1$」的時候改變：
+
+\begin{center}
+\begin{tabular}{llc}
+\toprule
+動作 & 次數的變化 & \texttt{once} \\
+\midrule
+進框 & $0 \to 1$：多了一個獨一款 & $+1$ \\
+進框 & $1 \to 2$：原本的獨一款不再是了 & $-1$ \\
+出框 & $1 \to 0$：獨一款離開了 & $-1$ \\
+出框 & $2 \to 1$：剩下的那一個重新變成獨一款 & $+1$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+其他變化（例如 $2 \to 3$、$3 \to 2$）不影響 \texttt{once}。 第四列最容易漏掉，
+本節的常見錯誤會看到漏掉的後果。
+
+款式編號不超過 $n$，所以 \texttt{cnt} 開 $n + 1$ 格就好。 用範例跑一次：
+
+\begin{center}
+\begin{tabular}{cccll c}
+\toprule
+起點 & 出框 & 進框 & 框裡 & 次數變化 & \texttt{once} \\
+\midrule
+1 & & & $3, 1, 3, 6$ & （先放進前 $4$ 格） & 2 \\
+2 & 3 & 1 & $1, 3, 6, 1$ & $3$：$2 \to 1$；$1$：$1 \to 2$ & 2 \\
+3 & 1 & 6 & $3, 6, 1, 6$ & $1$：$2 \to 1$；$6$：$1 \to 2$ & 2 \\
+4 & 3 & 2 & $6, 1, 6, 2$ & $3$：$1 \to 0$；$2$：$0 \to 1$ & 2 \\
+5 & 6 & 4 & $1, 6, 2, 4$ & $6$：$2 \to 1$；$4$：$0 \to 1$ & 4 \\
+6 & 1 & 2 & $6, 2, 4, 2$ & $1$：$1 \to 0$；$2$：$1 \to 2$ & 2 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+起點 $2$ 那一列，\texttt{once} 先加一（款式 $3$ 從兩個剩一個）再減一（款式 $1$
+變成兩個），結果不變。 題目要最小的起點，所以 \texttt{once} \textbf{嚴格大於}
+目前的最大值時才更新。
+
+同樣的模型也出現在別的地方：排班表上連續 $L$ 天，有幾位員工只排到一天；播放清
+單裡連續 $L$ 首歌，有幾位歌手只出現一次。 只要「長度固定」而且「問的是框裡每
+一種東西的次數」，都可以用計數陣列加滑動。
+
+\textbf{程式}
+
+\begin{example}[label=ex:ps-frame]{cpp}{(frame.cpp) 取景框裡的獨一款}
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n, len;
+    cin >> n >> len;
+    vector<int> a(n + 1);
+    for (int i = 1; i <= n; i++) {
+        cin >> a[i];
+    }
+    vector<int> cnt(n + 1, 0);    // cnt[x]：款式 x 在框裡出現幾次
+    int once = 0;                 // 框裡恰好出現一次的款式數
+    auto enter = [&](int x) {     // 款式 x 進框
+        cnt[x]++;
+        if (cnt[x] == 1) {
+            once++;               // 0 -> 1
+        } else if (cnt[x] == 2) {
+            once--;               // 1 -> 2
+        }
+    };
+    auto leave = [&](int x) {     // 款式 x 出框
+        cnt[x]--;
+        if (cnt[x] == 0) {
+            once--;               // 1 -> 0
+        } else if (cnt[x] == 1) {
+            once++;               // 2 -> 1
+        }
+    };
+    for (int i = 1; i <= len; i++) {
+        enter(a[i]);
+    }
+    int best = once, bestStart = 1;
+    for (int s = 2; s + len - 1 <= n; s++) {
+        leave(a[s - 1]);          // 左邊出去一格
+        enter(a[s + len - 1]);    // 右邊進來一格
+        if (once > best) {        // 嚴格變大才更新，留下最小的起點
+            best = once;
+            bestStart = s;
+        }
+    }
+    cout << best << ' ' << bestStart << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+9 4 \\
+3 1 3 6 1 6 2 4 2 \\
+}{
+4 5 \\
+}
+
+\begin{itemize}
+\item \texttt{enter} 和 \texttt{leave} 是 lambda（銜接書第~9~章）。
+\texttt{[\&]} 表示用參考的方式使用外面的變數，所以在裡面改 \texttt{cnt} 和
+\texttt{once}，改的就是 \texttt{main} 裡的那兩個。 寫成 \texttt{[=]} 會複製一
+份，而且複製來的變數不能修改，編譯就會失敗。 沒讀過銜接書的話，把它們想成兩個
+直接改 \texttt{cnt}、\texttt{once} 的小函式即可。
+\item 進框和出框寫成兩個小函式，四種變化集中在一個地方，主迴圈只剩「左邊出去、
+右邊進來、比較」三件事。 第一個框用同一個 \texttt{enter} 放進去，不用另外寫。
+\item 變數取名 \texttt{len} 而不是 \texttt{L}，只是習慣上變數名稱用小寫。
+\item 迴圈條件 \texttt{s + len - 1 <= n} 就是「框的最後一格不超出展示架」，
+等於 $s \le n - L + 1$。 $L = n$ 時迴圈一次都不跑，答案就是第一個框。
+\end{itemize}
+
+\textbf{複雜度}
+
+第一個框 $L$ 次 \texttt{enter}，之後每個起點一次 \texttt{leave}、一次
+\texttt{enter}，合計 $O(n)$。 最大的測資在本書測試的環境下約 $0.02$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{漏掉 $2 \to 1$}：\texttt{leave} 只處理 $1 \to 0$。 款式從兩個剩
+一個時，\texttt{once} 沒有加回來，之後只會越算越少。 範例印出 \texttt{2 1}。
+\item \textbf{用 \texttt{>=} 更新}：相同的最大值會被後面的起點蓋掉。 輸入
+\texttt{4 2} 和 \texttt{1 2 1 2}，三個起點都是 $2$ 個獨一款，應該印出
+\texttt{2 1}，這樣寫印出 \texttt{2 3}。
+\item \textbf{每個起點重算}：每次都把 \texttt{cnt} 清空、重新放進 $L$ 格。 範
+例一下子就跑完，最大的測資要做大約 $10^{10}$ 次，超過時間限制。 範例小，看不出
+這種錯；送出前先用最大的範圍估一次次數（第~1~章）。
+\item \textbf{款式編號很大時直接開計數陣列}：這題保證 $a_i \le n$。 如果款式編
+號到 $10^9$，\texttt{vector<int> cnt(1000000001)} 要大約 $4$~GB 的記憶體，
+遠超過一般的限制，要先離散化，下一節的例題就是這種情況。
+\end{itemize}
+
+\section{雙指標：左端只往右走}
+\label{sec:ps-two}
+
+窗框的長度不一定固定。 很多題目問的是「最長的一段」「最短的一段」「有幾段」，
+長度要自己找。 這一節的工具用兩個位置 $l$、$r$ 夾住一段，兩個都只往右走。
+
+\subsection{最長的一段}
+
+例子：一位外送員一天的訂單依序排好，第 $i$ 張訂單要騎 $d_i$ 公里（都是正數）。
+電動車充一次電能騎 $K$ 公里，他想接連續的幾張訂單，總里程不超過 $K$，最多能
+接幾張？
+
+暴力解枚舉起點 $l$，從 $l$ 往右一直加，超過 $K$ 就停，記下最長的。 最壞的情況
+每個起點都要走到底，$O(n^2)$。
+
+觀察兩件事，都靠「里程都是正數」：
+
+\begin{itemize}
+\item 右端固定在 $r$ 時，左端越靠右，這一段越短、總和越小。 所以合法的左端是
+一段連續的範圍：從某個位置 $l$ 一直到 $r$。 要最長，就取最小的那個 $l$。
+\item 右端從 $r$ 移到 $r + 1$，這個最小的 $l$ 只會往右或不動。 如果第 $l$ 到
+第 $r + 1$ 張合法，把第 $r + 1$ 張拿掉的第 $l$ 到第 $r$ 張總和更小，也合法；
+所以右端在 $r$ 時的最小左端不會在 $l$ 的右邊。 換句話說，右端往右時，左端不必
+回頭。
+\end{itemize}
+
+於是寫成：右端用 \texttt{for} 一格一格往右，每次先把新的一張加進總和；超過
+$K$ 就用 \texttt{while} 把左端往右推，直到總和不超過 $K$。 這時第 $l$ 到第 $r$
+張就是「右端是 $r$ 的最長合法段」。
+
+\begin{example}[label=ex:ps-delivery]{cpp}{(delivery.cpp) 總和不超過 K 的最長一段}
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n;
+    long long k;
+    cin >> n >> k;
+    vector<long long> d(n);
+    for (long long &x : d) {
+        cin >> x;
+    }
+    long long sum = 0;           // 視窗 d[l..r] 的總和
+    int l = 0, best = 0;
+    for (int r = 0; r < n; r++) {
+        sum += d[r];             // 右端往右一格
+        while (sum > k) {        // 超過了：左端往右，直到不超過
+            sum -= d[l];
+            l++;
+        }
+        best = max(best, r - l + 1);
+    }
+    cout << best << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+8 10 \\
+4 2 3 6 1 1 5 2 \\
+}{
+4 \\
+}
+
+這支程式從 $0$ 開始編號，因為只輸出長度，不輸出位置。 下表是每一輪結束時的
+狀態：
+
+\begin{center}
+\begin{tabular}{cccccccc}
+\toprule
+$r$ & \texttt{d[r]} & 加進來後的 \texttt{sum} & 左端推出去的 & $l$ &
+\texttt{sum} & $r - l + 1$ & \texttt{best} \\
+\midrule
+0 & 4 & 4 & & 0 & 4 & 1 & 1 \\
+1 & 2 & 6 & & 0 & 6 & 2 & 2 \\
+2 & 3 & 9 & & 0 & 9 & 3 & 3 \\
+3 & 6 & 15 & $4, 2$ & 2 & 9 & 2 & 3 \\
+4 & 1 & 10 & & 2 & 10 & 3 & 3 \\
+5 & 1 & 11 & $3$ & 3 & 8 & 3 & 3 \\
+6 & 5 & 13 & $6$ & 4 & 7 & 3 & 3 \\
+7 & 2 & 9 & & 4 & 9 & 4 & 4 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+最後一列的段是 $1, 1, 5, 2$，總和 $9$，長度 $4$。
+
+\textbf{為什麼是 $O(n)$。} 這支程式是 \texttt{for} 裡面包一個 \texttt{while}，
+看起來像兩層迴圈。 但 \texttt{while} 每跑一次，$l$ 就加一，而 $l$ 從 $0$ 開
+始、從不減少、最多到 $n$。 所以整支程式裡 \texttt{while} 的內容最多執行 $n$
+次，不是每一輪 $n$ 次。 \texttt{for} 本身 $n$ 輪，合起來 $O(n)$。 這種「不看
+單獨一次最多做多少，而看整個程式總共做多少」的算法叫\textbf{攤銷分析}
+（amortized analysis）。 第~1~章練習裡那個兩個變數都只往前走的迴圈、第~7~章
+區間覆蓋的程式，都是同樣的理由。 判斷這類程式的複雜度時，要問的是「這個變數總
+共能走幾步」。
+
+\textbf{前提是「縮短還是合法」。} 上面的推論只用了一件事：一段合法，從左邊拿掉
+幾個之後仍然合法。 里程有負數時這件事就不成立。 輸入 \texttt{3 0} 和
+\texttt{5 -10 5}，整段的和是 $0$，正確答案是 $3$。 這支程式在 $r = 0$ 時總和
+$5 > 0$，把 $5$ 推出去，之後再也拿不回來，印出 \texttt{2}。 第
+~\ref{sec:ps-limits}~節會再整理。
+
+\subsection{兩端往中間}
+
+雙指標還有另一種形狀：在排好序的陣列上，一個從最左邊往右，一個從最右邊往左。
+
+例子：航空公司規定兩件行李合計不超過 $W$ 公斤，可以算成一件。 有 $n$ 件行李，
+問有幾種「兩件湊成一件」的組合。 第~2~章的做法是排序之後，對每一件行李用
+\texttt{lower\_bound} 找另一件的範圍，$O(n \log n)$。 這裡換一種做法。
+
+排序之後，看最輕的 \texttt{a[i]} 和最重的 \texttt{a[j]}：
+
+\begin{itemize}
+\item 如果 \texttt{a[i] + a[j]} $\le W$，那 \texttt{a[i]} 配 \texttt{a[i + 1]}
+到 \texttt{a[j]} 的任何一件都不超過（它們都不比 \texttt{a[j]} 重），一次數到
+$j - i$ 組。 \texttt{a[i]} 的組合數完了，$i$ 往右。
+\item 如果超過了，\texttt{a[j]} 配目前最輕的都超過，配其他的更超過，以後不用再
+考慮它，$j$ 往左。
+\end{itemize}
+
+每一步 $i$ 和 $j$ 的距離縮短一，最多 $n - 1$ 步。 排序之後只要 $O(n)$。
+
+\begin{example}[label=ex:ps-luggage]{cpp}{(luggage.cpp) 合計不超過 W 的兩件組合}
+#include <algorithm>
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n;
+    long long w;
+    cin >> n >> w;
+    vector<long long> a(n);
+    for (long long &x : a) {
+        cin >> x;
+    }
+    sort(a.begin(), a.end());
+    long long pairs = 0;
+    int i = 0, j = n - 1;
+    while (i < j) {
+        if (a[i] + a[j] <= w) {
+            pairs += j - i;      // a[i] 配 a[i + 1..j] 都可以
+            i++;
+        } else {
+            j--;                 // a[j] 配誰都太重，不再考慮
+        }
+    }
+    cout << pairs << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+6 20 \\
+12 5 9 15 7 11 \\
+}{
+9 \\
+}
+
+排序後是 $5, 7, 9, 11, 12, 15$。 依序是：$5 + 15 \le 20$，數到 $5$ 組，$i$
+右移；$7 + 15 > 20$，$j$ 左移；$7 + 12 \le 20$，數到 $3$ 組；$9 + 12 > 20$，
+$j$ 左移；$9 + 11 \le 20$，數到 $1$ 組；這時 $i = j$，停下。 共 $9$ 組。 組數
+最多是 $n(n - 1)/2$，$n = 2 \times 10^5$ 時大約 $2 \times 10^{10}$，所以
+\texttt{pairs} 用 \texttt{long long}。
+
+兩種雙指標的共同點是：每一步至少有一個指標往它的方向走一格，而且永遠不回頭，
+所以總步數有上限。 差別在於夾住的東西：同方向的兩個指標夾住一段連續的區間；兩
+端往中間的指標，在排好序的資料上配成一對。
+
+\subsection{例題：撤展區段有幾種選法}
+\label{sec:ps-ex-clear}
+
+\textbf{題意}（\akiref{counting-ways-to-clear-the-display}{撤展區段有幾種選法}）
+
+\begin{itemize}
+\item 展示櫃裡有一排 $n$ 件展品，第 $i$ 件屬於類別 $a_i$（$0 \le a_i \le
+10^9$）。
+\item 要撤下連續的一段（第 $l$ 到第 $r$ 件）。 規定是撤完之後，原本出現過的每
+一種類別都還要留下至少 $k$ 件。 題目保證每種類別原本至少有 $k$ 件。
+\item 輸出有幾組 $(l, r)$ 符合規定。
+\item $1 \le k \le n \le 2 \times 10^5$。
+\end{itemize}
+
+例如 $n = 8$、$k = 1$，類別依序是 $500, 30, 500, 30, 30, 7, 500, 7$。 類別
+$500$ 和 $30$ 各有 $3$ 件，最多能撤 $2$ 件；類別 $7$ 有 $2$ 件，最多能撤 $1$
+件。 撤第 $3$ 到第 $6$ 件（$500, 30, 30, 7$）可以；撤第 $2$ 到第 $5$ 件（$30,
+500, 30, 30$）不行，類別 $30$ 會被撤光。 答案是 $24$。
+
+\textbf{想法}
+
+先把條件換個說法。 類別 $c$ 原本有 $tot_c$ 件，撤完要留 $k$ 件，所以撤下的那
+一段裡，類別 $c$ 最多 $tot_c - k$ 件。 把這個數叫 $quota_c$。 問題變成：有幾
+段連續的區間，裡面每一種類別的件數都不超過它的 $quota$。
+
+暴力解枚舉所有 $(l, r)$，共大約 $n^2 / 2$ 段，每段再檢查一次，太慢。 就算右端
+往右時順便更新次數，也還是 $O(n^2)$，$n = 2 \times 10^5$ 時是 $2 \times 10^{10}$。
+
+\textbf{觀察：縮短還是合法。} 一段可以撤，從裡面拿掉幾件之後，每一類的件數只
+會變少，當然還是不超過 $quota$。 這正是上一小節雙指標需要的前提。 所以對每個
+右端 $r$，合法的左端是一段連續的範圍：從某個最小的 $l$ 到 $r$。 右端是 $r$ 的
+合法撤法剛好有 $r - l + 1$ 種，把每個 $r$ 的這個數加起來就是答案。 和外送員的
+程式比，只差在「記住最長的」換成「全部加起來」。
+
+\textbf{判斷合法要什麼。} 視窗裡每一類有幾件，用計數陣列 \texttt{cnt} 記。 類
+別編號到 $10^9$，不能直接當索引，先用第~2~章的離散化換成 $0$ 到 $m - 1$（$m$
+是不同類別的個數），\texttt{cnt} 和 \texttt{quota} 都只要開 $m$ 格。
+
+\textbf{只要檢查剛進來的那一類。} 右端加進 \texttt{a[r]} 之前，視窗是合法的；
+加進來之後只有 \texttt{a[r]} 這一類的件數變了。 所以只要它超過 $quota$，就把左
+端往右推，直到它不超過。 推的過程中拿掉的可能是別的類別，那些類別本來就沒超過，
+拿掉只會更少。
+
+用範例跑一次（從 $0$ 開始編號，$quota$ 是 $500$：$2$、$30$：$2$、$7$：$1$）：
+
+\begin{center}
+\begin{tabular}{ccccc c}
+\toprule
+$r$ & \texttt{a[r]} & 左端推出去的 & $l$ & 這一輪加上 $r - l + 1$ & 累計 \\
+\midrule
+0 & 500 & & 0 & 1 & 1 \\
+1 & 30 & & 0 & 2 & 3 \\
+2 & 500 & & 0 & 3 & 6 \\
+3 & 30 & & 0 & 4 & 10 \\
+4 & 30 & $500, 30$ & 2 & 3 & 13 \\
+5 & 7 & & 2 & 4 & 17 \\
+6 & 500 & & 2 & 5 & 22 \\
+7 & 7 & $500, 30, 30, 7$ & 6 & 2 & 24 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+$r = 4$ 時第三件 $30$ 進來，超過了 $quota$。 左端先推出 $500$，$30$ 還是三件，
+再推出一個 $30$ 才合法。 左端不能跳過不相干的 $500$，因為視窗必須是連續的一段。
+$r = 7$ 時第二件 $7$ 進來，要一路推到上一個 $7$ 的後面。
+
+如果某一類的 $quota$ 是 $0$（剛好只有 $k$ 件），右端碰到它時，左端會一路推到
+$r + 1$，視窗是空的，這一輪加上 $r - (r + 1) + 1 = 0$，正好表示「右端是 $r$
+的撤法一種都沒有」，不用另外處理。
+
+同樣的模型也出現在別的地方：倉庫要清出一段連續的貨架給新品，每一種貨至少要留
+$k$ 箱；一份長長的歌單要剪掉連續的一段，每位歌手至少留下 $k$ 首。
+
+\textbf{程式}
+
+\begin{example}[label=ex:ps-clear]{cpp}{(clear.cpp) 撤展區段有幾種選法}
+#include <algorithm>
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n, k;
+    cin >> n >> k;
+    vector<int> a(n);
+    for (int &x : a) {
+        cin >> x;
+    }
+    // 離散化：類別編號換成 0 到 m - 1
+    vector<int> vals(a);
+    sort(vals.begin(), vals.end());
+    vals.erase(unique(vals.begin(), vals.end()), vals.end());
+    int m = vals.size();
+    for (int &x : a) {
+        x = lower_bound(vals.begin(), vals.end(), x) - vals.begin();
+    }
+    vector<int> quota(m, -k);     // quota[c]：類別 c 最多能撤幾件
+    for (int x : a) {
+        quota[x]++;               // 跑完是 (類別 c 的件數) - k
+    }
+    vector<int> cnt(m, 0);        // 撤展段 a[l..r] 裡各類別的件數
+    long long ways = 0;
+    int l = 0;
+    for (int r = 0; r < n; r++) {
+        cnt[a[r]]++;
+        while (cnt[a[r]] > quota[a[r]]) {   // 撤太多了，左端往右
+            cnt[a[l]]--;
+            l++;
+        }
+        ways += r - l + 1;        // 右端是 r 的合法撤法：左端 l..r
+    }
+    cout << ways << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+8 1 \\
+500 30 500 30 30 7 500 7 \\
+}{
+24 \\
+}
+
+\begin{itemize}
+\item 離散化的三行和第~2~章 2.5 節一樣：複製、排序去重、用
+\texttt{lower\_bound} 查名次。 這裡直接把 \texttt{a} 裡的編號換掉，後面就不再
+需要原本的值。
+\item \texttt{quota} 從 $-k$ 開始，每看到一件就加一，跑完剛好是件數減 $k$。
+\item 左端最多推到 $r + 1$，不會超過：$l = r + 1$ 時視窗是空的，
+\texttt{cnt[a[r]]} 是 $0$，一定不超過 \texttt{quota[a[r]]}（題目保證它不是負
+的），\texttt{while} 會停下。
+\item 答案最多是 $n(n + 1)/2 \approx 2 \times 10^{10}$，\texttt{ways} 用
+\texttt{long long}。
+\end{itemize}
+
+\textbf{複雜度}
+
+離散化的排序 $O(n \log n)$，\texttt{lower\_bound} 共 $n$ 次也是
+$O(n \log n)$。 雙指標的部分，$r$ 走 $n$ 步、$l$ 最多走 $n$ 步，$O(n)$。 合計
+$O(n \log n)$，最大的測資在本書測試的環境下約 $0.03$ 秒。
+
+離散化也可以換成 \texttt{map<int, int>} 當計數器，寫起來比較短，每次存取變成
+$O(\log m)$，整體一樣是 $O(n \log n)$，只是常數大一些。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{\texttt{while} 寫成 \texttt{if}}：左端只推一格，可能還沒合法。
+$r = 4$ 那一輪只推出 $500$，視窗裡仍有三件 $30$，卻被當成合法。 範例印出
+\texttt{31}。
+\item \textbf{少加一}：寫成 \texttt{ways += r - l}，漏掉只撤第 $r$ 件那一種。
+範例印出 \texttt{16}。 數一段 $[l, r]$ 有幾個位置時，用 $l = r$ 的情況檢查：
+應該是 $1$。
+\item \textbf{答案用 \texttt{int}}：輸入 $n = 2 \times 10^5$、$k = 1$，前
+$n - 1$ 件都是類別 $5$、最後一件是類別 $9$，正確答案是 \texttt{19999899999}，
+在本書測試的環境下印出 \texttt{-1474936481}。
+\item \textbf{不離散化直接開陣列}：\texttt{vector<int> cnt(1000000001)} 需要大
+約 $4$~GB 的記憶體。 判斷能不能開計數陣列，看的是值的範圍，不是 $n$。
+\end{itemize}
+
+\begin{apcsnote}
+實作題裡「連續」「一段」「相鄰的幾個」是很重要的字眼。 看到它們，先問自己三個
+問題：問的是一段的總和嗎（前綴和）？ 長度是固定的嗎（固定視窗）？ 一段合法，
+縮短之後還合法嗎（雙指標）？ 三個都不是，再往其他章節的方法想。
+\end{apcsnote}
+
+\section{什麼時候不能用}
+\label{sec:ps-limits}
+
+雙指標和滑動視窗寫起來都很短，容易在不該用的地方硬套。 下面是幾種看起來很像、
+其實要換方法的情況：
+
+\begin{center}
+\begin{tabular}{p{0.27\linewidth}p{0.33\linewidth}p{0.3\linewidth}}
+\toprule
+情況 & 為什麼不行 & 改用 \\
+\midrule
+數字有正有負，問總和不超過 $K$ 的最長一段，或至少 $K$ 的最短一段 &
+從左邊拿掉一個負數，總和反而變大，「縮短還是合法」不成立；外送員的程式會在
+\texttt{5 -10 5} 上答錯 &
+前綴和加上排序或 \texttt{set}，在第 $r$ 個時找符合條件的 $pre_{l-1}$（第~2~章
+的實作練習有這種題目） \\
+\addlinespace
+固定長度的框，問框裡的最大值或最小值 &
+最大值出框之後，下一個最大是誰，光靠一個變數記不住 &
+第~6~章的單調佇列（monotonic queue） \\
+\addlinespace
+值的範圍到 $10^9$，要記每個值出現幾次 &
+計數陣列開不了這麼大 &
+先離散化（第~2~章），或用 \texttt{map} 當計數器 \\
+\addlinespace
+資料在詢問之間會改變 &
+前綴和要整張重算 &
+更進階的資料結構，不在本書第一部的範圍 \\
+\addlinespace
+要挑的是不連續的幾個（子序列、子集合） &
+這幾個工具都只處理連續的一段 &
+第~4~章的枚舉，或第~9~章的動態規劃 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+第一列最常見。 判斷的方法是直接問：「一段合法，拿掉最左邊那一個，還合法嗎？」
+答案取決於題目的數字，例如「總和不超過 $K$」在全是正數時成立，有負數就不成立。
+「有幾種不同的值不超過 $c$」不管數字是多少都成立，因為拿掉一個不會讓種類變多。
+不確定時，寫一個 $O(n^2)$ 的暴力解，在含有邊界值的小輸入上對拍。
+
+\section{本章常見錯誤}
+\label{sec:ps-pitfalls}
+
+前面各節的錯誤歸納成四類。 寫這一章的題目時，交出去之前逐項檢查一次。
+
+\begin{center}
+\begin{tabular}{p{0.2\linewidth}p{0.46\linewidth}p{0.22\linewidth}}
+\toprule
+錯誤 & 例子 & 見 \\
+\midrule
+索引差一 & 前綴和寫成 \texttt{up[tt] - up[s]}；差分陣列只開 $n + 1$ 格；數段
+數寫成 \texttt{r - l} &
+第~\ref{sec:ps-ex-trail}、\ref{sec:ps-diff}、\ref{sec:ps-ex-clear}~節 \\
+漏掉一種狀態變化 & 出框時漏掉 $2 \to 1$；左端用 \texttt{if} 只推一格 &
+第~\ref{sec:ps-ex-frame}、\ref{sec:ps-ex-clear}~節 \\
+前提不成立 & 有負數時用雙指標；只走步數少的方向；最大區間和允許一個都不選 &
+第~\ref{sec:ps-two}、\ref{sec:ps-ex-trail}、\ref{sec:ps-maxsum}~節 \\
+型別與記憶體 & 前綴和、段數用 \texttt{int}；值到 $10^9$ 還開計數陣列 &
+第~\ref{sec:ps-ex-trail}、\ref{sec:ps-ex-clear}~節 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+另外，判斷複雜度時不要看到 \texttt{for} 裡面有 \texttt{while} 就說是
+$O(n^2)$，也不要看到只有一層就說是 $O(n)$。 要問的是每個變數總共走了幾步：只
+往前、不歸零的指標，整支程式加起來最多走 $n$ 步；每一輪都從頭開始的，才是
+$n^2$ 級。
+
+\section{本章練習}
+\label{sec:ch5-exercises}
+
+\begin{drills}[label=drills:ch5]
+\item 手算前綴和與差分。
+\begin{enumerate}
+\item $a_1, \ldots, a_7$ 是 $3, -1, 4, 1, -5, 9, 2$。 寫出 $pre_0$ 到 $pre_7$。
+\item 用 (a) 的表算 $a_3 + a_4 + a_5 + a_6$，寫出用到哪兩格。
+\item 長度 $6$、一開始全是 $0$ 的陣列，依序做「第 $1$～$4$ 格加 $2$」「第
+$3$～$6$ 格加 $5$」「第 $2$～$3$ 格加 $-1$」。 寫出 \texttt{diff[1]} 到
+\texttt{diff[7]}，以及最後的陣列。
+\end{enumerate}
+
+\item 下面兩段程式只差在 \texttt{l} 宣告的位置。 \texttt{a} 是
+\texttt{\{4, 1, 3, 5, 2, 6\}}，$n = 6$。
+\begin{code}{cpp}{練習 2}
+// 版本 A
+int l = 0;
+for (int r = 0; r < n; r++) {
+    while (l < r && a[l] < a[r]) {
+        l++;
+    }
+}
+// 版本 B
+for (int r = 0; r < n; r++) {
+    int l = 0;
+    while (l < r && a[l] < a[r]) {
+        l++;
+    }
+}
+\end{code}
+\begin{enumerate}
+\item 兩個版本的 \texttt{l++} 各執行幾次？
+\item 對任意長度 $n$ 的陣列，兩個版本的 \texttt{l++} 最多各執行幾次？ 什麼樣
+的陣列會讓版本 B 達到最多？
+\end{enumerate}
+
+\item 有人想用雙指標找「總和至少 $K$ 的最短一段」（$K \ge 1$），寫成：
+\begin{code}{cpp}{練習 3}
+int l = 0, best = n + 1;          // n + 1 代表找不到
+long long sum = 0;
+for (int r = 0; r < n; r++) {
+    sum += a[r];
+    while (sum >= k) {
+        best = min(best, r - l + 1);
+        sum -= a[l];
+        l++;
+    }
+}
+\end{code}
+數字都是正數時它是對的。 給一組含有負數、讓它答錯的輸入，並說明錯在哪一步。
+
+\item 把範例~\ref{ex:ps-frame} 改成輸出「框裡每一款都只出現一次」的起點有幾個。
+要改哪幾行？ 對範例的輸入，答案是多少？
+
+\item 對輸入 \texttt{6 1} 和 \texttt{2 2 8 2 8 8}，追蹤範例~\ref{ex:ps-clear}：
+寫出每一輪結束時的 $l$（從 $0$ 開始編號），以及最後印出的答案。
+
+\item 關於範例~\ref{ex:ps-clear} 的正確性：
+\begin{enumerate}
+\item 說明：如果撤下第 $l$ 到第 $r$ 件符合規定，那麼撤下其中任何連續的一小段
+也符合規定。
+\item 由 (a) 說明：右端從 $r$ 變成 $r + 1$ 時，最小的合法左端不會變小。
+\item 為什麼 \texttt{while} 只檢查 \texttt{a[r]} 這一類，不用檢查每一類？
+\end{enumerate}
+
+\item 下面每一個問題，判斷該用本章的哪一個工具（前綴和、差分、固定視窗、雙指
+標），或是本章的工具都不適合。 不用寫程式，說明理由即可。
+\begin{enumerate}
+\item 一條 $n$ 格的走廊，每格有一個灰塵量；$q$ 次詢問第 $l$ 到第 $r$ 格的灰塵
+總量。
+\item 一條公車路線有 $n$ 站，$m$ 筆乘客紀錄（第 $a$ 站上車、第 $b$ 站下車）；
+問哪一段路上車上的人最多。
+\item 每天的氣溫變化（可正可負），找總和最接近 $0$ 的連續幾天。
+\item 每天的氣溫，求所有「連續 $K$ 天」裡最高溫的最小值。
+\item 一串字元，找最長的一段，裡面最多只有兩種字元。
+\end{enumerate}
+\end{drills}
+
+\section{實作練習}
+\label{sec:ch5-practice}
+
+下面是 Aki-Judge 上和本章相關的題目，依小節分組。 難度分四階：暖身是直接套用
+本章的寫法；基本要自己想出每一格放什麼數，或視窗裡要記什麼；實戰的題敘比較長，
+要先把題目轉換成本章的形狀；挑戰會和其他章的技巧合在一起。
+
+\begin{center}
+\begin{tabular}{llc}
+\toprule
+小節 & 題目 & 難度 \\
+\midrule
+前綴和 & \akiref{net-loans-at-the-library-desk}{借還書櫃台的淨借出量} & 暖身 \\
+ & \akiref{mock-exam-rank-lookup}{模擬考成績名次查詢} & 暖身 \\
+ & \akiref{rainfall-on-a-repeating-weather-table}{循環天氣表的累積雨量} & 基本 \\
+ & \akiref{when-the-club-fund-first-runs-dry}{社團經費第一次見底} & 實戰 \\
+ & \akiref{bus-segments-with-a-splittable-fare}{可以平分車資的路段} & 實戰 \\
+ & \akiref{lunch-cart-in-the-hallway}{走廊上的取餐點} & 挑戰 \\
+\midrule
+差分 & \akiref{batch-adjustments-to-hallway-lights}{走廊燈光的批次調整} & 暖身 \\
+ & \akiref{peak-hours-of-the-study-room}{自習室預約的尖峰時段} & 暖身 \\
+ & \akiref{topping-up-the-road}{補到驗收厚度} & 基本 \\
+ & \akiref{segment-traffic-on-a-loop-bike-path}{環狀自行車道的路段車流} & 基本 \\
+ & \akiref{the-last-truckload-of-sand}{最後一車補沙的位置} & 實戰 \\
+ & \akiref{signal-strength-along-the-corridor}{走廊基地台的訊號強度} & 挑戰 \\
+\midrule
+固定長度的視窗 & \akiref{duty-range-around-the-ring-of-stalls}{環狀攤位的值班範圍} & 暖身 \\
+ & \akiref{the-busiest-stretch-of-the-forum}{討論區最熱鬧的時段} & 基本 \\
+ & \akiref{symmetric-display-case}{展示櫃的對稱排列} & 基本 \\
+ & \akiref{most-even-duty-stretch}{最平均的值日考核期} & 實戰 \\
+ & \akiref{square-crop-of-a-pixel-art}{像素畫的正方形裁切} & 挑戰 \\
+\midrule
+兩端往中間 & \akiref{breakfast-combos-within-budget}{預算內的套餐組合數} & 暖身 \\
+ & \akiref{evenly-matched-sparring-partners}{實力相近的練習對手} & 暖身 \\
+ & \akiref{partner-counts-in-the-load-band}{每個箱子的搬運搭檔數} & 基本 \\
+ & \akiref{relay-team-closest-to-the-target}{最接近目標的接力組合} & 基本 \\
+ & \akiref{supply-stations-on-a-ring-track}{環形跑道上的補給站} & 實戰 \\
+ & \akiref{tandem-bikes-for-the-field-trip}{雙人腳踏車配對} & 實戰 \\
+ & \akiref{signed-multiplier-pairs}{有正有負的乘積配對} & 挑戰 \\
+\midrule
+長度可變的視窗 & \akiref{song-request-repeat-budget}{點歌的重播額度} & 暖身 \\
+ & \akiref{starting-points-for-repeat-free-stall-walks}{連逛 L 攤不吃重複的起點數} & 基本 \\
+ & \akiref{two-tour-legs-without-repeats}{兩段不重複的巡迴} & 實戰 \\
+ & \akiref{the-priciest-item-is-free}{最貴的一件免費} & 挑戰 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+本章的三題例題也在 Aki-Judge 上，讀完各節之後可以先自己寫一次再對照。
+
+\section{讀完你應該會}
+\label{sec:ch5-checklist}
+
+\begin{itemize}
+\item 看到「很多筆詢問一段的總和」，能決定每一格放什麼數、建出前綴和，寫出
+$pre_r - pre_{l-1}$，並說出 $pre_0 = 0$ 是為了什麼。
+\item 能把「很多次整段加值、全部做完才查」改寫成差分，知道陣列要多開一格，也知
+道加值和詢問交錯時不能用。
+\item 能寫固定長度的滑動視窗，用計數陣列維護「恰好出現一次」「有幾種」這類狀
+態，並列出進框、出框時每一種會改變答案的次數變化。
+\item 拿到一個「連續一段」的條件，能先問「縮短之後還合法嗎」，成立時寫出右端
+\texttt{for}、左端 \texttt{while} 的雙指標，並用「左端總共只走 $n$ 步」說明它
+是 $O(n)$。
+\item 能舉出負數、框內最大值、值域很大三種情況，說明為什麼不能直接用本章的工
+具，以及該換成什麼。
+\end{itemize}
+
+\textbf{延伸閱讀}（書末會整理完整的參考資料）
+
+\begin{itemize}
+\item Antti Laaksonen，\textit{Competitive Programmer's Handbook}，2.4、8.1、9.1
+節：最大區間和從 $O(n^3)$ 改到 $O(n)$ 的過程、雙指標，以及前綴和推廣到二維。
+\item Thomas H. Cormen 等，\textit{Introduction to Algorithms}，第 4 版，16.1
+節：攤銷分析的嚴謹說法，可以拿來對照本章「左端總共只走 $n$ 步」的論證。
+\item Steven Halim 等，\textit{Competitive Programming 4}，Book 1，3.5.2 節：
+最大區間和的一維與二維版本。
+\end{itemize}
+
+\addcontentsline{toc}{section}{練習解答}
+\section*{練習解答}
+
+\begin{enumerate}
+\item
+\begin{enumerate}
+\item $pre_0$ 到 $pre_7$ 是 $0, 3, 2, 6, 7, 2, 11, 13$。
+\item $pre_6 - pre_2 = 11 - 2 = 9$。 直接加是 $4 + 1 - 5 + 9 = 9$。
+\item 第一次：\texttt{diff[1]} $+2$、\texttt{diff[5]} $-2$；第二次：
+\texttt{diff[3]} $+5$、\texttt{diff[7]} $-5$；第三次：\texttt{diff[2]} $-1$、
+\texttt{diff[4]} $+1$。 結果 \texttt{diff[1]} 到 \texttt{diff[7]} 是
+$2, -1, 5, 1, -2, 0, -5$。 前綴和是 $2, 1, 6, 7, 5, 5$，就是最後的陣列。 可以
+逐格驗算，例如第 $4$ 格被前兩次加到，$2 + 5 = 7$。
+\end{enumerate}
+
+\item
+\begin{enumerate}
+\item 版本 A 是 $5$ 次：$r = 3$（值 $5$）時 $l$ 從 $0$ 走到 $3$，三次；
+$r = 5$（值 $6$）時從 $3$ 走到 $5$，兩次；其他輪的第一次比較就停了。 版本 B
+是 $8$ 次：$r = 3$ 時三次，$r = 5$ 時前面五個都比 $6$ 小，五次，其他輪都是
+$0$ 次。
+\item 版本 A 最多 $n - 1$ 次：$l$ 從 $0$ 開始、只會增加、而且 \texttt{l < r}
+保證 $l$ 不超過 $n - 1$。 版本 B 的 $l$ 每一輪都從 $0$ 重來，第 $r$ 輪最多 $r$
+次，合計最多 $0 + 1 + \cdots + (n - 1) = n(n - 1)/2$ 次；嚴格遞增的陣列（例如
+$1, 2, \ldots, n$）每一輪都走滿。 兩段程式外表都是「\texttt{for} 包
+\texttt{while}」，差別只在 \texttt{l} 會不會歸零。
+\end{enumerate}
+
+\item 輸入 $n = 2$、$K = 6$，數字是 $-5, 6$。 正確答案是 $1$（只取 $6$）。 程
+式在 $r = 0$ 時總和 $-5$；$r = 1$ 時總和 $1$，仍然小於 $6$，\texttt{while} 一
+次都沒跑，最後 \texttt{best} 還是 $n + 1$，回報找不到。 錯在「總和還不夠時，只
+可能是太短，要讓右端繼續走」這個想法：左端的 $-5$ 把總和拉低了，該做的是把它
+丟掉，可是程式只在總和夠大時才移動左端。 有負數時，「延長會變大、縮短會變小」
+都不成立，雙指標的前提就沒了。
+
+\item 把 \texttt{best}、\texttt{bestStart} 換成一個計數器 \texttt{good}，每個
+框（包括第一個）檢查 \texttt{once == len}，成立就加一，最後印出
+\texttt{good}。 框裡每一款都只出現一次，等於獨一款的個數剛好是 $L$。 範例
+的輸入只有起點 $5$ 符合，答案是 $1$。 \texttt{enter}、\texttt{leave} 都不用改。
+
+\item $quota$ 是類別 $2$：$2$、類別 $8$：$2$。 每一輪結束時的 $l$ 依序是
+$0, 0, 0, 1, 1, 3$，加上的數依序是 $1, 2, 3, 3, 4, 3$，印出 \texttt{16}。
+$r = 3$ 時第三個 $2$ 進來，推出第 $0$ 件；$r = 5$ 時第三個 $8$ 進來，推出第
+$1$ 件（$2$）和第 $2$ 件（$8$）。
+
+\item
+\begin{enumerate}
+\item 撤下的一段裡每一類的件數都不超過 $quota$。 撤其中連續的一小段時，每一類
+的件數只會一樣或更少，所以仍然不超過 $quota$，撤完留下的也就更多。
+\item 設右端是 $r + 1$ 時最小的合法左端是 $l'$，也就是第 $l'$ 到 $r + 1$ 件可
+以撤。 由 (a)，它的一小段「第 $l'$ 到 $r$ 件」也可以撤（$l' \le r$ 時），所以右
+端是 $r$ 時最小的合法左端不大於 $l'$。 換句話說，右端往右，最小的左端只會不變
+或變大，程式裡的 $l$ 不必往回走。 $l' = r + 1$ 時（右端是 $r + 1$ 的撤法一種
+都沒有），結論也成立，因為 $l$ 本來就不超過 $r + 1$。
+\item 加進 \texttt{a[r]} 之前，視窗 \texttt{a[l..r-1]} 是合法的（上一輪結束時
+確認過）。 加進來之後只有 \texttt{a[r]} 這一類的件數變了，其他類別都沒有超過；
+推左端時件數只會減少，也不會讓其他類別超過。 所以只要盯著 \texttt{a[r]} 這一
+類就夠了。
+\end{enumerate}
+
+\item
+\begin{enumerate}
+\item 前綴和。 資料不變、詢問很多、問一段的總和。
+\item 差分。 每筆紀錄是「第 $a$ 段到第 $b - 1$ 段的人數加一」，全部登記完再做
+一次前綴和，找最大值。
+\item 本章的雙指標不適合，數字有正有負。 用前綴和：一段的和是 $pre_r -
+pre_{l-1}$，要它最接近 $0$，就是在所有前綴和裡找兩個最接近的值，排序後比相鄰
+的即可。
+\item 固定長度，但問的是框裡的最大值，計數陣列和一個變數都不夠。 用第~6~章的單
+調佇列。
+\item 雙指標加計數陣列。 一段裡最多兩種字元，縮短之後種類不會變多，仍然合法；
+用計數陣列記每種字元的個數，另外記「目前有幾種」。
+\end{enumerate}
+\end{enumerate}

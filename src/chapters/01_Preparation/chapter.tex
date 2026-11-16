@@ -478,6 +478,54 @@ $1 + 2 + \cdots + n$ & $n^2/2$ & $2 \times 10^{10}$ \\
 超過 $2 \times 10^9$ 就用 \texttt{long long}。 超過 $9 \times 10^{18}$ 時連
 \texttt{long long} 都不夠，要換個算法，例如下面的「用除法比大小」。
 
+\subsection{型別的上下限與型別別名}
+
+範圍不用背。 \texttt{<limits>} 裡的 \texttt{numeric\_limits<T>::max()} 和
+\texttt{min()} 給出型別 \texttt{T} 能存的最大值和最小值。 另外，\texttt{long long}
+要一直寫很長，解題程式常在開頭寫 \texttt{using ll = long long;}，之後 \texttt{ll}
+就是 \texttt{long long} 的另一個名字。 這叫\textbf{型別別名}（type alias），和 C 的
+\texttt{typedef long long ll;} 意思完全一樣；\texttt{using} 的寫法是「新名字 =
+舊型別」，從左讀到右，型別比較長時比較好讀。
+
+\begin{example}[label=ex:limits]{cpp}{(limits.cpp) 型別的上下限與「無限大」}
+#include <iostream>
+#include <limits>
+using namespace std;
+
+using ll = long long;                   // 之後寫 ll 就是 long long
+
+int main() {
+    cout << numeric_limits<int>::max() << '\n';
+    cout << numeric_limits<int>::min() << '\n';
+    cout << numeric_limits<ll>::max() << '\n';
+    const ll INF = 1e18;                // 當成「無限大」用
+    cout << INF + INF << '\n';          // 兩個相加還在範圍內
+    return 0;
+}
+\end{example}
+
+\iosample{}{
+2147483647 \\
+-2147483648 \\
+9223372036854775807 \\
+2000000000000000000 \\
+}
+
+求最小值時，常先把答案設成「無限大」，再一個一個比。 直覺上會想用型別的最大值，可是之後只要拿它加任何正數就溢位了。 例如最短
+路徑常寫「目前距離加上一條邊的長度」：
+
+\begin{code}{cpp}{拿型別最大值當無限大（錯誤示範）}
+ll dist = numeric_limits<ll>::max();   // 還沒走到
+ll cand = dist + w;                    // w = 5
+if (cand < dist) { ... }               // 以為找到更短的路
+\end{code}
+
+在本書測試的環境下，\texttt{cand} 變成 \texttt{-9223372036854775804}，比
+\texttt{dist} 小，程式以為找到了一條更短的路。 所以「無限大」通常改用
+\texttt{1e18} 這種常數：它比任何真正的答案都大，兩個相加也還在 \texttt{long long} 的
+範圍內。 \texttt{1e18} 本身是 \texttt{double}，但 $10^{18}$ 能被 \texttt{double} 精確
+表示，存進 \texttt{ll} 不會差。 \texttt{int} 的版本常用 \texttt{1e9}。
+
 \subsection{結果存進 \texttt{long long} 也沒用}
 
 下面這段程式的變數都宣告成 \texttt{long long} 了，可是三行裡有兩行是錯的：
@@ -620,23 +668,21 @@ long long nLogN(long long T) {              // f(n) = n * (n 的二進位位數)
     return best;
 }
 
-long long square(long long T) {             // f(n) = n^2
-    long long n = (long long)sqrt((double)T);   // 先用浮點數估一個大概
-    while (n > 0 && n > T / n) {            // n * n > T：太大，往下修
-        n--;
+// n^k <= T 嗎？（n >= 1）把 T 連除 k 次 n，還剩至少 1 就是
+bool fits(long long n, int k, long long T) {
+    for (int i = 0; i < k; i++) {
+        T /= n;
     }
-    while (n + 1 <= T / (n + 1)) {          // (n+1)^2 <= T：還能再大
-        n++;
-    }
-    return n;
+    return T >= 1;
 }
 
-long long cube(long long T) {               // f(n) = n^3
-    long long n = (long long)cbrt((double)T);
-    while (n > 0 && n > T / n / n) {        // n^3 > T
+long long root(long long T, int k) {        // f(n) = n^k，k = 2 或 3
+    double guess = (k == 2) ? sqrt((double)T) : cbrt((double)T);
+    long long n = (long long)guess;         // 先用浮點數估一個大概
+    while (n > 0 && !fits(n, k, T)) {       // 太大，往下修
         n--;
     }
-    while (n + 1 <= T / (n + 1) / (n + 1)) {    // (n+1)^3 <= T
+    while (fits(n + 1, k, T)) {             // 還能再大，往上修
         n++;
     }
     return n;
@@ -674,10 +720,8 @@ int main() {
             ans = T;
         } else if (t == 2) {
             ans = nLogN(T);
-        } else if (t == 3) {
-            ans = square(T);
-        } else if (t == 4) {
-            ans = cube(T);
+        } else if (t <= 4) {
+            ans = root(T, t - 1);
         } else if (t == 5) {
             ans = power2(T);
         } else {
@@ -707,8 +751,9 @@ int main() {
 }
 
 \begin{itemize}
-\item \texttt{square} 的第一個 \texttt{while} 要先檢查 \texttt{n > 0}，因為除數不能是
-$0$。 第二個 \texttt{while} 的除數是 \texttt{n + 1}，至少是 $1$，不用檢查。
+\item \texttt{fits} 把 $n^k \le T$ 換成「$T$ 連除 $k$ 次 $n$ 之後至少是 $1$」，和上一
+小節的除法是同一個想法。 \texttt{root} 的第一個 \texttt{while} 要先檢查
+\texttt{n > 0}，因為除數不能是 $0$。
 \item \texttt{factorial} 從 $n = 1$ 開始，因為 $0! = 1! = 1 \le T$，答案至少是 $1$。
 \texttt{power2} 從 $n = 0$ 開始：$T = 1$ 時 $2^1 = 2 > 1$，答案是 $0$。
 \item \texttt{nLogN} 裡的 \texttt{1LL << b} 不能寫成 \texttt{1 << b}，$b \ge 31$ 時就
@@ -729,10 +774,9 @@ $10^5$ 個詢問大約 $6 \times 10^6$ 步，最大的測試資料在本書測�
 $f_4$ 用 \texttt{cbrt} 也一樣，同一個 $T$ 印出 \texttt{1000000}，正確是
 \texttt{999999}。 $f_5$ 用 \texttt{log2}，輸入 \texttt{5 576460752303423487} 會印出
 \texttt{59}，正確是 \texttt{58}。 範例的 $T$ 都很小，這三種寫法都會通過範例。
-\item \textbf{修正時直接乘}：把 \texttt{n + 1 <= T / (n + 1) / (n + 1)} 寫成
-\texttt{(n + 1) * (n + 1) * (n + 1) <= T}。 這裡 $n$ 只到 $10^6$ 左右，乘起來還在範圍
-內；但同樣的寫法搬到 $f_2$ 的 \texttt{hi * b} 上，$b = 62$ 時 \texttt{hi} 大約
-$4.6 \times 10^{18}$，乘上 $62$ 就溢位了。 與其每次都去確認會不會溢位，不如一律用
+\item \textbf{比大小時直接乘}：\texttt{fits} 寫成把 $n$ 連乘 $k$ 次再和 $T$ 比。 這裡
+$n$ 只到 $10^9$ 左右，乘起來還在範圍內；但同樣的寫法搬到 $f_2$ 的 \texttt{hi * b} 上，
+$b = 62$ 時 \texttt{hi} 大約 $4.6 \times 10^{18}$，乘上 $62$ 就溢位了。 與其每次都去確認會不會溢位，不如一律用
 除法。
 \item \textbf{位數算少一位}：把 $b(n)$ 當成 $\lfloor \log_2 n \rfloor$，也就是從 $0$
 開始數位數。 範例的第二列會印出 \texttt{4545454}，比正確的 \texttt{4347826} 大。
@@ -847,6 +891,59 @@ mocha muffin scone \\
 面的換行還留在輸入裡；少了這一行，第一次 \texttt{getline} 會讀到那個空的行尾，程式
 印出 \texttt{\#1 0}、\texttt{\#2 2}、\texttt{\#3 1}，整個錯開一行。 這是銜接書第~3~章
 講過的陷阱，在混用 \texttt{>>} 和 \texttt{getline} 的題目裡一定會遇到。
+
+\subsection{控制小數位數與寬度}
+
+題目常要求「四捨五入到小數點後第二位」或「時間寫成 \texttt{09:05}」。 這些用
+\texttt{<iomanip>} 裡的格式設定：\texttt{fixed} 加 \texttt{setprecision(k)} 印出小數
+點後 $k$ 位；\texttt{setw(w)} 讓下一個輸出至少佔 $w$ 格，\texttt{setfill(c)} 決定空出
+來的格子填什麼字元。
+
+\begin{example}[label=ex:price]{cpp}{(price.cpp) 平均金額與補零的時間}
+#include <iomanip>
+#include <iostream>
+using namespace std;
+
+int main() {
+    int n;
+    cin >> n;
+    long long total = 0;
+    for (int i = 0; i < n; i++) {
+        int x;
+        cin >> x;
+        total += x;
+    }
+    double avg = (double)total / n;
+    cout << fixed << setprecision(2) << avg << '\n';   // 小數點後兩位
+    int h, m;
+    cin >> h >> m;
+    cout << setfill('0') << setw(2) << h << ':' << setw(2) << m << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+3 \\
+1000 2050 1235 \\
+9 5 \\
+}{
+1428.33 \\
+09:05 \\
+}
+
+\begin{itemize}
+\item \textbf{少了 \texttt{fixed}}：\texttt{setprecision(2)} 的意思變成「全部只留兩位
+有效數字」，同一個平均值會印成 \texttt{1.4e+03}。
+\item \textbf{設定會一直留著}：\texttt{fixed}、\texttt{setprecision}、\texttt{setfill}
+設了之後對後面所有輸出都有效，之後再印 \texttt{3.0} 會變成 \texttt{3.00}。 只有
+\texttt{setw} 是只管下一個輸出，所以上面的程式寫了兩次。
+\item \textbf{四捨五入不一定照十進位}：\texttt{2.675} 在 \texttt{double} 裡其實比
+$2.675$ 小一點，印到兩位是 \texttt{2.67}；剛好在中間的 \texttt{0.125} 也印成
+\texttt{0.12}。 題目要求精確的四捨五入時，金額先用整數算（以分為單位），最後再轉。
+\end{itemize}
+
+同一套設定也能用在 \texttt{ostringstream} 上：把它當成 \texttt{cout} 來輸出，最後用
+\texttt{.str()} 取出字串，就能先把格式化好的結果存起來，例如拼出一行再一次印出。
 
 \subsection{例題：校慶攤位主題票選}
 \label{sec:ex-vote}
@@ -966,17 +1063,10 @@ int main() {
 \subsection{輸出的格式}
 
 評分系統拿你的輸出和正確答案比對。 有些系統會忽略行尾的空白和最後多出來的空行，有
-些逐字比對；寫程式時照最嚴格的那種準備，就不用去猜。
-
-\begin{itemize}
-\item 數字之間有幾個空白、要不要換行，照題目的輸出格式寫。 \texttt{Case \#1: 5} 這種
-格式，大小寫、冒號後面的空白都要一樣。
-\item 一行印好幾個數字時，常見的錯誤是每個數字後面都接一個空白，最後一個也接。 可以
-在數字「前面」印空白，第一個數字除外。
-\item 題目沒有要求的提示文字（例如「請輸入 n：」）一個字都不要印。
-\item 除錯用的輸出改印到 \texttt{cerr}。 評分系統只看標準輸出，\texttt{cerr} 的內容不
-會被比對；交出去之前還是刪掉比較好，因為印太多也會花時間。
-\end{itemize}
+些逐字比對；照最嚴格的那種準備就不用猜。 數字之間的空白、換行、\texttt{Case \#1: 5}
+這種格式的大小寫和冒號，都照題目寫；一行印好幾個數字時，把空白印在數字「前面」（第
+一個除外），最後就不會多一個空白；題目沒要求的提示文字一個字都不要印；除錯用的輸出改
+印到 \texttt{cerr}，它不會被比對，但交出去前還是刪掉，印太多也花時間。
 
 \section{自己測試：範例之外}
 \label{sec:testing}
@@ -1079,8 +1169,42 @@ int main() {
 1 \\
 }
 
-產生器從命令列讀一個亂數種子，產生一組合法的小輸入。 同一個種子一定產生同一組輸入，
-出錯時才能重現：
+產生器需要亂數。 C++ 用 \texttt{<random>} 裡的 \texttt{mt19937} 產生亂數：建立時給
+一個\textbf{種子}（seed），之後每次呼叫 \texttt{rng()} 得到一個 $0$ 到 $2^{32} - 1$ 的
+整數；再交給 \texttt{uniform\_int\_distribution<int>(lo, hi)}，就變成 \texttt{lo} 到
+\texttt{hi} 之間平均分布的整數。 同一個種子一定得到同一串亂數：
+
+\begin{example}[label=ex:rng]{cpp}{(rng\_demo.cpp) 固定種子的亂數}
+#include <iostream>
+#include <random>
+using namespace std;
+
+int main() {
+    mt19937 rng(2026);                      // 種子固定，每次執行都一樣
+    cout << rng() << ' ' << rng() << ' ' << rng() << '\n';  // 0 到 2^32 - 1
+    uniform_int_distribution<int> die(1, 6);    // 1 到 6 平均分布
+    for (int i = 0; i < 10; i++) {
+        cout << (i > 0 ? " " : "") << die(rng);
+    }
+    cout << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{}{
+942082305 3292560774 1773871898 \\
+6 6 6 1 5 3 1 6 4 2 \\
+}
+
+第一行在任何編譯器上都一樣，因為 C++ 標準把 \texttt{mt19937} 的演算法規定死了；第二
+行經過 \texttt{uniform\_int\_distribution}，標準沒有規定換算的細節，換一套標準函式庫
+可能不同，但同一個環境裡一定重現得出來。 C 的 \texttt{rand()} 不適合用在這裡：它的
+最大值 \texttt{RAND\_MAX} 在有些環境下只有 $32767$；\texttt{rand() \% k} 在 $k$ 不整除
+範圍時，小的數字出現得比較多；種子還要另外用 \texttt{srand} 設，整支程式共用一個狀
+態。
+
+主題票選的產生器從命令列讀種子，產生一組合法的小輸入。 種子不同，輸入就不同；出錯時
+用同一個種子就能重現：
 
 \begin{example}[label=ex:vote-gen]{cpp}{(vote\_gen.cpp) 主題票選的隨機輸入產生器}
 #include <iostream>
@@ -1116,10 +1240,6 @@ int main(int argc, char *argv[]) {
 \item \texttt{main} 的兩個參數是命令列引數：\texttt{argc} 是個數，\texttt{argv[1]} 是
 程式名稱後面的第一個字串。 執行 \texttt{./vote\_gen 7} 時，\texttt{argv[1]} 是
 \texttt{"7"}，用 \texttt{stoul} 轉成整數當種子。
-\item \texttt{mt19937} 是 \texttt{<random>} 裡的亂數產生器，
-\texttt{uniform\_int\_distribution<int>(lo, hi)} 把它的輸出變成 \texttt{lo} 到
-\texttt{hi} 之間平均分布的整數。 不要用 \texttt{rand() \% k}，它在有些環境下範圍很小，
-而且種子要另外用 \texttt{srand} 設。
 \item 範圍故意設得很小：最多三組、每組最多五張票、四個主題。 小輸入出錯時容易手算，
 而且同票、沒有票、\texttt{n = 0} 這些情況會經常出現。
 \end{itemize}
@@ -1202,11 +1322,8 @@ g++ -std=c++17 -O2 -Wall -Wextra -fsanitize=address,undefined vote.cpp -o vote
 \texttt{-Wall -Wextra} 讓編譯器對可疑的寫法提出警告，例如比較有號和無號的整數、變數
 沒有初始化就使用。 \texttt{-fsanitize=address,undefined} 會在執行時檢查陣列越界和有
 號整數溢位，出事時印出是哪一行（銜接書第~10~章 10.1 節有示範）。 第~\ref{sec:overflow}~
-節的溢位程式這樣編譯後執行，會先印出類似下面的訊息（前面還有檔名和行號），指出
-\texttt{w * h} 溢位了：
-\begin{code}{text}{-fsanitize=undefined 抓到的溢位}
-runtime error: signed integer overflow: 100000 * 100000 cannot be represented in type 'int'
-\end{code}
+節的溢位程式這樣編譯後執行，會印出 \texttt{runtime error: signed integer overflow:
+100000 * 100000 cannot be represented in type 'int'} 這樣的訊息，前面還有檔名和行號。
 加了這些選項，程式會慢好幾倍，所以只在測試時用；量時間時拿掉。
 
 量時間用 \texttt{time} 指令，例如 \texttt{time ./vote < big.in > /dev/null}，看
@@ -1247,7 +1364,7 @@ runtime error: signed integer overflow: 100000 * 100000 cannot be represented in
 \label{sec:ch1-exercises}
 
 \begin{drills}[label=drills:ch1]
-\item 下面三段程式，$n = 10$ 時 \texttt{cnt++} 各執行幾次？ 一般的 $n$ 時，複雜度是多少？
+\item 下面兩段程式，$n = 10$ 時 \texttt{cnt++} 各執行幾次？ 一般的 $n$ 時，複雜度是多少？
 \begin{code}{cpp}{練習 1}
 // (a)
 for (int i = 1; i <= n; i++)
@@ -1257,18 +1374,7 @@ for (int i = 1; i <= n; i++)
 for (int i = n; i >= 1; i /= 2)
     for (int j = 1; j <= n; j++)
         cnt++;
-// (c) a 已經由小到大排好
-int i = 0, j = 0;
-while (i < n) {
-    if (j < n && a[j] - a[i] <= k) {
-        j++;
-    } else {
-        i++;
-    }
-    cnt++;
-}
 \end{code}
-(c) 的次數會隨 \texttt{a} 和 \texttt{k} 而變，回答最少和最多各是幾次。
 
 \item 程式甲處理 $n$ 筆資料要 $2n^2$ 步，程式乙要 $200n + 5000$ 步。
 \begin{enumerate}
@@ -1296,10 +1402,6 @@ for (int i = 0; i < n; i++) {
 int avg = sum / n;                     // (3)
 long long total = n * (n + 1) / 2;     // (4)
 \end{code}
-
-\item 一支程式要讀 $10^6$ 個整數，每讀一個就印一行。 加速的兩行它只寫了
-\texttt{cin.tie(nullptr);}，輸出用的是 \texttt{endl}。 在本書測試的環境下它要
-$0.4$ 秒左右。 要改哪些地方？ 各自是什麼原因讓它慢？
 
 \item 為第~\ref{sec:ex-loop-count}~小節的例題設計五筆手造的輸入，每一筆寫出它要檢查的
 是哪一種錯誤，以及正確的輸出。
@@ -1408,12 +1510,7 @@ $\lfloor n / i \rfloor$ 次，$n = 10$ 時是 $10 + 5 + 3 + 2 + 2 + 1 + 1 + 1 + 
 \lfloor n/n \rfloor$，大約是 $n$ 乘上 $1 + 1/2 + \cdots + 1/n$，而這個和大約是
 $\ln n$，所以是 $O(n \log n)$。
 \item $40$ 次。 外層 \texttt{i} 是 $10, 5, 2, 1$，共 $4$ 輪，每輪內層 $10$ 次。 一般
-的 $n$ 是 $n \times (\lfloor \log_2 n \rfloor + 1)$，$O(n \log n)$。 和
-\ref{sec:ex-loop-count}~小節的片段 1 對照：這裡的內層每次都從 $1$ 跑到 $n$，不會變短。
-\item 最少 $n$ 次，最多 $2n$ 次。 每一次迴圈不是 \texttt{j++} 就是 \texttt{i++}。
-\texttt{i} 從 $0$ 加到 $n$ 才停，一共加 $n$ 次；\texttt{j} 不超過 $n$，最多加 $n$ 次。
-所以總次數在 $n$ 和 $2n$ 之間，是 $O(n)$。 雖然只有一個 \texttt{while}，看起來也不像
-兩層，但這種「兩個變數都只往前走」的寫法是第~5~章雙指標的基礎。
+的 $n$ 是 $n \times (\lfloor \log_2 n \rfloor + 1)$，$O(n \log n)$。
 \end{enumerate}
 
 \item
@@ -1438,20 +1535,12 @@ $1000 \times \sum n_i = 1000 \times 10^5 = 10^8$。 總和的限制讓「很多�
 
 \item 第 (2) 行和第 (4) 行。
 \begin{itemize}
-\item (1) 沒問題：\texttt{sum} 是 \texttt{long long}，\texttt{a[i]} 會先轉成
-\texttt{long long} 再加，總和最多 $10^{11}$。
 \item (2) \texttt{a[i] * a[i]} 用 \texttt{int} 乘，最大 $10^{12}$，溢位。 改成
 \texttt{(long long)a[i] * a[i]}。 加起來最多 $10^{17}$，\texttt{sq} 存得下。
-\item (3) 沒問題：平均值不超過 $10^6$，存進 \texttt{int} 不會溢位。
+\item (1) 和 (3) 沒問題：\texttt{sum} 是 \texttt{long long}，最多 $10^{11}$；平均值不超過 $10^6$。
 \item (4) \texttt{n * (n + 1)} 用 \texttt{int} 乘，$n = 10^5$ 時大約 $10^{10}$，溢位。
 改成 \texttt{(long long)n * (n + 1) / 2}。
 \end{itemize}
-
-\item 三個地方。 加上 \texttt{ios::sync\_with\_stdio(false);}：\texttt{cin}／\texttt{cout}
-不用再和 C 的輸入輸出保持同步，讀寫都變快；\texttt{endl} 換成
-\texttt{'\textbackslash n'}：\texttt{endl} 每一行都把緩衝區送出去一次，$10^6$ 行就送
-$10^6$ 次；\texttt{cin.tie(nullptr)} 已經有了，保留。 第~\ref{sec:io}~節的表裡，三件事都
-做到之後是 $0.10$ 秒。
 
 \item 一種答法（輸入的第一行 $q$ 省略）：
 \begin{itemize}
@@ -1460,9 +1549,8 @@ $+1$ 會印 $1$。
 \item \texttt{1 1}：片段 1 只有一格，答案 $1$。
 \item \texttt{2 7} 和 \texttt{2 8}：$n$ 剛好在 $2$ 的次方前後，答案 $7$ 和 $15$，檢查
 迴圈條件的 $\le$。
-\item \texttt{1 1000000000000000000}：最大的 $n$，檢查時間和溢位。 答案是
-$\sum_k \lfloor 10^{18} / 2^k \rfloor = 1999999999999999976$，可以先用暴力解的想法在小
-的 $n$ 上確認公式，再相信這個大數。
+\item 片段 1 取最大的 $n$（\texttt{1} 後面接 $10^{18}$）：檢查時間和溢位，答案是
+\texttt{1999999999999999976}。
 \item \texttt{2 576460752303423487}：$n = 2^{59} - 1$，檢查有沒有用浮點數算輪數，答案
 是 $576460752303423487$。
 \end{itemize}

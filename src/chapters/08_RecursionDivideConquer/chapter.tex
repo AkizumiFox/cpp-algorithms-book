@@ -1,4 +1,1444 @@
-% 佔位：本章尚未開始。book.tex 裡先註解掉。
 \chapter{遞迴與分治}
+\label{ch:recursion}
 
-本章尚未開始。
+整理電腦時，你想知道「專題」這個資料夾一共佔了多少空間。 打開來，裡面有幾個
+檔案，也有幾個子資料夾；子資料夾裡又有檔案和更深的資料夾，一層套一層，不知道
+有幾層。 往下讀之前，先想一想：如果你可以請朋友幫忙，每人負責一個子資料夾，
+你要他們回報什麼，你自己又要做什麼？
+
+一個自然的分工是：每位朋友回報「我那個資料夾的總大小」，你把這幾個數字加上
+你這一層的檔案大小，就是答案。 朋友遇到更深的資料夾時，也用同樣的方式找人幫
+忙。 每個人做的事情都一樣，只是負責的資料夾越來越小，到了沒有子資料夾的那一
+層，直接把檔案大小加起來就好。 寫成程式，「找人幫忙」就是函式呼叫自己，這叫
+\textbf{遞迴}（recursion）。
+
+這一章分兩部分。 前半講怎麼照一個遞迴的定義寫程式：怎麼確定終止條件、怎麼
+用遞迴讀進一層套一層的輸入、怎麼數一個遞迴函式到底被呼叫幾次，以及呼叫次數
+太多時怎麼用記憶化省下來。 後半講\textbf{分治}（divide and conquer）：自己
+把問題切成兩半，兩半各自用遞迴解決，再把兩個答案合併起來。 重點放在合併這一
+步，用合併排序、在合併時數逆序對、快速冪三個例子練習。 最後一節整理遞迴可以
+有多深。
+
+第~4~章的回溯也是用遞迴寫的：每一層做一個選擇，填不下去就退回上一層。 回溯
+的寫法和剪枝這一章不再重講，需要時請翻回第~4~章。
+
+用到的語法在《C++ 程式設計：給學過 C 的人》（以下簡稱銜接書）都講過：遞迴和
+終止條件在第~10~章 10.2 節，\texttt{map} 在第~8~章，\texttt{struct} 在第~5~
+章，從資料範圍估計時間在第~10~章 10.1 節。 沒讀過銜接書的讀者，只要會寫呼叫
+自己的函式、會用 \texttt{vector} 和 \texttt{map}，就能讀這一章。
+
+\section{相信小一號的問題}
+\label{sec:rec-basics}
+
+寫遞迴函式時，最容易卡住的地方是想把整個執行過程在腦中跑一遍：呼叫自己，自
+己又呼叫自己，一路追下去很快就亂了。 比較好的做法是只回答三個問題。
+
+\begin{enumerate}
+\item \textbf{這個函式的意思是什麼？} 用一句話寫出它收到什麼參數、做什麼事
+或回傳什麼值。 這句話最好寫成程式裡的註解。
+\item \textbf{最小的情況怎麼直接回答？} 不用再呼叫自己就能回答的情況，叫\textbf{終止條件}（base case）。
+\item \textbf{其他情況，怎麼用小一號的答案拼出來？} 這時直接相信第 1 題的那
+句話對小一號的參數成立，不去追它裡面怎麼算。 另外要確認參數真的一步一步往終
+止條件靠近，不會原地打轉。
+\end{enumerate}
+
+第 3 題的「直接相信」是有根據的，它和數學歸納法是同一件事。 歸納法說：最小的
+情況對，而且「比 $n$ 小的都對」可以推出「$n$ 也對」，那麼所有的 $n$ 都對。 遞
+迴函式也一樣：終止條件寫對，而且每一層在小一號都對的前提下算對，整個函式就是
+對的。
+
+\subsection{例子：印出二進位}
+
+把一個正整數 $n$ 寫成二進位，最後一位是 $n \bmod 2$，前面的位數剛好是
+$\lfloor n/2 \rfloor$ 的二進位。 例如 $13$ 的二進位是 \texttt{1101}：最後一
+位是 $13 \bmod 2 = 1$，前面的 \texttt{110} 是 $6$ 的二進位。 照三個問題寫：
+
+\begin{example}[label=ex:rec-binary]{cpp}{(binary.cpp) 用遞迴印出二進位}
+#include <iostream>
+using namespace std;
+
+// 印出 n 的二進位寫法（n >= 0）
+void printBinary(long long n) {
+    if (n < 2) {                 // 只剩一位：直接印
+        cout << n;
+        return;
+    }
+    printBinary(n / 2);          // 先印前面的位數
+    cout << n % 2;               // 再印最後一位
+}
+
+int main() {
+    long long n;
+    while (cin >> n) {
+        printBinary(n);
+        cout << '\n';
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+13 \\
+6 \\
+1 \\
+}{
+1101 \\
+110 \\
+1 \\
+}
+
+函式在呼叫自己\textbf{之前}做的事，會依呼叫的順序發生；在呼叫自己\textbf{之
+後}做的事，要等裡面那一層整個做完才輪到，所以順序會反過來。 \texttt{printBinary(13)}
+的過程如下表，往下一列是往裡面呼叫一層：
+
+\begin{center}
+\begin{tabular}{cccc}
+\toprule
+呼叫 & 參數 $n$ & 往下呼叫 & 下一層回來之後印 \\
+\midrule
+第 1 層 & 13 & \texttt{printBinary(6)} & \texttt{1} \\
+第 2 層 & 6 & \texttt{printBinary(3)} & \texttt{0} \\
+第 3 層 & 3 & \texttt{printBinary(1)} & \texttt{1} \\
+第 4 層 & 1 & （終止條件，直接印 \texttt{1}） & --- \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+印出來的順序是第 4 層、第 3 層、第 2 層、第 1 層，由下往上讀最後一欄，得到
+\texttt{1101}。 如果把函式裡最後兩行對調，先印 \texttt{n \% 2} 再呼叫，印的順
+序就變成由上往下，$13$ 會印出 \texttt{1011}，剛好反過來。 追蹤遞迴的輸出時，
+先分清楚每一行是在呼叫之前還是之後。
+
+終止條件寫 \texttt{n < 2}，同時處理了 $0$ 和 $1$ 兩種情況，輸入 $0$ 時印出
+\texttt{0}。 參數每一層除以 $2$，一定會降到 $2$ 以下，不會原地打轉。
+
+\subsection{呼叫樹}
+
+函式裡呼叫自己不只一次時，執行的過程就分岔了。 把每一次呼叫畫成一個點，誰呼
+叫誰就連一條線，會得到一棵樹，叫\textbf{呼叫樹}（call tree）。 第~4~章畫過的
+子集合遞迴樹就是一種呼叫樹。 例如下面這個函式：
+
+\begin{code}{cpp}{一個呼叫自己兩次的函式}
+void show(int n) {
+    if (n <= 0) {
+        return;
+    }
+    show(n - 2);
+    cout << n << ' ';
+    show(n - 1);
+}
+\end{code}
+
+\texttt{show(3)} 的呼叫樹如下。 每個點先走左邊的子樹，回來印自己的 $n$，再走
+右邊的子樹，所以印出的順序是由左到右讀樹上的數字（$\le 0$ 的點不印）：
+
+\begin{center}
+\begin{tikzpicture}[
+    every node/.style={draw=black!55, circle, minimum size=7mm, inner sep=0pt, font=\small},
+    level 1/.style={sibling distance=4cm, level distance=1.2cm},
+    level 2/.style={sibling distance=2cm, level distance=1.2cm},
+    level 3/.style={sibling distance=1cm, level distance=1.2cm},
+    pr/.style={draw=memStroke, thick, fill=memFill},
+    edge from parent/.style={draw=black!50},
+]
+\node[pr] {3}
+  child { node[pr] {1}
+    child { node {$-1$} }
+    child { node {0} } }
+  child { node[pr] {2}
+    child { node {0} }
+    child { node[pr] {1}
+      child { node {$-1$} }
+      child { node {0} } } };
+\end{tikzpicture}
+\diagcaption{\texttt{show(3)} 的呼叫樹。 橘色的點會印出自己的 $n$，由左到右讀
+是 \texttt{1 3 2 1}；整棵樹有 $9$ 個點，就是呼叫了 $9$ 次。}
+\label{fig:rec-show-tree}
+\end{center}
+
+觀念題常常同時問「印出什麼」和「呼叫了幾次」。 前者由左到右讀呼叫樹，後者數
+樹上有幾個點，終止條件那些點也要算。 兩個問題分開列，不要混在一起追。
+
+\begin{apcsnote}
+APCS 的觀念題是選擇題，常見的一種是給一段遞迴程式，問輸出、回傳值或某一行執
+行了幾次。 參數小的時候，直接在紙上畫呼叫樹；參數大一點時，從最小的參數開始
+往上列表，例如先算 $n = 0, 1, 2$ 各呼叫幾次，再用它們算 $n = 3$。 第~\ref{sec:ch8-exercises}~節
+練習的第 1、2 題就是這種題目。
+\end{apcsnote}
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{終止條件漏掉一種情況}：\texttt{printBinary} 的終止條件寫成
+\texttt{if (n == 1)}。 輸入 $1$ 到 $13$ 都看不出問題，輸入 \texttt{0} 時，
+$0 / 2$ 還是 $0$，函式一直呼叫自己，在本書測試的環境下程式
+\texttt{Segmentation fault} 當掉。 寫完終止條件，把參數可能的最小值逐一代進去
+檢查一次。
+\item \textbf{參數沒有變小}：例如把 \texttt{n / 2} 寫成 \texttt{(n + 1) / 2}，
+$n = 2$ 時下一層是 $1$ 還好，但如果終止條件是 \texttt{n == 0}，$n = 1$ 時
+\texttt{(1 + 1) / 2} 還是 $1$，同樣停不下來。 每一層的參數都要確實往終止條件
+前進。
+\end{itemize}
+
+\section{照著輸入的寫法遞迴}
+\label{sec:rec-parse}
+
+有些輸入本身就是一層套一層的。 章首的資料夾可以這樣描述：「一個項目是一個檔
+案，或是一個資料夾；一個資料夾裡面有幾個項目。」 這種描述用到了自己（項目的
+定義裡有資料夾，資料夾的定義裡又有項目），叫\textbf{遞迴定義}（recursive
+definition）。
+
+如果輸入的寫法是先寫「這是一個資料夾，裡面有 $k$ 個項目」，再依序寫出那 $k$
+個項目，讀的人每讀到一個開頭，就知道接下來要讀什麼。 這種把開頭放在前面的寫
+法叫\textbf{前序}（prefix）。 讀前序的輸入，程式的形狀可以照抄定義：定義裡有
+幾種東西，就寫幾個讀它們的函式；定義說「裡面有幾個項目」，函式就呼叫「讀一個
+項目」那麼多次。
+
+\subsection{例題：巢狀活動計畫的送審件數}
+\label{sec:rec-ex-plans}
+
+\textbf{題意}（\akiref{nested-plans-needing-review}{巢狀活動計畫的送審件數}）
+
+\begin{itemize}
+\item 社團的年度計畫書一層套一層：一個計畫底下有幾個項目，每個項目是一筆支出，
+或是另一個子計畫。
+\item 寫法是一行 token：支出寫成一個正整數 $v$；計畫寫成 \texttt{P c k}，後面
+緊接著它的 $k$ 個項目。 $c$ 是這個計畫自己的行政費，$k$ 可以是 $0$。
+\item 計畫的總經費是行政費加上所有項目的金額，子計畫的金額是它的總經費。
+\item 總經費\textbf{超過} $W$ 的計畫都要送審，不論在第幾層。 輸出最外層計畫
+的總經費，以及要送審的計畫個數。
+\item token 最多 $2 \times 10^5$ 個，計畫最多套 $1000$ 層，$W \le 10^{12}$，
+$c \le 1000$，$v \le 10^6$。
+\end{itemize}
+
+例如 $W = 9$，計畫書是 \texttt{P 2 3 4 P 1 2 3 5 P 1 0}。 最外層的行政費是
+$2$，有三個項目：支出 $4$、子計畫 \texttt{P 1 2 3 5}（行政費 $1$ 加上 $3$ 和
+$5$，共 $9$）、子計畫 \texttt{P 1 0}（沒有項目，只有行政費 $1$）。 最外層的總
+經費是 $2 + 4 + 9 + 1 = 16$，超過 $9$，要送審；總經費剛好 $9$ 的那個不用。
+答案是 \texttt{16 1}。
+
+\begin{center}
+\begin{tikzpicture}[
+    level distance=1.45cm,
+    level 1/.style={sibling distance=3.2cm},
+    level 2/.style={sibling distance=1.5cm},
+    plan/.style={draw=coreStroke, thick, fill=coreFill, rounded corners=2pt, font=\small, align=center, inner sep=3pt},
+    over/.style={draw=optStroke, thick, fill=optFill, rounded corners=2pt, font=\small, align=center, inner sep=3pt},
+    spend/.style={draw=black!55, font=\small\ttfamily, minimum size=6mm, inner sep=2pt},
+    edge from parent/.style={draw=black!50},
+]
+\node[over] {計畫，行政費 2\\總經費 16}
+  child { node[spend] {4} }
+  child { node[plan] {計畫，行政費 1\\總經費 9}
+    child { node[spend] {3} }
+    child { node[spend] {5} } }
+  child { node[plan] {計畫，行政費 1\\總經費 1} };
+\end{tikzpicture}
+\diagcaption{範例計畫書的結構。 方框是計畫，小格是支出；粉紅色的計畫超過 $W = 9$，要送審。}
+\label{fig:rec-plan-tree}
+\end{center}
+
+\textbf{想法}
+
+先注意一件事：最外層的總經費不用遞迴也算得出來，把所有行政費和支出加起來就
+是。 送審件數就不行了，它要知道\textbf{每一個}計畫各自的總經費，而一個計畫的
+總經費要等它底下的項目全部讀完才知道。
+
+照三個問題來寫。 函式 \texttt{readItem()} 的意思是：「從輸入讀進一個完整的項
+目，回傳它的金額；如果它是計畫，順便把它和它底下所有要送審的計畫數進
+\texttt{reviewCount}」。
+
+\begin{itemize}
+\item 終止條件：讀到的 token 不是 \texttt{P}，就是一筆支出，回傳這個數字。
+\item 其他情況：讀到 \texttt{P}，再讀 $c$ 和 $k$，然後呼叫自己 $k$ 次，每次讀
+進一個項目、拿到它的金額，全部加到 $c$ 上。 相信每一次 \texttt{readItem()} 都
+剛好讀完一個項目，不多也不少，所以 $k$ 次之後，這個計畫也剛好讀完了。 這時
+總經費已經知道，判斷要不要送審，再回傳。
+\end{itemize}
+
+每次呼叫至少讀掉一個 token，token 有限，遞迴一定會停。
+
+用範例追蹤一次。 「層」是目前有幾個 \texttt{readItem()} 還沒結束：
+
+\begin{center}
+\small
+\begin{tabular}{clcl}
+\toprule
+步驟 & 讀到 & 層 & 發生的事 \\
+\midrule
+1 & \texttt{P 2 3} & 1 & 最外層計畫開始，\texttt{total} $= 2$ \\
+2 & \texttt{4} & 2 & 支出，回傳 $4$；最外層 \texttt{total} $= 6$ \\
+3 & \texttt{P 1 2} & 2 & 子計畫開始，\texttt{total} $= 1$ \\
+4 & \texttt{3}、\texttt{5} & 3 & 兩筆支出；子計畫 \texttt{total} $= 9$ \\
+5 & （讀完 $2$ 項） & 2 & $9$ 沒有超過 $9$，回傳 $9$；最外層 \texttt{total} $= 15$ \\
+6 & \texttt{P 1 0} & 2 & $k = 0$，不讀項目；$1$ 不超過 $9$，回傳 $1$；最外層 \texttt{total} $= 16$ \\
+7 & （讀完 $3$ 項） & 1 & $16 > 9$，\texttt{reviewCount} $= 1$，回傳 $16$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+同樣的模型也出現在別的地方：電腦裡資料夾的總大小、公司各部門連同底下單位的
+預算、網頁上一層套一層的選單，都是「一個東西由幾個同樣形狀的小東西組成」。
+
+\textbf{程式}
+
+\begin{example}[label=ex:rec-plans]{cpp}{(plan.cpp) 巢狀活動計畫的送審件數}
+#include <iostream>
+#include <string>
+using namespace std;
+
+long long limitW;          // 總經費超過它就要送審
+int reviewCount = 0;       // 要送審的計畫個數
+
+// 從輸入讀一個項目（一筆支出或一整個計畫），回傳它的金額
+long long readItem() {
+    string tok;
+    cin >> tok;
+    if (tok != "P") {                 // 一筆支出
+        return stoll(tok);
+    }
+    long long fee;
+    int k;
+    cin >> fee >> k;
+    long long total = fee;            // 先算行政費
+    for (int i = 0; i < k; i++) {
+        total += readItem();          // 每個項目可能又是一個計畫
+    }
+    if (total > limitW) {
+        reviewCount++;
+    }
+    return total;
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    cin >> limitW;
+    long long total = readItem();
+    cout << total << ' ' << reviewCount << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+9 \\
+P 2 3 4 P 1 2 3 5 P 1 0 \\
+}{
+16 1 \\
+}
+
+\begin{itemize}
+\item 每個 token 先讀成 \texttt{string}，因為事先不知道它是 \texttt{P} 還是數
+字。 確定是數字之後，用 \texttt{stoll} 轉成 \texttt{long long}（銜接書第~3~
+章的數字轉換）。 讀 \texttt{fee} 和 \texttt{k} 時已經知道它們是數字，直接用
+\texttt{cin >>} 讀成整數。
+\item \texttt{readItem()} 沒有參數，它的「參數」是輸入目前讀到哪裡。 每次呼
+叫都從上一次停下來的地方往下讀，所以呼叫的順序必須和項目寫出來的順序一樣，
+迴圈裡依序呼叫 $k$ 次剛好符合。
+\item 送審的判斷寫在迴圈\textbf{之後}。 寫在迴圈之前時，\texttt{total} 只有
+行政費，還沒加上任何項目。
+\item 金額最大大約是 $2 \times 10^5 \times 10^6 = 2 \times 10^{11}$，超過
+\texttt{int}，\texttt{total} 和回傳值都要用 \texttt{long long}。
+\end{itemize}
+
+\textbf{複雜度}
+
+每個 token 只讀一次，每次呼叫做的事除了呼叫自己以外是常數，總共 $O(n)$，$n$
+是 token 數。 遞迴最深等於計畫套的層數，題目保證不超過 $1000$ 層，在本書測試
+的環境下沒有問題（遞迴能多深，第~\ref{sec:rec-depth}~節會量）。 最大的測試資
+料約 $0.01$ 秒。
+
+\subsection{什麼時候用、什麼時候不能用}
+
+輸入的規格寫成「一個 X 是……，或是……後面接幾個 X」，而且開頭寫在前面，就可以
+照定義寫一個讀 X 的遞迴函式。 算式的前序寫法、樹狀選單、一層套一層的括號，都
+是這種形狀。 例題那種「每一層各自要一個值」的題目，最適合讓遞迴函式回傳那個
+值。
+
+如果層數可能到十萬以上，例如題目只說 token 有 $2 \times 10^5$ 個、沒有限制層
+數，就要小心遞迴太深。 這時改用第~6~章的堆疊，自己記住每一層還沒讀完的計畫。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{總經費用 \texttt{int}}：把 \texttt{readItem} 的回傳值和
+\texttt{total} 都改成 \texttt{int}、\texttt{stoll} 改成 \texttt{stoi}。 輸入
+$W = 10^{12}$，一個行政費 $1$ 的計畫底下有 $2200$ 筆 $10^6$ 元的支出，正確答
+案是 \texttt{2200000001 0}，這樣寫在本書測試的環境下印出
+\texttt{-2094967295 0}，加了 \texttt{-Wall -Wextra} 也沒有警告。
+\item \textbf{「超過」寫成 \texttt{>=}}：範例的輸入會印出 \texttt{16 2}，總經
+費剛好 $9$ 的子計畫也被算進去了。
+\item \textbf{忘了加行政費}：\texttt{total} 從 $0$ 開始，範例印出
+\texttt{12 1}。 每個計畫少算了自己的 $c$，子計畫少算的部分也會一路傳上去。
+\item \textbf{把 $c$、$k$ 當成項目}：讀到 \texttt{P} 之後直接呼叫
+\texttt{readItem()}，\texttt{c} 和 \texttt{k} 會被當成兩筆支出，後面的 token
+全部錯位。 每一種東西讀幾個 token，要和定義一模一樣。
+\end{itemize}
+
+\section{呼叫次數與記憶化}
+\label{sec:rec-memo}
+
+一個函式呼叫自己好幾次時，呼叫樹會長得很快，而且同一個參數常常在樹上出現很
+多次，每次都從頭算一遍。 這一節的例題要算的就是這種程式到底呼叫了幾次，順便
+看怎麼用記憶化避免重算。
+
+\subsection{例題：轉發通知到底呼叫幾次}
+\label{sec:rec-ex-notice}
+
+\textbf{題意}（\akiref{how-many-times-is-the-notice-forwarded}{轉發通知到底呼叫幾次}）
+
+\begin{itemize}
+\item 通知系統有一個函式，照下面的虛擬碼原樣執行，沒有任何優化（\texttt{/} 是
+整數除法）：
+\begin{code}{text}{題目給的虛擬碼}
+function f(n):
+    if n == 0:
+        return 1
+    return f(n / 2) + f(n / 3) - f(n / 6) + (n % 5)
+\end{code}
+\item 每呼叫一次 $f$ 就轉發一次通知。 給 $n$ 和 $k$，問執行 $f(n)$ 時 $f$ 一共
+被呼叫幾次（最外層那次和 $f(0)$ 都算），以及其中參數剛好是 $k$ 的有幾次。
+\item 有 $q \le 200$ 筆查詢，每筆各自從頭執行。 $0 \le k \le n \le 10^{18}$，
+保證兩個答案都小於 $9 \times 10^{18}$。
+\end{itemize}
+
+這題不用算出 $f$ 的值，只要算呼叫次數。 例如 $f(1)$ 會呼叫三次 $f(0)$，加上自
+己共 $4$ 次；$f(3)$ 呼叫 $f(1)$、$f(1)$、$f(0)$，呼叫樹如下：
+
+\begin{center}
+\begin{tikzpicture}[
+    every node/.style={draw=black!55, circle, minimum size=7mm, inner sep=0pt, font=\small},
+    level 1/.style={sibling distance=3.3cm, level distance=1.2cm},
+    level 2/.style={sibling distance=0.95cm, level distance=1.2cm},
+    rep/.style={draw=memStroke, thick, fill=memFill},
+    edge from parent/.style={draw=black!50},
+]
+\node {3}
+  child { node[rep] {1} child { node {0} } child { node {0} } child { node {0} } }
+  child { node[rep] {1} child { node {0} } child { node {0} } child { node {0} } }
+  child { node {0} };
+\end{tikzpicture}
+\diagcaption{$f(3)$ 的呼叫樹，共 $10$ 個點。 橘色的兩個 $f(1)$ 參數相同，底下
+的樹也一模一樣，被算了兩次。}
+\label{fig:rec-notice-tree}
+\end{center}
+
+\textbf{想法}
+
+最直接的做法是照虛擬碼寫，加一個全域的計數器，每次進函式就加一。 這就是暴力
+解，也是對拍用的程式。 問題是它到底呼叫幾次：在本書測試的環境下實際跑，
+$n = 10^6$ 時呼叫約 $3 \times 10^6$ 次，$n = 10^8$ 時約 $2.9 \times 10^8$ 次，
+大約是 $3n$。 照這個比例，$n = 10^{18}$ 要呼叫約 $3 \times 10^{18}$ 次，就算
+一秒做 $10^9$ 次，也要將近一百年。 答案本身就是這麼大，所以不能一次一次地數。
+
+\textbf{觀察一：呼叫次數自己也是遞迴。} 設 $C(m)$ 是執行 $f(m)$ 時的呼叫總
+數。 $f(0)$ 只有自己一次；$m \ge 1$ 時，$f(m)$ 自己算一次，再加上它呼叫的三個
+函式各自帶出的次數：
+\[
+C(0) = 1, \qquad C(m) = 1 + C(\lfloor m/2 \rfloor) + C(\lfloor m/3 \rfloor) + C(\lfloor m/6 \rfloor).
+\]
+參數是 $k$ 的次數 $H(m)$ 也一樣，只是「自己這一次」要看 $m$ 是不是 $k$ 才決
+定算 $1$ 還是 $0$。 不過照這兩個式子寫遞迴，呼叫樹和原來的一樣大，還是太慢。
+
+\textbf{觀察二：不同的參數很少。} 圖~\ref{fig:rec-notice-tree} 裡，$f(1)$ 被算
+了兩次。 參數越大，重複得越厲害：把整數除法連續做兩次，等於除以兩個數的乘積，
+例如 $\lfloor \lfloor n/2 \rfloor / 3 \rfloor = \lfloor n/6 \rfloor$。 所以呼叫
+樹上每一個參數都是 $\lfloor n / (2^x 3^y) \rfloor$ 的形式，$2^x 3^y \le n$ 時
+$x$ 不超過 $59$、$y$ 不超過 $37$，不同的參數最多 $60 \times 38 = 2280$ 種。 實際數一下，
+$n = 10^{18}$ 時只有 $1012$ 種。
+
+既然不同的參數只有一千多種，每一種算一次就夠了：第一次算出 $C(m)$ 時，把它存
+在一個 \texttt{map} 裡；之後再需要 $C(m)$，先查表，查得到就直接回傳。 這種做
+法叫\textbf{記憶化}（memoization）。 函式還是照遞迴的式子寫，只是在開頭多了查
+表、在回傳前多了存表。
+
+用 $f(6)$ 驗算一次。 從小的參數往上算，每個參數只算一次：
+
+\begin{center}
+\begin{tabular}{clr}
+\toprule
+$m$ & 呼叫的三個參數 & $C(m)$ \\
+\midrule
+0 & （不再呼叫） & $1$ \\
+1 & $0, 0, 0$ & $1 + 1 + 1 + 1 = 4$ \\
+2 & $1, 0, 0$ & $1 + 4 + 1 + 1 = 7$ \\
+3 & $1, 1, 0$ & $1 + 4 + 4 + 1 = 10$ \\
+6 & $3, 2, 1$ & $1 + 10 + 7 + 4 = 22$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+$f(6)$ 一共呼叫 $22$ 次，表格只有五列。 呼叫樹有 $22$ 個點，表格只算五次，兩
+者的差距在 $n$ 變大時會越來越懸殊。
+
+\begin{bridgerecap}[\texttt{map} 的 \texttt{find}]
+\texttt{memo.find(m)} 回傳指向鍵 \texttt{m} 那一筆的迭代器，找不到時回傳
+\texttt{memo.end()}；找到時 \texttt{it->second} 就是存的值（銜接書第~8~章）。
+查表時用 \texttt{find} 而不用 \texttt{memo[m]}，因為 \texttt{[]} 在找不到時會
+插入一筆值為 $0$ 的資料，之後就分不出「算過而且答案是 $0$」和「還沒算過」。
+\end{bridgerecap}
+
+\textbf{程式}
+
+\begin{example}[label=ex:rec-notice]{cpp}{(notice.cpp) 轉發通知到底呼叫幾次}
+#include <iostream>
+#include <map>
+using namespace std;
+
+map<long long, long long> callsMemo;   // callsMemo[m]：執行 f(m) 共呼叫幾次
+map<long long, long long> hitsMemo;    // hitsMemo[m]：其中參數是 k 的有幾次
+long long k;
+
+long long calls(long long m) {
+    if (m == 0) {
+        return 1;
+    }
+    auto it = callsMemo.find(m);
+    if (it != callsMemo.end()) {
+        return it->second;
+    }
+    long long c = 1 + calls(m / 2) + calls(m / 3) + calls(m / 6);
+    callsMemo[m] = c;
+    return c;
+}
+
+long long hits(long long m) {
+    long long self = (m == k ? 1 : 0);   // 這一次呼叫本身
+    if (m == 0) {
+        return self;
+    }
+    auto it = hitsMemo.find(m);
+    if (it != hitsMemo.end()) {
+        return it->second;
+    }
+    long long h = self + hits(m / 2) + hits(m / 3) + hits(m / 6);
+    hitsMemo[m] = h;
+    return h;
+}
+
+int main() {
+    int q;
+    cin >> q;
+    while (q--) {
+        long long n;
+        cin >> n >> k;
+        hitsMemo.clear();                // k 換了，上一筆的答案不能用
+        cout << calls(n) << ' ' << hits(n) << '\n';
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+4 \\
+1 0 \\
+2 1 \\
+6 0 \\
+6 1 \\
+}{
+4 3 \\
+7 1 \\
+22 15 \\
+22 4 \\
+}
+
+\begin{itemize}
+\item \texttt{calls(m)} 的答案只和 $m$ 有關，算過的可以留給下一筆查詢用，所以
+\texttt{callsMemo} 從頭到尾不清空。 \texttt{hits(m)} 的答案還和 $k$ 有關，每
+筆查詢的 $k$ 不同，要先清空。
+\item 終止條件 $m = 0$ 不查表也不存表，直接回傳，因為它本來就不用算。
+\item 兩個函式都沒有算 $f$ 的值。 這題只問呼叫次數，虛擬碼裡的 \texttt{n \% 5}
+和加減都和答案無關。
+\item 可以再省一點：參數只會越來越小，所以 $m < k$ 時，底下不可能再出現 $k$，
+\texttt{hits(m)} 直接回傳 $0$。 不加也夠快。
+\end{itemize}
+
+\textbf{複雜度}
+
+每筆查詢最多一千多個不同的參數，每個參數只真正算一次，查表是 $O(\log)$。
+$200$ 筆查詢總共不到 $10^6$ 次 \texttt{map} 操作，最大的測試資料在本書測試的
+環境下約 $0.1$ 秒。 遞迴最深的一條路是一直除以 $2$，$n = 10^{18}$ 時大約
+$60$ 層。
+
+\subsection{什麼時候用、什麼時候不能用}
+
+記憶化適合的情況是：函式的回傳值只由參數決定，而且呼叫樹上同樣的參數出現很多
+次。 判斷方法是估計「不同的參數有幾種」，例如這題的一千多種，或是參數是 $0$ 到
+$n$ 的整數時的 $n + 1$ 種。 種類不多、呼叫樹卻很大，記憶化就有用。 第~9~章的
+動態規劃會從這裡出發，把查表改成從小到大填表。
+
+不能用的情況有兩種。 一種是函式除了回傳值還做了別的事，例如印東西或修改全域
+變數，查表跳過呼叫，那些事就少做了。 另一種是參數很少重複，例如第~4~章的回溯，
+每一條路徑的狀態都不同，存起來也查不到。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{數的是記憶化之後的呼叫次數}：在記憶化的 $f$ 裡放計數器，查表命
+中也算一次，但命中之後不再往下呼叫。 範例中 $n = 6$、$k = 0$ 會印出
+\texttt{13 6}，正確是 \texttt{22 15}。 題目問的是原本的程式，記憶化只能用來
+算答案，不能改變要數的東西。
+\item \textbf{換了 $k$ 沒清空 \texttt{hitsMemo}}：拿掉清空那一行，輸入兩筆查
+詢 \texttt{6 1}、\texttt{6 0}，第二筆會直接查到第一筆存的答案，印出
+\texttt{22 4}，正確是 \texttt{22 15}。 存表之前先問：這個答案還跟哪些變數有關？
+\item \textbf{不記憶化}：照遞迴式直接算 $C(m)$，結果對，但呼叫次數就是答案本
+身，$n = 10^{18}$ 時跑不完。
+\item \textbf{次數用 \texttt{int}}：$n = 10^{12}$ 時呼叫次數約 $3 \times
+10^{12}$，所以計數和表裡的值都要用 \texttt{long long}。
+\end{itemize}
+
+\section{分治：切開、各自解決、合併}
+\label{sec:rec-dc}
+
+前面的遞迴都是題目本身長成一層套一層。 另一種用法是題目沒有這種結構，我們自
+己把它切開。 \textbf{分治}有三步：
+
+\begin{enumerate}
+\item \textbf{切開}：把輸入切成兩半（有時是更多份）。
+\item \textbf{各自解決}：兩半各自用遞迴解決，這一步不用想，直接相信遞迴。
+\item \textbf{合併}：用兩半的答案拼出整個的答案。
+\end{enumerate}
+
+寫分治時，真正要想的只有第 3 步。 腦中的畫面是：左半已經算好、右半也已經算好，
+我手上有什麼，還缺什麼？
+
+\subsection{合併排序}
+\label{sec:rec-mergesort}
+
+排序是最標準的例子。 假設左半和右半都已經由小到大排好，整段要怎麼排？ 整段最
+小的那一個，一定是左半最前面或右半最前面的那一個，比一次就知道；把它拿走之後，
+剩下的最小的，又是兩邊最前面的其中一個。 所以兩邊各放一個指標，每次比較指標
+上的兩個數，小的那個放進結果、指標往後一格，直到一邊拿完，另一邊剩下的照順序
+接在後面。 這就是\textbf{合併排序}（merge sort）。
+
+\begin{example}[label=ex:rec-mergesort]{cpp}{(mergesort.cpp) 合併排序，印出每次合併的結果}
+#include <iostream>
+#include <vector>
+using namespace std;
+
+vector<int> a, buf;
+
+// 把 a[lo..hi) 由小到大排好
+void mergeSort(int lo, int hi) {
+    if (hi - lo <= 1) {                  // 0 或 1 個元素：已經排好
+        return;
+    }
+    int mid = (lo + hi) / 2;
+    mergeSort(lo, mid);                  // 左半排好
+    mergeSort(mid, hi);                  // 右半排好
+    int i = lo, j = mid, k = lo;
+    while (i < mid && j < hi) {          // 兩邊都還有：拿比較小的
+        if (a[i] <= a[j]) {
+            buf[k++] = a[i++];
+        } else {
+            buf[k++] = a[j++];
+        }
+    }
+    while (i < mid) {                    // 其中一邊拿完了，另一邊照抄
+        buf[k++] = a[i++];
+    }
+    while (j < hi) {
+        buf[k++] = a[j++];
+    }
+    for (int t = lo; t < hi; t++) {      // 放回 a
+        a[t] = buf[t];
+    }
+    cout << "merge [" << lo << ", " << hi << "):";
+    for (int t = lo; t < hi; t++) {
+        cout << ' ' << a[t];
+    }
+    cout << '\n';
+}
+
+int main() {
+    int n;
+    cin >> n;
+    a.resize(n);
+    buf.resize(n);
+    for (int &x : a) {
+        cin >> x;
+    }
+    mergeSort(0, n);
+    return 0;
+}
+\end{example}
+
+\iosample{
+8 \\
+5 8 2 7 1 6 3 4 \\
+}{
+merge [0, 2): 5 8 \\
+merge [2, 4): 2 7 \\
+merge [0, 4): 2 5 7 8 \\
+merge [4, 6): 1 6 \\
+merge [6, 8): 3 4 \\
+merge [4, 8): 1 3 4 6 \\
+merge [0, 8): 1 2 3 4 5 6 7 8 \\
+}
+
+\begin{itemize}
+\item 區間一律用半開的 \texttt{[lo, hi)}，長度是 \texttt{hi - lo}，切成
+\texttt{[lo, mid)} 和 \texttt{[mid, hi)} 剛好不重疊也不漏。 長度 $\ge 2$ 時，
+\texttt{mid} 一定嚴格在 \texttt{lo} 和 \texttt{hi} 之間，兩半都比原來短。
+\item 合併時不能直接寫回 \texttt{a}，會蓋掉還沒拿的數，所以先放進
+\texttt{buf}，合併完再抄回去。 \texttt{buf} 開成和 \texttt{a} 一樣大、在
+\texttt{main} 裡配置一次，不要在每次合併時重新開。
+\item 印出的順序是遞迴「回來」的順序：\texttt{[0, 8)} 要等兩半都排好才能合併，
+所以它最後印。
+\end{itemize}
+
+把同樣長度的段落畫在同一列，可以看出整個過程是由下往上，一層一層地把短的段落
+合併成長的：
+
+\begin{center}
+\begin{tikzpicture}[x=1cm, y=1cm]
+\foreach \row/\lbl/\g/\vals/\note in {
+  0/{長度 1}/1/{5,8,2,7,1,6,3,4}/{},
+  1/{長度 2}/2/{5,8,2,7,1,6,3,4}/{搬 8 次},
+  2/{長度 4}/4/{2,5,7,8,1,3,4,6}/{搬 8 次},
+  3/{長度 8}/8/{1,2,3,4,5,6,7,8}/{搬 8 次}} {
+  \node[left, font=\small] at (-0.1,-\row*1.05) {\lbl};
+  \foreach \v [count=\k from 0] in \vals {
+    \pgfmathtruncatemacro{\grp}{\k/\g}
+    \node[cell, minimum width=0.72cm, minimum height=0.72cm] at ({\k*0.72+\grp*0.25+0.36},{-\row*1.05}) {\v};
+  }
+  \node[right, font=\small] at (7.9,-\row*1.05) {\note};
+}
+\end{tikzpicture}
+\diagcaption{合併排序每一層結束後的陣列，隔開的是已經排好的段落。 每一層的合
+併加起來都剛好把 $8$ 個數各搬一次。}
+\label{fig:rec-merge-levels}
+\end{center}
+
+\textbf{複雜度}
+
+一次合併兩段，總長度是多少就搬多少次。 同一層的段落合起來剛好是整個陣列，所
+以\textbf{每一層}合計搬 $n$ 次。 層數是長度從 $n$ 一路減半到 $1$ 要幾次，大約
+$\log_2 n$。 所以總共大約 $n \log_2 n$ 次，是 $O(n \log n)$。 $n = 10^5$ 時大
+約 $17$ 層、$1.7 \times 10^6$ 次搬動；第~2~章的插入排序最壞要 $n^2/2 = 5
+\times 10^9$ 次。
+
+把每次呼叫畫成一個點、在點上標出它的合併花了多少，就是分治的\textbf{遞迴樹}
+（recursion tree）。 分析分治的時間，最方便的方法就是一層一層把遞迴樹上的工作
+量加起來，像上圖右邊那一欄。
+
+合併為什麼一定排好？ 兩邊各自排好，所以兩邊還沒拿的數裡最小的，一定在
+\texttt{a[i]} 或 \texttt{a[j]}；每次拿兩者中小的，放進 \texttt{buf} 的就一直
+是由小到大。 這是第~3~章用過的迴圈不變量。 $n$ 不是 $2$ 的次方時，段落長度不一
+定相等，但每切一次長度至少減半，層數仍然不超過 $\lceil \log_2 n \rceil$。
+
+C++ 的 \texttt{sort} 用的不是合併排序，但也是 $O(n \log n)$，實際寫題目時排序一
+律用 \texttt{sort}。 學合併排序的目的是它的合併這一步：兩段都排好時，很多原本
+要 $O(n^2)$ 的計數可以在合併時順便做完，下一節就是例子。
+
+\subsection{分治的其他形狀}
+
+第~3~章的二分搜也是分治，只是每次切開之後，只有一半需要繼續處理，另一半直接
+丟掉。 遞迴樹只有一條路，每層的工作是常數，總共 $O(\log n)$。 下面這張表整理
+常見的幾種形狀，用遞迴樹每層的工作量加起來就能得到：
+
+\begin{center}
+\begin{tabular}{llll}
+\toprule
+切法 & 每次呼叫自己做的事 & 時間 & 例子 \\
+\midrule
+只留一半 & 常數 & $O(\log n)$ & 二分搜、快速冪 \\
+切兩半 & 常數 & $O(n)$ & 用分治算陣列總和 \\
+切兩半 & 和長度成正比 & $O(n \log n)$ & 合併排序 \\
+每次只少一個 & 和長度成正比 & $O(n^2)$ & 插入排序寫成遞迴 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+最後一列提醒：分治快，是因為每次切成差不多大的兩半；每次只切掉一個，層數就是
+$n$，好處就沒有了。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{終止條件只寫空區間}：把 \texttt{hi - lo <= 1} 寫成
+\texttt{hi == lo}。 長度 $1$ 的區間 \texttt{[lo, lo + 1)} 算出
+\texttt{mid = lo}，右半 \texttt{[lo, lo + 1)} 就是自己，永遠切不完。 任何輸
+入在本書測試的環境下都會 \texttt{Segmentation fault}。
+\item \textbf{合併完忘了抄回 \texttt{a}}：拿掉最後的 \texttt{for} 迴圈，範例
+每一行印出來的都是原來的順序，最後一行是 \texttt{5 8 2 7 1 6 3 4}。 上一層合
+併時拿到的兩半根本沒有排好。
+\item \textbf{區間開閉混用}：例如切成 \texttt{[lo, mid]} 和 \texttt{[mid, hi)}，
+\texttt{a[mid]} 被算了兩次。 寫分治之前先決定用半開還是兩端都含，從頭到尾不改。
+\end{itemize}
+
+\section{在合併的時候數逆序對}
+\label{sec:rec-inversions}
+
+第~2~章定義過逆序對：位置在前面、數值卻比較大的一對。 也說過插入排序搬動的次
+數等於逆序對的個數，要 $O(n^2)$。 想數 $n = 10^5$ 的陣列有幾個逆序對，直接
+枚舉每一對要 $5 \times 10^9$ 次，太慢。
+
+用分治的想法：把陣列切成左右兩半，每一個逆序對一定屬於下面三種之一。
+
+\begin{itemize}
+\item 兩個數都在左半：交給左半的遞迴去數。
+\item 兩個數都在右半：交給右半的遞迴去數。
+\item 一個在左半、一個在右半：這是合併時要數的。
+\end{itemize}
+
+第三種只看數值，和兩個數在各自那一半裡的順序無關，所以兩半先排好也不影響。
+合併時，每當從右半拿出一個數 \texttt{a[j]}，表示左半剩下的數都比它大（不然會先
+拿左邊的），它們各和 \texttt{a[j]} 組成一個逆序對，一共 \texttt{mid - i} 個。
+把 \texttt{mergesort.cpp} 的函式改成回傳個數，合併的迴圈只多一行：
+
+\begin{code}{cpp}{數逆序對：合併時多加的一行}
+// 把 a[lo..hi) 排好，回傳兩個元素都在這一段裡的逆序對個數
+long long sortCount(int lo, int hi) {
+    if (hi - lo <= 1) {
+        return 0;
+    }
+    int mid = (lo + hi) / 2;
+    long long count = sortCount(lo, mid) + sortCount(mid, hi);
+    int i = lo, j = mid, k = lo;
+    while (i < mid && j < hi) {
+        if (a[i] <= a[j]) {
+            buf[k++] = a[i++];
+        } else {
+            count += mid - i;            // 左半剩下的都比 a[j] 大
+            buf[k++] = a[j++];
+        }
+    }
+    // 之後照抄剩下的、放回 a，和 mergeSort 一樣
+    return count;
+}
+\end{code}
+
+對範例的 \texttt{5 8 2 7 1 6 3 4}，\texttt{sortCount(0, 8)} 回傳 $17$。 最後一次合併是左半 \texttt{2 5 7 8}、右半 \texttt{1 3 4 6}：
+
+\begin{center}
+\begin{tabular}{cccl}
+\toprule
+比較 & 拿出 & \texttt{count} 加多少 & 說明 \\
+\midrule
+$2$ 和 $1$ & $1$（右） & $+4$ & $2, 5, 7, 8$ 都比 $1$ 大 \\
+$2$ 和 $3$ & $2$（左） & & \\
+$5$ 和 $3$ & $3$（右） & $+3$ & $5, 7, 8$ 比 $3$ 大 \\
+$5$ 和 $4$ & $4$（右） & $+3$ & $5, 7, 8$ 比 $4$ 大 \\
+$5$ 和 $6$ & $5$（左） & & \\
+$7$ 和 $6$ & $6$（右） & $+2$ & $7, 8$ 比 $6$ 大 \\
+--- & $7, 8$ 照抄 & & 右半拿完了 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+這次合併數到 $12$ 個。 前面的合併裡，\texttt{[0, 4)} 那次數到 $3$ 個（$5$ 和
+$8$ 都比 $2$ 大，$8$ 比 $7$ 大），\texttt{[4, 8)} 那次數到 $2$ 個（$6$ 比 $3$、
+$4$ 大），其他都是 $0$。 合計 $17$。
+
+兩個數相等時用 \texttt{<=} 先拿左邊的，相等的一對就不會被算成逆序對。 改成
+\texttt{<} 的話，右邊相等的數會先被拿出來，左邊那個相等的數會被當成「比它大」。
+
+\subsection{例題：書架放反配對的距離總和}
+\label{sec:rec-ex-books}
+
+\textbf{題意}（\akiref{total-distance-of-misplaced-book-pairs}{書架放反配對的距離總和}）
+
+\begin{itemize}
+\item 書架上由左到右有 $n$ 本書，位置是 $1$ 到 $n$，第 $i$ 本的索書號是
+$A_i$。
+\item 位置 $i < j$ 而且 $A_i > A_j$ 的兩本書是一對放反的書，距離是 $j - i$。
+索書號相同不算放反。
+\item 輸出所有放反配對的距離總和。 $n \le 10^5$，$0 \le A_i \le 10^9$。
+\end{itemize}
+
+例如索書號依序是 $4, 2, 4, 1, 3$。 放反的配對有 $(1,2)$、$(1,4)$、$(1,5)$、
+$(2,4)$、$(3,4)$、$(3,5)$，距離是 $1 + 3 + 4 + 2 + 1 + 2 = 13$。 位置 $1$ 和
+$3$ 都是 $4$，不算。
+
+\textbf{想法}
+
+暴力解是雙層迴圈檢查每一對，$n = 10^5$ 時大約 $5 \times 10^9$ 對，來不及，
+但可以拿來對拍。 這題和數逆序對只差在：每一對要算的是距離 $j - i$，不再是 $1$。
+所以照上一小節的分治，問題只剩下合併時怎麼把「一個在左半、一個在右半」的距離
+加起來。
+
+\textbf{觀察一：位置要跟著書走。} 兩半排好之後，書的順序已經不是原來的順序，
+陣列的下標也不再是書原本的位置。 所以每本書存成一個 \texttt{struct}，裡面放索
+書號和原本的位置，排序時整本一起搬。
+
+\textbf{觀察二：一次加一整批的距離。} 合併時從右半拿出位置 $j$ 的書，左半剩下
+的書都和它放反。 設左半剩下 $cnt$ 本，位置分別是 $i_1, i_2, \ldots, i_{cnt}$，
+這一批的距離總和是
+\[
+(j - i_1) + (j - i_2) + \cdots + (j - i_{cnt}) = cnt \cdot j - (i_1 + i_2 + \cdots + i_{cnt}).
+\]
+所以合併時除了記住左半剩下幾本，也記住它們的位置總和：一開始是整個左半的位置
+加起來，每從左半拿走一本，就減掉那本的位置。
+
+用範例的最後一次合併追蹤。 這時左半是位置 $1, 2$ 的兩本，排好後是
+$2_{@2}, 4_{@1}$（下標是原本的位置）；右半是位置 $3, 4, 5$，排好後是
+$1_{@4}, 3_{@5}, 4_{@3}$。 前面幾次合併已經累積了 $4$。
+
+\begin{center}
+\begin{tabular}{cccc}
+\toprule
+拿出 & 左半剩下（位置） & 加上 & 累計 \\
+\midrule
+開始 & $2_{@2}, 4_{@1}$ & & $4$ \\
+$1_{@4}$（右） & $2_{@2}, 4_{@1}$ & $2 \cdot 4 - (2 + 1) = 5$ & $9$ \\
+$2_{@2}$（左） & $4_{@1}$ & & $9$ \\
+$3_{@5}$（右） & $4_{@1}$ & $1 \cdot 5 - 1 = 4$ & $13$ \\
+$4_{@1}$（左，相等先拿左） & （空） & & $13$ \\
+$4_{@3}$（右） & （空） & $0$ & $13$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+前面累積的 $4$ 來自左半內部的 $(1,2)$（距離 $1$），以及右半內部的 $(3,4)$ 和
+$(3,5)$（距離 $1$ 和 $2$）。 最後答案 $13$。
+
+同樣的模型也出現在別的地方：兩位評審對同一批作品排名，名次不一致的組數可以衡
+量兩人意見差多少；一份排行榜更新之後，比較新舊名次也是在數逆序對。 加上距離，
+就是把「差得越遠的錯誤算得越重」。
+
+\textbf{程式}
+
+\begin{example}[label=ex:rec-books]{cpp}{(books.cpp) 書架放反配對的距離總和}
+#include <iostream>
+#include <vector>
+using namespace std;
+
+struct Book {
+    long long code;   // 索書號
+    long long pos;    // 原本的位置（1 到 n）
+};
+
+vector<Book> a, buf;
+long long answer = 0;
+
+// 把 a[lo..hi) 依索書號排好，並把兩本都在這一段裡的放反配對的距離加進 answer
+void sortAndCount(int lo, int hi) {
+    if (hi - lo <= 1) {
+        return;
+    }
+    int mid = (lo + hi) / 2;
+    sortAndCount(lo, mid);
+    sortAndCount(mid, hi);
+    long long leftCount = mid - lo;   // 左半還沒放出去的本數
+    long long leftPosSum = 0;         // 它們的位置總和
+    for (int t = lo; t < mid; t++) {
+        leftPosSum += a[t].pos;
+    }
+    int i = lo, j = mid, k = lo;
+    while (i < mid && j < hi) {
+        if (a[i].code <= a[j].code) {          // 相等時先放左半
+            leftCount--;
+            leftPosSum -= a[i].pos;
+            buf[k++] = a[i++];
+        } else {
+            // 左半剩下的每一本都比 a[j] 大，各和它組成一對放反的書
+            answer += leftCount * a[j].pos - leftPosSum;
+            buf[k++] = a[j++];
+        }
+    }
+    while (i < mid) {
+        buf[k++] = a[i++];
+    }
+    while (j < hi) {
+        buf[k++] = a[j++];
+    }
+    for (int t = lo; t < hi; t++) {
+        a[t] = buf[t];
+    }
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n;
+    cin >> n;
+    a.resize(n);
+    buf.resize(n);
+    for (int t = 0; t < n; t++) {
+        cin >> a[t].code;
+        a[t].pos = t + 1;
+    }
+    sortAndCount(0, n);
+    cout << answer << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+5 \\
+4 2 4 1 3 \\
+}{
+13 \\
+}
+
+\begin{itemize}
+\item \texttt{leftCount} 和 \texttt{leftPosSum} 合起來，就是 \texttt{sortCount}
+裡的 \texttt{mid - i} 加上位置資訊。 \texttt{leftCount} 永遠等於 \texttt{mid - i}，
+留著它是為了讓式子 \texttt{leftCount * a[j].pos - leftPosSum} 直接對應上面的推導。
+\item 右半拿完、左半照抄時不用加任何東西：左半剩下的書，右半已經拿出的書都比它
+們小，這些配對在拿出右半那些書的時候已經算過了。
+\item \texttt{pos} 和 \texttt{leftCount} 都宣告成 \texttt{long long}，乘法就用
+\texttt{long long} 算。 答案最大是全部倒過來排的時候，大約 $n^3/6 \approx 1.7
+\times 10^{14}$。
+\end{itemize}
+
+\textbf{複雜度}
+
+和合併排序一樣，每一層合計 $O(n)$，再加上算 \texttt{leftPosSum} 的迴圈，也是每
+層 $O(n)$，總共 $O(n \log n)$。 $n = 10^5$ 時最大的測試資料在本書測試的環境下
+約 $0.01$ 秒。
+
+\subsection{什麼時候用、什麼時候不能用}
+
+題目問「所有滿足某個大小關係的配對」的個數或總和，而且配對的條件是「位置在前、
+數值比較大（或比較小）」，就可以想合併排序：合併時，右半每拿出一個數，左半剩下
+的就是和它成對的那一批。 要算的東西如果能從「這一批有幾個」「這一批的某個量加
+起來是多少」得到，就能在合併時一次加完。
+
+如果配對的條件和位置的前後無關（例如只要兩數相差不超過 $d$），排序後用第~5~章
+的雙指標比較直接。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{相等時先拿右半}：把 \texttt{<=} 寫成 \texttt{<}，範例會印出
+\texttt{15}，位置 $1$ 和 $3$ 那兩本相同索書號的書被算成放反，多了距離 $2$。
+\item \textbf{位置和個數用 \texttt{int} 相乘}：把 \texttt{pos} 和
+\texttt{leftCount} 改成 \texttt{int}。 輸入 $n = 10^5$、索書號由 $10^5$ 遞減
+到 $1$，正確答案是 \texttt{166666666650000}，這樣寫在本書測試的環境下印出
+\texttt{-108645031990896}。 \texttt{answer} 是 \texttt{long long} 也沒用，乘
+法在加進去之前就溢位了（第~1~章）。
+\item \textbf{用陣列下標當位置}：把 \texttt{a[j].pos} 換成 \texttt{j + 1}、
+左半的位置也用下標算。 第一層合併還對，之後的書已經不在原來的位置，範例印出
+\texttt{9}。
+\end{itemize}
+
+\section{快速冪}
+\label{sec:rec-power}
+
+要算 $a^b$ 除以 $m$ 的餘數，$b$ 可能到 $10^{18}$。 用迴圈乘 $b$ 次太慢，而且
+$a^b$ 本身大到存不下。 先處理第二個問題：乘法和取餘數可以交換順序，
+\[
+(x \cdot y) \bmod m = \big( (x \bmod m) \cdot (y \bmod m) \big) \bmod m,
+\]
+所以每乘一次就取一次餘數，數字永遠小於 $m$。 $m$ 不超過大約 $3 \times 10^9$ 時，
+兩個小於 $m$ 的數相乘不超過 $9 \times 10^{18}$，\texttt{long long} 放得下。
+
+第一個問題用分治解決。 $b$ 是偶數時 $a^b = (a^{b/2})^2$；$b$ 是奇數時
+$a^b = (a^{\lfloor b/2 \rfloor})^2 \cdot a$。 兩種情況都只要先算出
+$a^{\lfloor b/2 \rfloor}$，再做一兩次乘法。 這叫\textbf{快速冪}
+（exponentiation by squaring）。 照三個問題寫：函式的意思是「回傳 $a^b \bmod m$」；
+終止條件是 $b = 0$，答案是 $1 \bmod m$；其他情況呼叫一次 $b/2$ 的版本。
+
+\begin{example}[label=ex:rec-power]{cpp}{(power.cpp) 快速冪，同時印出呼叫次數}
+#include <iostream>
+using namespace std;
+
+int calls = 0;                       // 記錄 power 被呼叫幾次
+
+// 回傳 a 的 b 次方除以 m 的餘數；a 已經小於 m
+long long power(long long a, long long b, long long m) {
+    calls++;
+    if (b == 0) {
+        return 1 % m;                // m = 1 時任何數的餘數都是 0
+    }
+    long long half = power(a, b / 2, m);
+    long long result = half * half % m;
+    if (b % 2 == 1) {                // b 是奇數：再多乘一個 a
+        result = result * a % m;
+    }
+    return result;
+}
+
+int main() {
+    long long a, b, m;
+    while (cin >> a >> b >> m) {
+        calls = 0;
+        long long r = power(a % m, b, m);
+        cout << r << ' ' << calls << '\n';
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+3 13 1000 \\
+2 1000000000000000000 1000000007 \\
+7 0 1 \\
+}{
+323 5 \\
+719476260 61 \\
+0 1 \\
+}
+
+$3^{13} \bmod 1000$ 的過程如下，由下往上讀：
+
+\begin{center}
+\begin{tabular}{cccccc}
+\toprule
+第幾次呼叫 & $b$ & \texttt{half} & \texttt{half * half \% 1000} & $b$ 是奇數？ & 回傳 \\
+\midrule
+1 & 13 & 729 & 441 & 是，$441 \cdot 3$ & 323 \\
+2 & 6 & 27 & 729 & 否 & 729 \\
+3 & 3 & 3 & 9 & 是，$9 \cdot 3$ & 27 \\
+4 & 1 & 1 & 1 & 是，$1 \cdot 3$ & 3 \\
+5 & 0 & --- & --- & --- & 1 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+驗算：$3^{13} = 1594323$，除以 $1000$ 的餘數是 $323$。 $b$ 每次至少減半，呼叫次
+數是 $\lfloor \log_2 b \rfloor + 2$（$b \ge 1$ 時）。 $b = 10^{18}$ 也只要 $61$
+次，遞迴深度也是 $61$。
+
+\begin{itemize}
+\item \texttt{main} 先把 \texttt{a} 換成 \texttt{a \% m} 才傳進去。 \texttt{half}
+和 \texttt{result} 都已經小於 $m$，但 \texttt{a} 是輸入的原始值，不先取餘數的
+話，\texttt{result * a} 可能溢位。
+\item 終止條件回傳 \texttt{1 \% m}。 $m = 1$ 時任何數除以 $1$ 的餘數都是 $0$，
+寫成 \texttt{return 1;} 的話，第三組輸入會印出 \texttt{1}。
+\item $m$ 如果大到 $10^{18}$，兩個餘數相乘會超過 \texttt{long long}，要把乘法
+改用 \texttt{\_\_int128} 算，再取餘數轉回來。 這是 GCC 的擴充型別，本書測試的
+環境支援。
+\end{itemize}
+
+\subsection{什麼時候用、什麼時候不能用}
+
+題目裡出現「某個數的很大次方，取餘數」，或是同一個操作要重複做 $10^{18}$ 次，
+而且「做兩次」可以合成一個同類的操作，就能用同樣的減半方法。 數字的乘法是最常
+見的；矩陣的乘法也行，這會在後面的章節遇到。
+
+題目要 $a^b$ 的確切值、不取餘數時，答案本身就有大約 $b \log_{10} a$ 位，存
+不下，快速冪也幫不上忙。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{同一個子問題呼叫兩次}：寫成
+\texttt{power(a, b / 2, m) * power(a, b / 2, m) \% m}。 結果是對的，但每一層都
+分成兩支，呼叫樹變成完整的二元樹。 範例的 $b = 13$ 呼叫 $31$ 次；$b = 1000$
+呼叫 $2047$ 次，$b = 10^6$ 呼叫 $2097151$ 次，介於 $2b$ 和 $4b$ 之間，和用迴圈乘差不多，
+$b = 10^{18}$ 時跑不完。 同一個值要用兩次，先存在變數裡。
+\item \textbf{沒有先把 $a$ 取餘數}：把 \texttt{power(a \% m, b, m)} 改成
+\texttt{power(a, b, m)}。 輸入 \texttt{1000000000000000000 3 1000000007}，正
+確答案是 \texttt{117649}，這樣寫在本書測試的環境下印出 \texttt{295397141}，最後
+一次乘 \texttt{a} 時溢位了。
+\item \textbf{用 \texttt{int} 存餘數}：$m = 10^9 + 7$ 時，兩個接近 $10^9$ 的數
+相乘大約 $10^{18}$，\texttt{int} 放不下。 乘之前至少有一邊要是
+\texttt{long long}。
+\end{itemize}
+
+\section{遞迴可以多深}
+\label{sec:rec-depth}
+
+銜接書 10.2 節提過：每一次還沒結束的呼叫，都要在\textbf{呼叫堆疊}（call stack）
+上佔一塊空間，放它的參數、區域變數和回去的位置。 同時還沒結束的呼叫最多有幾
+層，叫\textbf{遞迴深度}。 堆疊的大小是固定的，本書測試的環境（Linux）預設是
+$8$ MB，用完程式就當掉，訊息是 \texttt{Segmentation fault}。
+
+實際量一量這一章的程式：
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+程式 & 題目範圍內最深幾層 & 實際量到的上限 \\
+\midrule
+\texttt{plan.cpp} & $1000$（計畫套的層數） & 約 $65000$ 層 \\
+\texttt{notice.cpp} & 約 $60$（一直除以 $2$） & --- \\
+\texttt{mergesort.cpp}、\texttt{books.cpp} & $18$（$n = 10^5$） & --- \\
+\texttt{power.cpp} & $61$（$b = 10^{18}$） & --- \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\texttt{plan.cpp} 的上限是這樣量的：把計畫書寫成 \texttt{P 1 1 P 1 1 \ldots}
+一層套一層，在本書測試的環境下用 \texttt{-O2} 編譯，套到 $65000$ 層左右還正常，
+再多就 \texttt{Segmentation fault}。 函式的區域變數越多，每層佔的空間越大，能
+遞迴的層數就越少；只有一兩個整數參數的簡單函式，每層只佔幾十個位元組，可以到十幾萬層以上。 編譯器開
+了 \texttt{-O2} 時，有時會把簡單的遞迴改寫成迴圈，層數就不受限制，但這不能指望。
+
+從這張表可以整理出一個實用的判斷：
+
+\begin{itemize}
+\item 深度是 $\log n$ 的遞迴（分治、快速冪、記憶化時參數一直除）永遠不用擔心。
+\item 深度和題目給的某個上限一樣，而上限只有幾千（例如計畫最多 $1000$ 層），也
+沒問題。
+\item 深度可能和 $n$ 一樣大，而 $n$ 到 $10^5$ 以上，例如一條很長的鏈、一層套一層
+的輸入沒有限制層數，就要改寫：用迴圈，或用第~6~章的堆疊自己記住還沒做完的工作。
+\end{itemize}
+
+不同的電腦、不同的評分系統，堆疊大小不一定一樣，在自己的電腦上沒有當掉，不代
+表換一個環境也不會。
+
+\begin{apcsnote}
+實作題的題目如果寫明巢狀最多幾層（像例題的 $1000$ 層），遞迴深度就不會超過
+它，照定義寫遞迴最快。 沒有寫層數限制、資料量又很大時，先估遞迴最深幾層，再決
+定要不要改成迴圈或堆疊。
+\end{apcsnote}
+
+\section{本章常見錯誤}
+\label{sec:rec-pitfalls}
+
+前面各節的錯誤，歸納起來是五類。 寫遞迴或分治時，交出去之前逐項檢查一次。
+
+\begin{center}
+\begin{tabular}{p{0.2\linewidth}p{0.48\linewidth}p{0.2\linewidth}}
+\toprule
+錯誤 & 例子 & 見 \\
+\midrule
+終止條件不完整 & 二進位只處理 $n = 1$，輸入 $0$ 停不下來；合併排序只處理空區間 &
+第~\ref{sec:rec-basics}、\ref{sec:rec-dc}~節 \\
+遞迴的意思沒守住 & 送審判斷寫在讀項目之前；讀到 \texttt{P} 後少讀 $c$、$k$；合併完
+沒抄回陣列 & 第~\ref{sec:rec-parse}、\ref{sec:rec-dc}~節 \\
+重複計算 & 沒有記憶化；快速冪把同一個子問題呼叫兩次 &
+第~\ref{sec:rec-memo}、\ref{sec:rec-power}~節 \\
+記憶化存錯東西 & 答案和 $k$ 有關卻沒有清表；數成記憶化之後的呼叫次數 &
+第~\ref{sec:rec-memo}~節 \\
+合併的細節 & 相等時先拿右半；用排序後的下標當原本的位置 &
+第~\ref{sec:rec-inversions}~節 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+另外兩個每一節都出現的錯誤：總和、乘積超過 \texttt{int}，以及遞迴太深。 前者
+在動手前先估最大值，後者照第~\ref{sec:rec-depth}~節的表估遞迴深度。
+
+\section{本章練習}
+\label{sec:ch8-exercises}
+
+\begin{drills}[label=drills:ch8]
+\item 第~\ref{sec:rec-basics}~節的 \texttt{show} 函式：
+\begin{enumerate}
+\item \texttt{show(4)} 印出什麼？
+\item 執行 \texttt{show(4)} 時，\texttt{show} 一共被呼叫幾次（包含參數
+$\le 0$ 的呼叫）？
+\item 把 \texttt{cout} 那一行移到兩個遞迴呼叫的前面，\texttt{show(4)} 印出什麼？
+\end{enumerate}
+
+\item 下面的函式：
+\begin{code}{cpp}{練習 2}
+int g(int n) {
+    if (n <= 2) {
+        return 1;
+    }
+    return g(n - 1) + g(n - 3);
+}
+\end{code}
+\begin{enumerate}
+\item 從 $n = 0$ 開始列表，寫出 $g(n)$ 的值和呼叫 $g(n)$ 時 $g$ 被呼叫的總次數，
+一直到 $n = 7$。
+\item 說明為什麼對每個 $n$，呼叫次數都等於 $2g(n) - 1$。（提示：呼叫樹上，哪
+些點回傳 $1$？每個不是終止條件的點有幾個子節點？）
+\end{enumerate}
+
+\item 例題 \texttt{plan.cpp} 的輸入是
+\begin{code}{text}{練習 3 的輸入}
+10
+P 3 2 P 1 1 P 2 0 6
+\end{code}
+\begin{enumerate}
+\item 程式印出什麼？
+\item \texttt{readItem} 一共被呼叫幾次？ 同時還沒結束的呼叫最多有幾層？
+\end{enumerate}
+
+\item 範例~\ref{ex:rec-mergesort} 的輸入改成 \texttt{6} 和 \texttt{6 1 5 2 4 3}。
+\begin{enumerate}
+\item 寫出程式印出的每一行。 為什麼第一行是 \texttt{merge [1, 3)}，而不是
+\texttt{merge [0, 2)}？
+\item 這個陣列有幾個逆序對？ 用第~\ref{sec:rec-inversions}~節的方法，寫出每次合
+併各數到幾個。
+\end{enumerate}
+
+\item 關於範例~\ref{ex:rec-power}：
+\begin{enumerate}
+\item $b = 100$ 時 \texttt{power} 被呼叫幾次？
+\item $1 \le b \le 1000$ 時，哪些 $b$ 讓呼叫次數最多？ 最多幾次？
+\item 第~\ref{sec:rec-power}~節常見錯誤裡「呼叫兩次」的寫法，$b = 2^t$ 時呼叫幾
+次？ 用這個結果說明為什麼它和用迴圈乘差不多慢。
+\end{enumerate}
+
+\end{drills}
+
+\section{實作練習}
+\label{sec:ch8-practice}
+
+下面是 Aki-Judge 上和本章相關的題目，依小節分組。 難度分四階：暖身是直接套用
+本章的寫法；基本要自己寫出遞迴的定義或合併的方法；實戰的題敘比較長，要先把題目
+轉換成本章的形狀；挑戰會和其他章的技巧合在一起。
+
+\begin{center}
+\footnotesize
+\begin{minipage}[t]{0.49\linewidth}
+\centering
+\begin{tabular}{@{}lc@{}}
+\toprule
+題目 & 難度 \\
+\midrule
+\multicolumn{2}{@{}l}{\textbf{遞迴的追蹤與基本寫法}} \\
+\akiref{split-in-half-and-add}{對半相加到一位數} & 暖身 \\
+\akiref{tracing-the-dictionary-lookup}{翻字典的路線} & 暖身 \\
+\akiref{seat-numbers-read-backward}{倒著念的座號} & 基本 \\
+\akiref{left-vs-right-on-a-forking-trail}{分岔步道的左右比較} & 基本 \\
+\akiref{stacking-crates-from-both-ends}{從兩端取箱疊高塔} & 基本 \\
+\akiref{splitting-a-print-job}{列印工作的拆分} & 實戰 \\
+\midrule
+\multicolumn{2}{@{}l}{\textbf{照遞迴定義寫}} \\
+\akiref{series-and-parallel-pipes}{串聯並聯的水管流量} & 暖身 \\
+\akiref{inverted-window-pattern}{反色窗格圖樣} & 暖身 \\
+\akiref{duty-points-defined-by-each-other}{兩組輪值的互相推算} & 暖身 \\
+\akiref{trail-relay-stations}{步道補給站分段} & 基本 \\
+\akiref{longest-lit-run-in-a-ternary-coded-strip}{三分編碼燈條的最長亮段} & 基本 \\
+\akiref{rotating-quadrant-floor-tiles}{會旋轉的四格地磚} & 基本 \\
+\akiref{one-cell-of-the-tile-pattern}{磁磚花紋的某一格} & 基本 \\
+\akiref{the-p-th-cell-of-the-mirrored-ribbon}{鏡像彩帶的第 p 格} & 實戰 \\
+\akiref{tidying-a-redundant-quadtree-code}{整理冗長的四分編碼} & 實戰 \\
+\akiref{counting-towers-on-the-wall}{城牆字串的區間計數} & 實戰 \\
+\akiref{black-cells-in-a-cross-carpet}{十字地毯的矩形黑格數} & 挑戰 \\
+\midrule
+\multicolumn{2}{@{}l}{\textbf{快速冪}} \\
+\akiref{three-key-remainder-calculator}{只有三個按鍵的餘數計算機} & 基本 \\
+\bottomrule
+\end{tabular}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.49\linewidth}
+\centering
+\begin{tabular}{@{}lc@{}}
+\toprule
+題目 & 難度 \\
+\midrule
+\multicolumn{2}{@{}l}{\textbf{分治的合併}} \\
+\akiref{halving-spread-total}{對半分組的落差總和} & 暖身 \\
+\akiref{recursive-grouping-of-measurements}{量測資料遞迴分組} & 基本 \\
+\akiref{best-stretch-for-a-bike-tour}{單車旅行的最佳路段} & 基本 \\
+\akiref{admission-cutoff-score}{錄取分數線} & 基本 \\
+\akiref{entries-of-a-product-of-self-similar-matrices}{遞迴放大矩陣的乘積查詢} & 基本 \\
+\akiref{strongest-tower-signal-for-each-house}{每戶收到的最強基地台訊號} & 挑戰 \\
+\akiref{qualifying-steady-stretches}{合格的穩定期} & 挑戰 \\
+\akiref{stick-runs-that-close-up}{圍得起來的木條段} & 挑戰 \\
+\akiref{the-k-closest-station-pairs}{最近的 K 對充電站} & 挑戰 \\
+\akiref{how-many-sensor-pairs-are-closest}{相距最近的感測器有幾對} & 挑戰 \\
+\midrule
+\multicolumn{2}{@{}l}{\textbf{合併排序與逆序對}} \\
+\akiref{comparisons-in-a-halving-merge}{對半合併要比幾次} & 暖身 \\
+\akiref{blocked-views-in-line}{擋住視線的同學} & 暖身 \\
+\akiref{line-up-by-the-roll-call}{照點名單排隊} & 暖身 \\
+\akiref{elements-that-move-during-merges}{合併時換了位置的元素} & 基本 \\
+\akiref{fruit-dumped-in-batches}{整批倒上輸送帶的水果} & 基本 \\
+\akiref{cheer-flag-swaps}{啦啦隊彩旗換位} & 基本 \\
+\akiref{two-judges-opposite-opinions}{兩位評審意見相反} & 基本 \\
+\akiref{dropping-one-runner}{退出一位選手} & 實戰 \\
+\akiref{sorting-the-shelf-by-zone}{照區號整理貨架} & 實戰 \\
+\akiref{tidying-one-stretch-of-the-book-cart}{只整理一段書車} & 挑戰 \\
+\bottomrule
+\end{tabular}
+\end{minipage}
+\end{center}
+
+本章的三題例題也在 Aki-Judge 上，讀完各節之後
+可以先自己寫一次再對照。
+
+\section{讀完你應該會}
+\label{sec:ch8-checklist}
+
+\begin{itemize}
+\item 寫遞迴函式之前，能用一句話寫出函式的意思，列出終止條件，並檢查參數可能的
+最小值都會停下來。
+\item 給一段遞迴程式，能畫出呼叫樹或從小的參數往上列表，分別算出它的輸出、回傳
+值和呼叫次數。
+\item 看到「一個 X 是……後面接幾個 X」這種前序寫法的輸入，能寫出一邊讀一邊遞迴
+的函式，讓它回傳每一層需要的值。
+\item 能估計一個遞迴函式有幾種不同的參數，判斷要不要記憶化，並說出表裡的答案還
+和哪些變數有關。
+\item 會寫合併排序，並在合併時算出跨過中間的配對（逆序對的個數或距離總和）；會
+寫快速冪，並用遞迴樹算出這些分治的時間，以及估計遞迴深度會不會太深。
+\end{itemize}
+
+\textbf{延伸閱讀}（書末會整理完整的參考資料）
+
+\begin{itemize}
+\item Steven S. Skiena，\textit{The Algorithm Design Manual}，第 3 版，1.4 節：
+遞迴和數學歸納法的關係；第 5 章：分治與遞迴式。
+\item Thomas H. Cormen 等，\textit{Introduction to Algorithms}，第 4 版，2.3 節：
+合併排序的正確性與分析；4.4 節：用遞迴樹估計時間。
+\item Antti Laaksonen，\textit{Competitive Programmer's Handbook}，3.1 節：篇幅
+很短的合併排序說明，以及其他排序演算法的比較。
+\end{itemize}
+
+\addcontentsline{toc}{section}{練習解答}
+\section*{練習解答}
+
+\begin{enumerate}
+\item
+\begin{enumerate}
+\item \texttt{2 1 4 1 3 2 1}。 \texttt{show(4)} 先做 \texttt{show(2)}，印出
+\texttt{2 1}；再印 \texttt{4}；再做 \texttt{show(3)}，它先做 \texttt{show(1)}
+印 \texttt{1}，印 \texttt{3}，再做 \texttt{show(2)} 印 \texttt{2 1}。
+\item $15$ 次。 設 $S(n)$ 是呼叫次數，$n \le 0$ 時 $S(n) = 1$，否則
+$S(n) = 1 + S(n - 2) + S(n - 1)$。 從小往上算：$S(1) = 1 + 1 + 1 = 3$，
+$S(2) = 1 + 1 + 3 = 5$，$S(3) = 1 + 3 + 5 = 9$（和圖~\ref{fig:rec-show-tree} 一
+致），$S(4) = 1 + 5 + 9 = 15$。
+\item \texttt{4 2 1 3 1 2 1}。 先印自己，再處理 $n - 2$、再處理 $n - 1$，相當
+於由上往下、先左後右讀呼叫樹。 呼叫樹沒有變，次數也還是 $15$，只是印的時機不同。
+\end{enumerate}
+
+\item
+\begin{enumerate}
+\item
+\begin{center}
+\begin{tabular}{ccccccccc}
+\toprule
+$n$ & 0 & 1 & 2 & 3 & 4 & 5 & 6 & 7 \\
+\midrule
+$g(n)$ & 1 & 1 & 1 & 2 & 3 & 4 & 6 & 9 \\
+呼叫次數 & 1 & 1 & 1 & 3 & 5 & 7 & 11 & 17 \\
+\bottomrule
+\end{tabular}
+\end{center}
+$n \ge 3$ 時，值是 $g(n - 1) + g(n - 3)$，呼叫次數是 $1$ 加上兩個子呼叫各自的
+次數，例如 $g(7) = 6 + 3 = 9$，次數 $1 + 11 + 5 = 17$。
+\item 呼叫樹上，回傳 $1$ 的都是終止條件那些點（葉子），其他點的回傳值是兩個子
+節點的和，所以 $g(n)$ 等於葉子的個數。 不是終止條件的點都剛好有兩個子節點；這
+種樹每多一個內部節點就多一個葉子，所以內部節點數是葉子數減 $1$。 總點數是
+$g(n) + (g(n) - 1) = 2g(n) - 1$。
+\end{enumerate}
+
+\item
+\begin{enumerate}
+\item \texttt{12 1}。 最裡面的 \texttt{P 2 0} 是 $2$；中間的 \texttt{P 1 1} 是
+$1 + 2 = 3$；最外層是 $3 + 3 + 6 = 12$。 只有 $12$ 超過 $10$。
+\item 呼叫 $4$ 次：最外層計畫、\texttt{P 1 1}、\texttt{P 2 0}、支出 \texttt{6}。
+最多同時有 $3$ 層（最外層、\texttt{P 1 1}、\texttt{P 2 0}）。 讀 \texttt{6} 的
+時候，後兩層已經結束了。
+\end{enumerate}
+
+\item
+\begin{enumerate}
+\item 依序印出 \texttt{merge [1, 3): 1 5}、\texttt{merge [0, 3): 1 5 6}、
+\texttt{merge [4, 6): 3 4}、\texttt{merge [3, 6): 2 3 4}、
+\texttt{merge [0, 6): 1 2 3 4 5 6} 五行。
+$n = 6$ 時 \texttt{mid} 是 $3$，左半 \texttt{[0, 3)} 長度 $3$，再切時
+\texttt{mid} 是 $1$，分成 \texttt{[0, 1)} 和 \texttt{[1, 3)}。 長度 $1$ 的不用
+合併，所以第一次真的合併的是 \texttt{[1, 3)}。
+\item $9$ 個。 \texttt{[1, 3)} 合併 $1$ 和 $5$：$0$ 個。 \texttt{[0, 3)} 合併
+\texttt{6} 和 \texttt{1 5}：拿 $1$ 時左半剩 $1$ 個，拿 $5$ 時剩 $1$ 個，共 $2$
+個。 \texttt{[4, 6)} 合併 $4$ 和 $3$：$1$ 個。 \texttt{[3, 6)} 合併 \texttt{2}
+和 \texttt{3 4}：$0$ 個。 \texttt{[0, 6)} 合併 \texttt{1 5 6} 和
+\texttt{2 3 4}：拿 $2$、$3$、$4$ 時左半都剩 $5, 6$ 兩個，共 $6$ 個。 合計
+$2 + 1 + 6 = 9$。
+\end{enumerate}
+
+\item
+\begin{enumerate}
+\item $8$ 次：$b = 100, 50, 25, 12, 6, 3, 1, 0$。
+\item $512 \le b \le 1000$ 時最多，$11$ 次。 呼叫次數是 $\lfloor \log_2 b \rfloor + 2$，
+$b \ge 512 = 2^9$ 時是 $9 + 2 = 11$。
+\item 設 $T(b)$ 是呼叫次數，$T(0) = 1$，$b \ge 1$ 時 $T(b) = 1 + 2T(\lfloor b/2 \rfloor)$。
+$T(1) = 3$、$T(2) = 7$、$T(4) = 15$，一般是 $T(2^t) = 2^{t+2} - 1 = 4b - 1$；$2^t \le b < 2^{t+1}$ 時，遞迴的層數和 $b = 2^t$ 一樣，次數也一樣是 $2^{t+2} - 1$，介於 $2b$ 和 $4b$ 之間。 呼叫
+次數和 $b$ 成正比，和用迴圈乘 $b$ 次是同一個等級。 $b = 1000$ 時是 $2047$ 次（和
+常見錯誤裡量到的一樣），$b = 10^{18}$ 時是 $2^{61} - 1 \approx 2.3 \times 10^{18}$ 次。
+\end{enumerate}
+
+
+
+\end{enumerate}

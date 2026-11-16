@@ -7,7 +7,7 @@ OUTDIR := output
 CHAPTERS_OUTDIR := $(OUTDIR)/chapters
 
 # 已經動筆的章（目錄名稱）。新的一章開始寫時加進來，book.tex 也要取消註解。
-WRITTEN := 01_Preparation 02_Sorting 03_BinarySearchAnswer 04_EnumerationSimulation 07_Greedy
+WRITTEN := 01_Preparation 02_Sorting 03_BinarySearchAnswer 04_EnumerationSimulation 05_PrefixSumsTwoPointers 06_StacksQueuesHeaps 07_Greedy 08_RecursionDivideConquer 09_DP1D
 
 # Compile from BUILDDIR so aux/log/minted/pdf intermediates never land in src/.
 # Trailing colon on TEXINPUTS keeps TeX Live's default search path.

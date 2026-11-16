@@ -1,4 +1,1506 @@
-% 佔位：本章尚未開始。book.tex 裡先註解掉。
 \chapter{堆疊、佇列與優先佇列}
+\label{ch:stacks}
 
-本章尚未開始。
+下圖是某檔股票連續九天的收盤價。 對每一天，你想知道「往回看，上一次收得比今
+天高是哪一天」，例如第 $5$ 天收 $40$ 元，往回看第 $4$ 天 $36$、第 $3$ 天
+$39$ 都比較低，第 $2$ 天 $41$ 比較高，答案是第 $2$ 天。 往下讀之前，先自己
+把九天的答案都找出來，並且留意一件事：算到後面幾天時，有沒有哪幾天你已經確
+定「以後再也不用看它」？
+
+\begin{center}
+\begin{tikzpicture}[x=0.9cm, y=0.32cm]
+\foreach \d/\p in {1/38, 2/41, 3/39, 4/36, 5/40, 6/45, 7/37, 8/37, 9/42} {
+    \draw[draw=black!60, fill=black!6] (\d-0.35,0) rectangle (\d+0.35,\p-33);
+    \node[font=\small, above] at (\d,\p-33) {\p};
+    \node[font=\scriptsize, text=black!60, below] at (\d,0) {第 \d 天};
+}
+\draw[black!45] (0.4,0) -- (9.6,0);
+\end{tikzpicture}
+\diagcaption{九天的收盤價（單位：元）。}
+\label{fig:prices}
+\end{center}
+
+最直接的做法是每一天都一天一天往回看，最壞要看 $n(n-1)/2$ 次。 可是仔細看
+第 $6$ 天：它收 $45$ 元，比前面每一天都高。 從第 $7$ 天開始，往回看的時候
+一定會先碰到第 $6$ 天；第 $6$ 天以前的日子都比 $45$ 低，不可能再是任何一天
+的答案。 把這些日子丟掉，留下來的會是一張很短、而且很有規律的名單。 第
+~\ref{sec:mono-stack}~節會回來看這張名單。
+
+這一章的三個工具都是「一個容器，放東西進去，再依某個順序拿出來」：
+\textbf{堆疊}（stack）拿出最後放進去的、\textbf{佇列}（queue）拿出最早放進
+去的、\textbf{優先佇列}（priority queue）拿出目前最大（或最小）的。 語法在
+銜接書已經學過，這一章練的是另一件事：看出一個問題要的是哪一種順序，以及容
+器裡該留什麼、什麼可以丟掉。 例題依序是運算式求值、單調堆疊、用佇列由下往上
+彙整一棵樹、優先佇列模擬，最後一節用優先佇列做貪心。
+
+用到的語法在《C++ 程式設計：給學過 C 的人》（以下簡稱銜接書）第~8~章：
+\texttt{stack}、\texttt{queue}、\texttt{deque} 在 8.5 節，
+\texttt{priority\_queue} 在 8.6 節，\texttt{pair} 與結構化綁定在 8.2 節；
+\texttt{lower\_bound} 和 lambda 在第~9~章。 沒讀過銜接書的讀者，只要知道這
+三個容器各有 \texttt{push}、\texttt{pop}、\texttt{empty}，堆疊和優先佇列用
+\texttt{top()} 看下一個要出來的、佇列用 \texttt{front()}，就能讀這一章。
+
+\section{三種容器，三種取出順序}
+\label{sec:three-orders}
+
+同一串操作交給三種容器，拿出來的東西就不一樣。 下表依序做「放入 $4$、放入
+$1$、放入 $3$、取出、放入 $5$、取出、取出」，列出每一步之後三個容器裡還有什
+麼。 堆疊由底寫到頂，佇列由前寫到後；優先佇列內部的順序不固定（第
+~\ref{sec:pq}~節會說明），這裡由大寫到小，只表示「誰會先出來」：
+
+\begin{center}
+\begin{tabular}{llll}
+\toprule
+操作 & 堆疊（底 $\to$ 頂） & 佇列（前 $\to$ 後） & 優先佇列（先出 $\to$ 後出） \\
+\midrule
+放入 4 & 4 & 4 & 4 \\
+放入 1 & 4 1 & 4 1 & 4 1 \\
+放入 3 & 4 1 3 & 4 1 3 & 4 3 1 \\
+取出 & 4 1（拿出 3） & 1 3（拿出 4） & 3 1（拿出 4） \\
+放入 5 & 4 1 5 & 1 3 5 & 5 3 1 \\
+取出 & 4 1（拿出 5） & 3 5（拿出 1） & 3 1（拿出 5） \\
+取出 & 4（拿出 1） & 5（拿出 3） & 1（拿出 3） \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+什麼樣的題目該用哪一種，第~\ref{sec:which-container}~節會整理成一張表。
+
+\begin{bridgerecap}[三種容器的操作]
+\texttt{push}、\texttt{pop}、\texttt{empty}、\texttt{size} 三種容器都有；
+看下一個要出來的元素，堆疊和優先佇列用 \texttt{top()}，佇列用
+\texttt{front()}。 \texttt{pop()} 不回傳值，要先 \texttt{top()} 或
+\texttt{front()} 拿到元素再 \texttt{pop()}。 對空的容器呼叫
+\texttt{top()}、\texttt{front()}、\texttt{pop()} 是未定義行為，程式可能直
+接當掉。 這三種容器都不能走訪，也不能用 \texttt{[]}（銜接書 8.5、8.6 節）。
+需要「從頂端放入、取出，但偶爾也要看中間」時，直接把 \texttt{vector} 當堆疊
+用：\texttt{push\_back}、\texttt{pop\_back}、\texttt{back()} 對應
+\texttt{push}、\texttt{pop}、\texttt{top()}，第~\ref{sec:ex-water}~小節的例
+題就要這樣做。
+\end{bridgerecap}
+
+\begin{apcsnote}
+APCS 有一科是觀念題，題目給一段程式，問執行的結果。 遇到堆疊和佇列的程式，
+照上面的表格把每一步之後容器裡的東西寫下來，比在腦中想安全。 堆疊要寫清楚哪
+一端是頂端。
+\end{apcsnote}
+
+\section{堆疊：先處理最近一個還沒結束的}
+\label{sec:stack}
+
+銜接書 8.5 節用堆疊檢查括號配對：遇到左括號就放進去，遇到右括號就和頂端那
+個配對。 會用到堆疊，是因為右括號要配的永遠是「最近一個還沒配對的左括號」。
+同樣的結構到處都有：函式 A 呼叫 B、B 再呼叫 C，結束的順序一定是 C、B、A；
+網頁標記一層包一層；文書軟體的「復原」一次退回最近的一步。 只要東西有開始、
+有結束，而且結束的永遠是最近開始的那一個，就用堆疊記住「已經開始、還沒結束」
+的東西。
+
+這一節看一個比配對更進一步的用途：計算一條算式。 算式裡的運算子也有「開始」
+和「結束」：讀到一個運算子時，它右邊的數字還沒讀到，只能先記著；等到確定可以
+算了，再拿出來算。
+
+\subsection{運算式求值}
+\label{sec:expr-idea}
+
+先用平常的規則（先乘除後加減，同級由左往右）算 \texttt{9-4+2*3}，而且限定
+自己只能由左往右讀一次。 讀到 \texttt{9-4} 時還不能算減法，因為後面可能是
+乘號，例如 \texttt{9-4*2} 就要先算 \texttt{4*2}。 讀到 \texttt{+} 時就可以
+了：\texttt{+} 和 \texttt{-} 同級，同級由左往右，所以 \texttt{9-4} 可以先算
+成 $5$。 接著讀到 \texttt{*}，它比 \texttt{+} 高，\texttt{5+2} 不能算，先記
+著。 讀到結尾，剩下的 \texttt{2*3}、再來 \texttt{5+6}，依序算完，得到
+$11$。
+
+這個過程可以整理成一條規則。 用兩個堆疊，一個放還沒用掉的數字，一個放還沒
+算的運算子：
+
+\begin{itemize}
+\item 讀到數字：放進數字堆疊。
+\item 讀到運算子 \texttt{op}：只要運算子堆疊頂端那個的等級\textbf{大於或等
+於} \texttt{op}，就把它算掉（從數字堆疊拿出兩個數、算完放回去）。 算到不能
+再算了，才把 \texttt{op} 放進運算子堆疊。
+\item 讀完：把運算子堆疊裡剩下的依序算掉，數字堆疊最後剩下的那一個就是答案。
+\end{itemize}
+
+為什麼「頂端的等級不低於新來的」就可以算？ 頂端的運算子右邊那個數字已經讀
+到了，它還沒算，只是怕右邊有更高等級的運算子要先搶走這個數字。 現在右邊來的
+\texttt{op} 等級不比它高，搶不走；同級時題目規定由左往右，也輪到左邊的先算。
+等級相同要用「等於也算」，這一點下面的例題會看到寫錯的後果。
+
+運算子堆疊由底到頂，等級一定是越來越高的：等級比較低或相等的都在放入新運算
+子之前被算掉了。 這個「堆疊裡的東西保持某種大小順序」的性質，在下一節的單調
+堆疊會再出現。
+
+\subsection{例題：自訂優先順序的算式}
+\label{sec:ex-expr}
+
+\textbf{題意}（\akiref{expression-with-custom-precedence}{自訂優先順序的算式}）
+
+\begin{itemize}
+\item 算式只有非負整數和 \texttt{+}、\texttt{-}、\texttt{*}，沒有括號。
+\item 三種運算子的等級由輸入給定：$p_+$、$p_-$、$p_*$，數字越大越先算，等級
+相同的一律由左往右算。 運算本身的意思不變。
+\item 輸出算式的值除以 $1000000007$ 的非負餘數。
+\item 算式長度到 $2 \times 10^5$ 個字元，每個數字在 $0$ 到 $10^9$ 之間，等級
+在 $1$ 到 $3$ 之間。
+\end{itemize}
+
+例如 $p_+ = 2$、$p_- = 1$、$p_* = 1$ 時，\texttt{9-4+2*3} 要先算最高的
+\texttt{4+2}，得到 \texttt{9-6*3}；\texttt{-} 和 \texttt{*} 同級，由左往右，
+$9 - 6 = 3$，再 $3 \times 3 = 9$。 同一條算式照平常的規則是 $11$。
+
+\textbf{想法}
+
+最直接的做法照題目的描述做：在整條算式裡找等級最高、最左邊的運算子，把它和
+兩邊的數字換成結果，重複到只剩一個數。 每次找運算子和縮短算式都要掃過整條
+算式，算式有大約 $10^5$ 個運算子，總共大約 $10^{10}$ 次，來不及。 不過這個
+做法很適合當對拍用的暴力解：在長度十幾個字元的隨機算式上，和下面的程式比對
+輸出。
+
+上一小節的兩個堆疊做法，規則裡只有「比較等級」這一步和運算子是哪一種有關。
+等級改成由輸入決定，只要把比較等級的地方改成查表，其他完全一樣。
+
+用上面的例子跑一次（$p_+ = 2$、$p_- = 1$、$p_* = 1$）：
+
+\begin{center}
+\begin{tabular}{clll}
+\toprule
+讀到 & 做了什麼 & 數字堆疊（底 $\to$ 頂） & 運算子堆疊 \\
+\midrule
+\texttt{9} & 放入 & 9 & \\
+\texttt{-} & 堆疊是空的，放入 & 9 & \texttt{-} \\
+\texttt{4} & 放入 & 9 4 & \texttt{-} \\
+\texttt{+} & 頂端 \texttt{-} 等級 $1 < 2$，不算；放入 & 9 4 & \texttt{- +} \\
+\texttt{2} & 放入 & 9 4 2 & \texttt{- +} \\
+\texttt{*} & 頂端 \texttt{+} 等級 $2 \ge 1$，算 $4+2$ & 9 6 & \texttt{-} \\
+ & 頂端 \texttt{-} 等級 $1 \ge 1$，算 $9-6$；放入 \texttt{*} & 3 & \texttt{*} \\
+\texttt{3} & 放入 & 3 3 & \texttt{*} \\
+結尾 & 算 $3 \times 3$ & 9 & \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+最後數字堆疊剩下 $9$，和手算的一樣。
+
+取餘數的部分：每個數字讀進來先取餘數，之後每算一次也取餘數，數字堆疊裡的數
+都小於 $1000000007$。 兩個這樣的數相乘不到 $10^{18}$，\texttt{long long} 存
+得下。 減法 $x - y$ 可能是負的，C++ 的 \texttt{\%} 對負數的結果也是負的，所
+以先加 $1000000007$ 再取餘數。
+
+同樣的模型也出現在別的地方：試算表計算儲存格裡的公式、計算機 app 處理使用
+者輸入的整串算式、編譯器把程式裡的運算式轉成指令，都是由左往右讀一次，用堆
+疊記住還沒算的部分。
+
+\textbf{程式}
+
+\begin{example}[label=ex:expr]{cpp}{(expr.cpp) 自訂優先順序的算式}
+#include <iostream>
+#include <stack>
+#include <string>
+using namespace std;
+
+const long long MOD = 1000000007;
+
+long long calc(long long x, long long y, char op) {
+    if (op == '+') {
+        return (x + y) % MOD;
+    }
+    if (op == '-') {
+        return (x - y + MOD) % MOD;       // x、y 都小於 MOD，加回 MOD 就不會是負的
+    }
+    return x * y % MOD;
+}
+
+int main() {
+    int levelPlus, levelMinus, levelTimes;
+    string s;
+    cin >> levelPlus >> levelMinus >> levelTimes >> s;
+    auto level = [&](char op) {
+        if (op == '+') {
+            return levelPlus;
+        }
+        if (op == '-') {
+            return levelMinus;
+        }
+        return levelTimes;
+    };
+
+    stack<long long> nums;                // 還沒用掉的數字
+    stack<char> ops;                      // 還沒算的運算子
+    auto reduceTop = [&]() {              // 算掉 ops 頂端的運算子
+        long long y = nums.top();
+        nums.pop();
+        long long x = nums.top();
+        nums.pop();
+        nums.push(calc(x, y, ops.top()));
+        ops.pop();
+    };
+
+    size_t i = 0;
+    while (i < s.size()) {
+        if (s[i] >= '0' && s[i] <= '9') {
+            long long v = 0;
+            while (i < s.size() && s[i] >= '0' && s[i] <= '9') {
+                v = v * 10 + (s[i] - '0');
+                i++;
+            }
+            nums.push(v % MOD);
+        } else {
+            char op = s[i];
+            i++;
+            // 左邊等級不低於自己的，都可以先算了
+            while (!ops.empty() && level(ops.top()) >= level(op)) {
+                reduceTop();
+            }
+            ops.push(op);
+        }
+    }
+    while (!ops.empty()) {
+        reduceTop();
+    }
+    cout << nums.top() << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+2 1 1 \\
+9-4+2*3 \\
+}{
+9 \\
+}
+
+\begin{itemize}
+\item \texttt{reduceTop} 先拿出來的是\textbf{右邊}的數 \texttt{y}，再拿出左
+邊的 \texttt{x}。 加法和乘法順序無所謂，減法要算 \texttt{x - y}，兩個寫反了
+答案就錯。
+\item \texttt{level} 和 \texttt{reduceTop} 是 lambda（銜接書第~9~章），
+\texttt{[\&]} 讓它們能直接用 \texttt{main} 裡的變數。 寫成一般函式也可以，
+只是要把堆疊和等級當參數傳進去。
+\item 數字可能有好幾位，內層的 \texttt{while} 一次讀完一整個數字。 題目保證
+算式合法，所以 \texttt{reduceTop} 執行時數字堆疊裡一定至少有兩個數。
+\end{itemize}
+
+\textbf{複雜度}
+
+每個數字放入數字堆疊一次，每個運算子放入、算掉各一次，每次算掉會讓數字少一
+個。 所以兩層 \texttt{while} 加起來，總共的工作量和算式長度成正比，是
+$O(n)$。 最大的測試資料在本書測試的環境下不到 $0.05$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{等級相同時沒有先算}：把 \texttt{>=} 寫成 \texttt{>}。 範例的輸
+入，讀到 \texttt{*} 時只算掉 \texttt{+}，同級的 \texttt{-} 留在堆疊裡，最後
+變成 $9 - (6 \times 3)$，程式印出 \texttt{999999998}（也就是 $-9$ 的非負餘
+數）。 同級的運算子從右往左算了。 只用全部同級、又只有加法的輸入測試，看不出
+這個錯誤。
+\item \textbf{減法後沒有加回 \texttt{MOD}}：\texttt{calc} 寫成
+\texttt{(x - y) \% MOD}，輸入 \texttt{1 1 1} 和 \texttt{3-5}，程式印出
+\texttt{-2}，題目要的是 \texttt{1000000005}。
+\item \textbf{一次只讀一個字元當數字}：輸入 \texttt{1 1 1} 和 \texttt{12+3}，
+\texttt{12} 會被讀成 \texttt{1} 和 \texttt{2} 兩個數，數字堆疊多出一個數，
+最後算的是 $2 + 3$，程式印出 \texttt{5}，正確答案是 $15$。
+\end{itemize}
+
+\section{單調堆疊}
+\label{sec:mono-stack}
+
+回到章首的收盤價。 對每一天，要找往回看第一個比今天高的日子。 最直接的做法
+是從前一天開始一天一天往回看，看到比今天高的就停。 九天的時候很快，可是如果
+價格一路往下跌，每一天都要看回第 $1$ 天，總共 $n(n-1)/2$ 次；$n = 2 \times
+10^5$ 時大約 $2 \times 10^{10}$ 次，來不及。
+
+\subsection{被擋住的人可以刪掉}
+
+章首請你留意的事，現在說清楚。 假設第 $j$ 天在第 $i$ 天之前（$j < i$），而
+且第 $j$ 天的價格不高於第 $i$ 天。 對第 $i$ 天之後的任何一天來說，往回看時
+會先看到第 $i$ 天：
+\begin{itemize}
+\item 如果第 $i$ 天比它高，答案最遠就是第 $i$ 天，輪不到第 $j$ 天。
+\item 如果第 $i$ 天不比它高，第 $j$ 天又不高於第 $i$ 天，第 $j$ 天也不會比它
+高。
+\end{itemize}
+兩種情況第 $j$ 天都不會是答案。 所以每來一個新的日子，前面所有不高於它的日子
+都可以從名單上刪掉，以後不用再看。
+
+刪完之後，名單上剩下的日子有兩個性質：編號由舊到新，價格由高到低，而且是嚴格
+遞減（如果有一天不比它後面的某一天高，早就被刪掉了）。 新的一天來的時候，要
+刪的一定是名單尾端那幾個最新、最低的；刪完之後，名單的最後一個就是答案。 只
+從尾端放入、從尾端刪除，這就是堆疊。 堆疊裡的值保持單調遞增或遞減，這種用法
+叫\textbf{單調堆疊}（monotonic stack）。
+
+\begin{example}[label=ex:prev-higher]{cpp}{(prev\_higher.cpp) 往回看第一個比今天高的日子}
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    int n;
+    cin >> n;
+    vector<int> price(n + 1);
+    vector<int> st;                       // 候選名單：日子的編號
+    for (int i = 1; i <= n; i++) {
+        cin >> price[i];
+        // 不比今天高的，以後都不會再是任何人的答案
+        while (!st.empty() && price[st.back()] <= price[i]) {
+            st.pop_back();
+        }
+        int answer = st.empty() ? 0 : st.back();
+        cout << answer << (i == n ? '\n' : ' ');
+        st.push_back(i);
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+9 \\
+38 41 39 36 40 45 37 37 42 \\
+}{
+0 0 2 3 2 0 6 6 6 \\
+}
+
+\texttt{0} 表示往回找不到比今天高的。 堆疊裡存的是日子的\textbf{編號}，要價
+格時再查 \texttt{price}；存編號才能輸出答案是哪一天。 每一天的過程：
+
+\begin{center}
+\begin{tabular}{cclcl}
+\toprule
+天 & 價格 & 刪掉的日子 & 答案 & 放入後的堆疊（底 $\to$ 頂，括號裡是價格） \\
+\midrule
+1 & 38 & & 0 & 1(38) \\
+2 & 41 & 1 & 0 & 2(41) \\
+3 & 39 & & 2 & 2(41) 3(39) \\
+4 & 36 & & 3 & 2(41) 3(39) 4(36) \\
+5 & 40 & 4、3 & 2 & 2(41) 5(40) \\
+6 & 45 & 5、2 & 0 & 6(45) \\
+7 & 37 & & 6 & 6(45) 7(37) \\
+8 & 37 & 7 & 6 & 6(45) 8(37) \\
+9 & 42 & 8 & 6 & 6(45) 9(42) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{為什麼是 $O(n)$}
+
+\texttt{for} 裡面還有一個 \texttt{while}，看起來像 $O(n^2)$。 換個角度數：每
+一天的編號只會被 \texttt{push\_back} 一次，被刪掉之後就不會再回來，所以最多
+被 \texttt{pop\_back} 一次。 整支程式的 \texttt{pop\_back} 加起來不超過 $n$
+次，\texttt{while} 的條件判斷也只比它多 $n$ 次（每一天最後一次判斷不成立）。
+上面的表格裡，九天一共刪了 $7$ 次。
+
+這種不看單一次迴圈最壞要多久，改數整個程式總共做了多少事的算法，叫
+\textbf{攤銷分析}（amortized analysis）。 某一天可能一次刪掉很多個，但那些
+被刪的都是以前一個一個放進去的，「刪很多」不會一直發生。 第~5~章的雙指標也
+是同樣的數法。
+
+\subsection{相等的值要不要刪}
+
+\texttt{while} 的條件是 \texttt{<=}：價格相等的也刪掉。 題目要的是\textbf{嚴
+格}比今天高，相等的日子不會是答案，留著它反而會擋在前面。 把 \texttt{<=} 改成
+\texttt{<}，第 $8$ 天的答案會變成 $7$，因為第 $7$ 天的 $37$ 沒有被刪掉，可是
+它和第 $8$ 天一樣是 $37$，不算比較高。 程式印出
+\texttt{0 0 2 3 2 0 6 7 6}。
+
+反過來，如果題目要的是「往回看第一個\textbf{不低於}今天的」，相等的就是答案，
+這時要用 \texttt{<}，只刪嚴格比較低的。 判斷的方法是問自己：和今天一樣的那
+一天，可不可能是之後某一天的答案？ 不可能就刪。
+
+\subsection{各種變化}
+
+同一個寫法改一兩個地方，可以回答好幾種問題：
+
+\begin{center}
+\begin{tabular}{p{0.36\linewidth}p{0.56\linewidth}}
+\toprule
+要找的 & 怎麼改 \\
+\midrule
+往左第一個比自己高的 & 由左往右，刪掉 $\le$ 自己的（就是上面的程式） \\
+往左第一個比自己低的 & 由左往右，刪掉 $\ge$ 自己的 \\
+往右第一個比自己高的 & 由右往左，刪掉 $\le$ 自己的；或由左往右、只刪 $<$ 自己的，某一天被刪掉時，刪掉它的那一天就是答案 \\
+以自己為最大值，最遠延伸到哪裡 & 往左、往右各做一次，兩個答案之間就是範圍 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+最後一列常用在「長條圖裡最大的矩形」這類題目：每一根長條往左、往右能延伸到
+第一個比它矮的長條為止。 本章的實作練習裡有好幾題是這種形狀。
+
+\subsection{例題：還沒被追平的水位}
+\label{sec:ex-water}
+
+\textbf{題意}（\akiref{still-unmatched-water-levels}{還沒被追平的水位}）
+
+\begin{itemize}
+\item 河邊的水位計每小時記錄一次，第 $i$ 筆的水位是 $h_i$。
+\item 寫入第 $i$ 筆後，如果第 $j$ 筆（$j \le i$）比第 $j+1$ 到第 $i$ 筆都
+\textbf{嚴格}高，就說第 $j$ 筆到目前為止「還沒被追平」。 一樣高也算追平。 第
+$i$ 筆本身一定還沒被追平。
+\item 每寫入一筆，就查看最近的 $L_i$ 筆（第 $i - L_i + 1$ 到第 $i$ 筆），回
+報其中有幾筆還沒被追平。
+\item $n \le 10^5$，$1 \le L_i \le i$，水位在 $0$ 到 $10^9$ 之間。
+\end{itemize}
+
+例如七筆紀錄的水位和 $L$ 是 $(6, 1)$、$(2, 2)$、$(4, 1)$、$(4, 3)$、
+$(1, 5)$、$(5, 2)$、$(3, 4)$。 第 $5$ 次查看最近 $5$ 筆，水位是
+$6, 2, 4, 4, 1$：第 $1$ 筆的 $6$ 比後面都高，算；第 $2$ 筆被後面的 $4$ 超
+過；第 $3$ 筆被第 $4$ 筆追平；第 $4$ 筆比第 $5$ 筆高，算；第 $5$ 筆算。 答案
+是 $3$。
+
+\textbf{想法}
+
+最直接的做法：每次查看，對範圍裡的每一筆 $j$，檢查它後面到第 $i$ 筆有沒有一
+樣高或更高的。 從第 $i$ 筆往回掃、一路記下目前看過的最大值，每次查看是
+$O(L_i)$。 $L_i$ 可以每次都是 $i$，總共 $O(n^2)$，$n = 10^5$ 時大約
+$5 \times 10^9$ 次，來不及。
+
+觀察：「到第 $i$ 筆為止還沒被追平的紀錄」，就是上一小節的程式處理完第 $i$
+天之後，堆疊裡剩下的那些。 理由是一樣的：一筆紀錄只要被後面某一筆追平或超
+過，就在那一筆進來時被刪掉；還留在堆疊裡的，後面都比它低。 所以這題的堆疊不
+只是找答案的工具，它本身就是答案的集合。
+
+剩下的問題是：堆疊裡有幾筆的編號 $\ge i - L_i + 1$？ 堆疊裡的編號由底到頂
+是遞增的，要數的是頂端那一段。 從頂端一個一個往下數也可以，但遇到水位一路下
+降的資料，堆疊有 $i$ 層，每次都要數很多，又回到 $O(n^2)$。 既然編號已經排好
+了，用二分搜尋：\texttt{lower\_bound} 找到第一個編號 $\ge i - L_i + 1$ 的位
+置，從那裡到頂端都要數。 這就是為什麼要用 \texttt{vector} 當堆疊：
+\texttt{stack} 不能用 \texttt{lower\_bound}。
+
+用上面的例子跑一次（表格裡的「起點」是 $i - L_i + 1$）：
+
+\begin{center}
+\begin{tabular}{ccclccc}
+\toprule
+$i$ & 水位 & $L_i$ & 堆疊（編號：水位） & 起點 & 編號 $\ge$ 起點的 & 答案 \\
+\midrule
+1 & 6 & 1 & 1:6 & 1 & 1 & 1 \\
+2 & 2 & 2 & 1:6\ \ 2:2 & 1 & 1、2 & 2 \\
+3 & 4 & 1 & 1:6\ \ 3:4 & 3 & 3 & 1 \\
+4 & 4 & 3 & 1:6\ \ 4:4 & 2 & 4 & 1 \\
+5 & 1 & 5 & 1:6\ \ 4:4\ \ 5:1 & 1 & 1、4、5 & 3 \\
+6 & 5 & 2 & 1:6\ \ 6:5 & 5 & 6 & 1 \\
+7 & 3 & 4 & 1:6\ \ 6:5\ \ 7:3 & 4 & 6、7 & 2 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+第 $4$ 筆進來時，水位一樣是 $4$ 的第 $3$ 筆被刪掉，這就是「追平也算」；第
+$6$ 筆進來時刪掉了第 $5$、$4$ 筆。
+
+同樣的模型也出現在別的地方：股票看板上的「創 $N$ 日新高」、伺服器監控畫面標
+出最近一段時間裡還沒被超越的流量高峰，都是在問一段範圍裡有哪些值比它後面的
+都大。
+
+\textbf{程式}
+
+\begin{example}[label=ex:water]{cpp}{(water.cpp) 還沒被追平的水位}
+#include <algorithm>
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n;
+    cin >> n;
+    vector<long long> h(n + 1);
+    vector<int> st;                       // 還沒被追平的紀錄，編號由底到頂遞增
+    for (int i = 1; i <= n; i++) {
+        int len;
+        cin >> h[i] >> len;
+        while (!st.empty() && h[st.back()] <= h[i]) {
+            st.pop_back();                // 被第 i 筆追平或超過
+        }
+        st.push_back(i);
+        int from = i - len + 1;           // 這次查看的第一筆
+        int pos = lower_bound(st.begin(), st.end(), from) - st.begin();
+        cout << st.size() - pos << '\n';
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+7 \\
+6 1 \\
+2 2 \\
+4 1 \\
+4 3 \\
+1 5 \\
+5 2 \\
+3 4 \\
+}{
+1 \\
+2 \\
+1 \\
+1 \\
+3 \\
+1 \\
+2 \\
+}
+
+\begin{itemize}
+\item \texttt{lower\_bound} 回傳第一個 $\ge$ \texttt{from} 的位置（銜接書第~9~
+章），減掉 \texttt{st.begin()} 變成下標 \texttt{pos}。 下標 \texttt{pos} 到
+\texttt{st.size() - 1} 都在範圍裡，共 \texttt{st.size() - pos} 筆。 範圍裡至
+少有第 $i$ 筆，所以答案至少是 $1$。
+\item \texttt{st.size()} 是 \texttt{size\_t}，減掉 \texttt{int} 的
+\texttt{pos} 之後仍然是 \texttt{size\_t}。 \texttt{pos} 不會超過
+\texttt{st.size()}，相減不會變成負數，直接輸出沒有問題。
+\end{itemize}
+
+\textbf{複雜度}
+
+堆疊的部分和上一小節一樣，總共 $O(n)$；每次查看做一次二分搜尋，$O(\log n)$。
+整支程式 $O(n \log n)$，最大的測試資料在本書測試的環境下不到 $0.05$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{追平的沒有刪}：\texttt{<=} 寫成 \texttt{<}，一樣高的舊紀錄留在
+堆疊裡被多數。 範例的輸入會印出 \texttt{1 2 1 2 4 1 2}（每個數字一行）：第
+$4$ 次查看時，第 $3$ 筆的 $4$ 已經被第 $4$ 筆追平，卻還在堆疊裡。
+\item \textbf{起點差一}：\texttt{from} 寫成 \texttt{i - len}，多看了一筆。 範
+例的輸入會印出 \texttt{1 2 1 2 3 1 2}，第 $4$ 次查看把不在範圍裡的第 $1$ 筆
+也算進去了。
+\item \textbf{從頂端一個一個數}：答案正確，但水位一路下降、$L_i = i$ 的輸入
+（$n = 10^5$）讓每次都要數 $i$ 個。 在本書測試的環境下，這樣寫要跑兩秒多，
+用 \texttt{lower\_bound} 的版本不到 $0.05$ 秒。
+\end{itemize}
+
+\section{佇列：輪到已經準備好的}
+\label{sec:queue}
+
+佇列最常見的用途是銜接書 8.5 節的廣度優先搜尋，第~11、12~章會大量使用。 這
+一節看另一種用法：有些東西要等它的前置條件全部完成才能處理，例如主管要等所有
+部屬的資料交上來才能彙整。 做法是記下每樣東西還差幾個前置條件，差 $0$ 個的
+放進佇列；每處理完一個，就把等它的那些東西的「還差幾個」減一，減到 $0$ 就輪到
+它排隊。
+
+\subsection{例題：層層彙整的報告}
+\label{sec:ex-reports}
+
+\textbf{題意}（\akiref{reports-rolling-up}{層層彙整的報告}）
+
+\begin{itemize}
+\item 公司有 $N$ 位員工，除了總經理，每人恰好有一位直屬主管，往上找一定會
+走到總經理。
+\item 每人寫報告要 $t_i$ 小時，必須等所有直屬部屬的報告都完成才能開始；沒
+有部屬的人從第 $0$ 小時開始。 部屬一完成，主管立刻收到。
+\item 輸出每個人完成報告的時刻 $f_i$。
+\item $N \le 2 \times 10^5$，$t_i \le 10^9$。 主管的編號不一定比部屬小。
+\end{itemize}
+
+例如七位員工，主管和時數如下圖。 員工 $1$、$4$、$6$ 都是員工 $2$ 的部屬，
+最晚的員工 $4$ 在第 $6$ 小時完成，員工 $2$ 從第 $6$ 小時開始寫 $2$ 小時，第
+$8$ 小時完成。 總經理 $5$ 要等員工 $2$（第 $8$ 小時）和員工 $7$（第 $9$ 小
+時），第 $10$ 小時完成。
+
+\begin{center}
+\begin{tikzpicture}[x=1.3cm, y=1.1cm,
+    emp/.style={circle, draw=black!60, minimum size=0.75cm, font=\small},
+    tlbl/.style={font=\scriptsize, text=black!60}]
+\node[emp] (n5) at (2.5,2) {5};
+\node[emp] (n2) at (1,1) {2};
+\node[emp] (n7) at (4,1) {7};
+\node[emp] (n1) at (0,0) {1};
+\node[emp] (n4) at (1,0) {4};
+\node[emp] (n6) at (2,0) {6};
+\node[emp] (n3) at (4,0) {3};
+\foreach \a/\b in {n5/n2, n5/n7, n2/n1, n2/n4, n2/n6, n7/n3} {\draw[black!60] (\a) -- (\b);}
+\node[tlbl, right] at (n5.east) {$t = 1$，$f = 10$};
+\node[tlbl, left] at (n2.west) {$t = 2$，$f = 8$};
+\node[tlbl, right] at (n7.east) {$t = 5$，$f = 9$};
+\node[tlbl, below] at (n1.south) {$t = 3$，$f = 3$};
+\node[tlbl, below=0.25cm] at (n4.south) {$t = 6$，$f = 6$};
+\node[tlbl, below] at (n6.south) {$t = 2$，$f = 2$};
+\node[tlbl, below] at (n3.south) {$t = 4$，$f = 4$};
+\end{tikzpicture}
+\diagcaption{七位員工的上下關係，上面是主管。 $t$ 是寫報告的時數，$f$ 是完成的時刻。}
+\label{fig:reports}
+\end{center}
+
+\textbf{想法}
+
+一個人的完成時刻是 $f_i = t_i + {}$（部屬裡最晚的完成時刻），沒有部屬就是
+$t_i$。 式子很簡單，難的是\textbf{順序}：要算主管，得先算完他所有的部屬。
+
+最直接的做法有兩種，都有問題。 第一種是遞迴：要算總經理就先遞迴算每個部屬。
+公司可能是一條長鏈，從總經理一路往下 $2 \times 10^5$ 層，遞迴這麼深可能用光
+呼叫堆疊（第~8~章會再談遞迴的深度）。 第二種是照編號由大到小算，以為部屬的
+編號都比主管大；題目明說不一定，這樣會先算到還沒準備好的主管（見本節的常見錯
+誤）。
+
+用這一節開頭的做法：\texttt{waiting[i]} 記員工 $i$ 還有幾個部屬沒交，
+\texttt{ready[i]} 記已經交上來的部屬裡最晚的完成時刻。 一開始把
+\texttt{waiting} 是 $0$ 的人（沒有部屬的）放進佇列。 每次從佇列拿出一個人
+$v$，他的部屬都交了，所以 $f_v = \texttt{ready}[v] + t_v$ 已經確定；接著通
+知他的主管 $b$：更新 \texttt{ready[b]}，\texttt{waiting[b]} 減一，減到 $0$
+就把 $b$ 放進佇列。
+
+用上圖的例子跑一次。 一開始沒有部屬的是 $1$、$3$、$4$、$6$：
+
+\begin{center}
+\begin{tabular}{cclc}
+\toprule
+拿出 & $f$ & 通知主管 & 之後的佇列（前 $\to$ 後） \\
+\midrule
+ & & & 1 3 4 6 \\
+1 & 3 & 2：\texttt{ready} $= 3$，還差 $2$ 人 & 3 4 6 \\
+3 & 4 & 7：\texttt{ready} $= 4$，還差 $0$ 人，放入 & 4 6 7 \\
+4 & 6 & 2：\texttt{ready} $= 6$，還差 $1$ 人 & 6 7 \\
+6 & 2 & 2：\texttt{ready} 仍是 $6$，還差 $0$ 人，放入 & 7 2 \\
+7 & 9 & 5：\texttt{ready} $= 9$，還差 $1$ 人 & 2 \\
+2 & 8 & 5：\texttt{ready} 仍是 $9$，還差 $0$ 人，放入 & 5 \\
+5 & 10 & 總經理，沒有主管 & \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+每個人都是在「所有部屬都處理完」之後才進佇列，所以拿出來的時候
+\texttt{ready} 一定已經是最終的值。 這個由下往上的處理順序，第~13~章處理樹
+的時候會再用到；第~18~章會把同樣的想法推廣到一般的「先後順序」問題，在那裡
+叫拓撲排序。
+
+這裡用 \texttt{stack} 代替 \texttt{queue} 也算得對：只要拿出來的人部屬都處理
+完了，誰先誰後都不影響答案。 用佇列的好處是處理的順序比較好想，接近「一層一
+層往上」。
+
+同樣的模型也出現在別的地方：專案裡每項工作要等前置工作完成才能開始，求每項
+工作最早什麼時候完成；組織裡由各部門往上彙整預算；編譯一個大型程式時，每個
+檔案要等它引用的檔案先編好。
+
+\textbf{程式}
+
+\begin{example}[label=ex:reports]{cpp}{(reports.cpp) 層層彙整的報告}
+#include <iostream>
+#include <queue>
+#include <vector>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n;
+    cin >> n;
+    vector<int> boss(n + 1), waiting(n + 1, 0);   // waiting：還沒交的部屬人數
+    vector<long long> t(n + 1), ready(n + 1, 0), finish(n + 1, 0);
+    for (int i = 1; i <= n; i++) {
+        cin >> boss[i];
+        if (boss[i] != 0) {
+            waiting[boss[i]]++;
+        }
+    }
+    for (int i = 1; i <= n; i++) {
+        cin >> t[i];
+    }
+
+    queue<int> q;                         // 可以開始寫的人
+    for (int i = 1; i <= n; i++) {
+        if (waiting[i] == 0) {
+            q.push(i);
+        }
+    }
+    while (!q.empty()) {
+        int v = q.front();
+        q.pop();
+        finish[v] = ready[v] + t[v];      // 部屬都交了，ready[v] 已經是最晚的
+        int b = boss[v];
+        if (b == 0) {
+            continue;                     // 總經理
+        }
+        ready[b] = max(ready[b], finish[v]);
+        waiting[b]--;
+        if (waiting[b] == 0) {
+            q.push(b);
+        }
+    }
+
+    for (int i = 1; i <= n; i++) {
+        cout << finish[i] << (i == n ? '\n' : ' ');
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+7 \\
+2 5 7 2 0 2 5 \\
+3 2 4 6 1 2 5 \\
+}{
+3 8 4 6 10 2 9 \\
+}
+
+輸入的第二行是每個人的主管（總經理是 $0$），第三行是 $t_i$。
+
+\begin{itemize}
+\item 讀主管的時候順便數每個人有幾個部屬，存在 \texttt{waiting}。 不需要把部
+屬的名單存下來，因為每個人只需要通知自己的主管。
+\item 時刻用 \texttt{long long}：一條 $2 \times 10^5$ 人的長鏈、每人 $10^9$
+小時，總經理的完成時刻是 $2 \times 10^{14}$。
+\end{itemize}
+
+\textbf{複雜度}
+
+每個人放入、拿出佇列各一次，每次拿出只做常數件事，總共 $O(N)$。 最大的測試
+資料在本書測試的環境下不到 $0.05$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{照編號由大到小算}：以為部屬的編號一定比主管大，寫成
+\texttt{for (int i = n; i >= 1; i--)} 依序算 \texttt{finish[i]} 再更新主管。
+範例的輸入會印出 \texttt{3 8 4 6 6 2 5}：員工 $7$ 比他的部屬 $3$ 先算，當時
+\texttt{ready[7]} 還是 $0$。 範例如果剛好每個主管的編號都比部屬小，這個錯誤
+就看不出來。
+\item \textbf{時刻用 \texttt{int}}：把 \texttt{t}、\texttt{ready}、
+\texttt{finish} 改成 \texttt{int}，輸入 $N = 2 \times 10^5$ 的長鏈（員工 $1$
+是總經理，員工 $i$ 的主管是 $i - 1$）、每人 $10^9$ 小時，總經理的答案應該是
+\texttt{200000000000000}，在本書測試的環境下印出 \texttt{2000000000}。
+\end{itemize}
+
+\subsection{單調佇列：視窗裡的最大值}
+\label{sec:mono-queue}
+
+第~5~章的滑動視窗，用計數陣列維護視窗裡的狀態。 有一種狀態計數陣列做不到：
+視窗裡的\textbf{最大值}。 例如停車場記錄每小時的車數，要知道每連續 $k$ 小時
+裡最多是幾台。 視窗往右移一格時，進來一個、出去一個；出去的如果剛好是最大值，
+不知道第二大是誰。 每次重新掃整個視窗是 $O(nk)$，$n$ 和 $k$ 都到 $10^5$ 時
+太慢。
+
+用單調堆疊的想法：如果第 $j$ 小時在第 $i$ 小時之前，而且車數不多於第 $i$
+小時，那麼只要第 $j$ 小時還在視窗裡，第 $i$ 小時也一定在（它比較晚出去），而
+且不比它少，第 $j$ 小時永遠不會是最大值，可以刪掉。 刪完之後，留下的候選人
+編號由舊到新、車數嚴格遞減，最前面的就是視窗裡的最大值。
+
+和單調堆疊不同的是，最前面的候選人會因為時間到了而離開視窗，所以兩端都要能
+刪除：新來的從後面刪掉比它小或一樣的，過期的從前面刪掉。 兩端都能增刪的容器
+是 \texttt{deque}（銜接書 8.5 節）。 這種用法叫\textbf{單調佇列}（monotonic
+queue）。
+
+\begin{example}[label=ex:window-max]{cpp}{(window\_max.cpp) 每連續 k 個裡的最大值}
+#include <deque>
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    int n, k;
+    cin >> n >> k;
+    vector<int> a(n);
+    for (int &x : a) {
+        cin >> x;
+    }
+    deque<int> dq;                        // 編號；對應的值由前到後遞減
+    for (int i = 0; i < n; i++) {
+        while (!dq.empty() && a[dq.back()] <= a[i]) {
+            dq.pop_back();                // 比新來的小或一樣，再也當不了最大
+        }
+        dq.push_back(i);
+        if (dq.front() <= i - k) {
+            dq.pop_front();               // 已經滑出視窗
+        }
+        if (i >= k - 1) {
+            cout << a[dq.front()] << (i == n - 1 ? '\n' : ' ');
+        }
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+8 3 \\
+4 7 2 5 5 1 3 6 \\
+}{
+7 7 5 5 5 6 \\
+}
+
+編號從 $0$ 開始，視窗是第 $i - k + 1$ 到第 $i$ 個：
+
+\begin{center}
+\begin{tabular}{cclll}
+\toprule
+$i$ & 值 & 刪掉的 & \texttt{dq}（編號：值） & 輸出 \\
+\midrule
+0 & 4 & & 0:4 & \\
+1 & 7 & 後面刪 0 & 1:7 & \\
+2 & 2 & & 1:7\ \ 2:2 & 7 \\
+3 & 5 & 後面刪 2 & 1:7\ \ 3:5 & 7 \\
+4 & 5 & 後面刪 3；前面刪 1（過期） & 4:5 & 5 \\
+5 & 1 & & 4:5\ \ 5:1 & 5 \\
+6 & 3 & 後面刪 5 & 4:5\ \ 6:3 & 5 \\
+7 & 6 & 後面刪 6、4 & 7:6 & 6 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{itemize}
+\item \texttt{dq} 存編號，才知道最前面那個是不是已經滑出視窗。 只存值的話，
+要另外拿 \texttt{a[i - k]} 和最前面比，而且相等的值不能刪，寫起來容易出錯。
+\item 每次最多只有一個過期（視窗一次只移一格），所以前面用 \texttt{if} 就
+夠了。 視窗的兩端如果一次可能移很多格，就要改成 \texttt{while}。
+\item 每個編號進出 \texttt{deque} 各一次，總共 $O(n)$，和視窗大小 $k$ 無關。
+\end{itemize}
+
+要最小值時，把 \texttt{<=} 改成 \texttt{>=}。 什麼時候想到單調佇列：題目要
+一段\textbf{會移動}的範圍裡的最大或最小值，而且範圍的兩端都只往右走。 範圍
+不移動、只是很多次查詢任意區間的最大值，就不是這個工具了，那是之後資料結構
+課的內容（例如線段樹）。
+
+\section{優先佇列：每次拿目前最急的}
+\label{sec:pq}
+
+一堆東西裡要反覆拿出最大的，而且中途還會加入新的東西或改變舊的，就用優先佇
+列。 東西不會變動時，排序一次就好，不需要優先佇列；會變動時，每次重新排序或
+重新掃一遍找最大值都太慢。
+
+\subsection{堆積長什麼樣子}
+
+\texttt{priority\_queue} 的內部是一個\textbf{堆積}（heap）：把元素排成一棵
+每一層由左到右填滿的二元樹，規定每個節點都不小於它的兩個子節點，所以最大的
+在樹根。 這棵樹不用指標連起來，直接一層一層存進陣列：從 $1$ 開始編號
+時，位置 $i$ 的兩個子節點在 $2i$、$2i+1$，父節點在 $i/2$（整數除法）。
+
+放入時，新元素先接在陣列尾端，只要比父節點大就和父節點交換，一路往上；拿掉
+最大值時，把陣列最後一個搬到樹根，只要比較大的那個子節點比它大就交換，一路往
+下。 樹的高度大約是 $\log_2 n$，所以 \texttt{push}、\texttt{pop} 都是
+$O(\log n)$，\texttt{top} 是 $O(1)$。 除了樹根是最大的以外，其他元素沒有排
+好，這也是 \texttt{priority\_queue} 不讓你走訪的原因。
+
+寫程式時用 \texttt{priority\_queue} 就好，不需要自己實作堆積。 它只能看、只能
+拿最大的那一個，不能找、也不能刪中間的元素。
+
+\subsection{例題：小老師先幫最多的人}
+\label{sec:ex-tutor}
+
+\textbf{題意}（\akiref{the-tutor-helps-the-most-behind-first}{小老師先幫最多的人}）
+
+\begin{itemize}
+\item $n$ 位同學，座號 $1$ 到 $n$，第 $i$ 號還剩 $a_i$ 題。
+\item 小老師每分鐘選一位：剩餘題數最多的；一樣多就選座號小的。 這一分鐘替他
+解掉 $\min(r, \text{剩餘題數})$ 題，變成 $0$ 的同學離開，之後不再被選。
+\item 小老師幫 $T$ 分鐘；所有人都離開了就提早結束。
+\item 第一行輸出每一分鐘幫了誰，第二行輸出結束時所有人剩餘題數的總和。
+\item $n, T \le 2 \times 10^5$，$r$ 和 $a_i$ 都到 $10^9$。
+\end{itemize}
+
+\textbf{想法}
+
+最直接的做法：每一分鐘掃一遍所有同學，找出題數最多的。 一分鐘 $O(n)$，總共
+$O(nT)$，$n = T = 2 \times 10^5$ 時是 $4 \times 10^{10}$，來不及。
+
+每分鐘只有一個人的題數改變，其他人都不動，正好是優先佇列的工作：拿出最多的
+那位，扣掉題數，還沒寫完就放回去。 每分鐘一次 \texttt{pop}、最多一次
+\texttt{push}，總共 $O((n + T) \log n)$。
+
+麻煩的是「一樣多就選座號小的」。 \texttt{priority\_queue} 預設把「最大」的放
+在上面；要讓題數多的在上面、題數一樣時座號\textbf{小}的在上面，得自己告訴它
+怎麼比。
+
+\begin{bridgerecap}[自訂 \texttt{priority\_queue} 的比較方式]
+銜接書 8.6 節用過 \texttt{greater<int>} 讓小的在上面。 \texttt{greater<int>}
+其實是一個 \texttt{struct}，裡面定義了 \texttt{operator()}，所以它的物件可以
+像函式一樣呼叫：收兩個數 \texttt{x}、\texttt{y}，回傳 \texttt{x > y}。 這種
+東西叫函式物件（function object）。 我們也可以自己寫一個，放在
+\texttt{priority\_queue} 的第三個型別參數。
+
+方向是最容易搞錯的地方。 \texttt{priority\_queue} 把比較函式回傳
+\texttt{true} 解讀成「\texttt{x} 的優先順序比 \texttt{y} 低」，也就是
+\texttt{x} 比較\textbf{晚}出來。 預設的 \texttt{less} 回傳 \texttt{x < y}：
+小的比較晚出來，所以大的在上面。 和 \texttt{sort} 的比較函式剛好相反：
+\texttt{sort} 回傳 \texttt{true} 表示 \texttt{x} 排在前面。 寫的時候把函式
+取名成「誰比較晚出來」，就不容易弄反。
+\end{bridgerecap}
+
+用一個例子跑一次：$n = 4$、$T = 6$、$r = 3$，題數 $4, 9, 2, 9$。 表格裡堆積
+的內容依「誰先出來」寫，格式是「座號:剩餘題數」：
+
+\begin{center}
+\begin{tabular}{cllc}
+\toprule
+分鐘 & 拿出前的堆積（先出 $\to$ 後出） & 幫了誰 & 之後 \\
+\midrule
+1 & 2:9\ \ 4:9\ \ 1:4\ \ 3:2 & 2 & 剩 6，放回 \\
+2 & 4:9\ \ 2:6\ \ 1:4\ \ 3:2 & 4 & 剩 6，放回 \\
+3 & 2:6\ \ 4:6\ \ 1:4\ \ 3:2 & 2 & 剩 3，放回 \\
+4 & 4:6\ \ 1:4\ \ 2:3\ \ 3:2 & 4 & 剩 3，放回 \\
+5 & 1:4\ \ 2:3\ \ 4:3\ \ 3:2 & 1 & 剩 1，放回 \\
+6 & 2:3\ \ 4:3\ \ 3:2\ \ 1:1 & 2 & 剩 0，離開 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+第 $1$、$3$、$6$ 分鐘都有兩人題數一樣，都選了座號小的 $2$ 號。 最後剩下
+$1 + 0 + 2 + 3 = 6$ 題。
+
+同樣的模型也出現在別的地方：伺服器每次把新的請求交給目前負載最輕的機器；作
+業系統每次讓優先權最高的程式執行一小段時間，執行完再放回去排。
+
+\textbf{程式}
+
+\begin{example}[label=ex:tutor]{cpp}{(tutor.cpp) 小老師先幫最多的人}
+#include <iostream>
+#include <queue>
+#include <vector>
+using namespace std;
+
+struct Student {
+    long long left;                       // 剩餘題數
+    int seat;
+};
+
+// 回傳 true 表示 x 應該比 y 晚被拿出來
+struct LaterOut {
+    bool operator()(const Student &x, const Student &y) const {
+        if (x.left != y.left) {
+            return x.left < y.left;       // 題數少的晚出來
+        }
+        return x.seat > y.seat;           // 同樣多時，座號大的晚出來
+    }
+};
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n, minutes;
+    long long r;
+    cin >> n >> minutes >> r;
+    priority_queue<Student, vector<Student>, LaterOut> pq;
+    long long total = 0;
+    for (int i = 1; i <= n; i++) {
+        long long a;
+        cin >> a;
+        total += a;
+        pq.push({a, i});
+    }
+    for (int m = 1; m <= minutes && !pq.empty(); m++) {
+        Student s = pq.top();
+        pq.pop();
+        long long done = min(r, s.left);
+        s.left -= done;
+        total -= done;
+        if (m > 1) {
+            cout << ' ';
+        }
+        cout << s.seat;
+        if (s.left > 0) {
+            pq.push(s);                   // 還沒寫完，放回去
+        }
+    }
+    cout << '\n' << total << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+4 6 3 \\
+4 9 2 9 \\
+}{
+2 4 2 4 1 2 \\
+6 \\
+}
+
+\begin{itemize}
+\item \texttt{pq.push(\{a, i\})} 用大括號直接組出一個 \texttt{Student}，欄
+位依宣告的順序填入。
+\item 迴圈條件裡的 \texttt{!pq.empty()} 處理「所有人都離開了就提早結束」，
+同時保證 \texttt{pq.top()} 不會用在空的堆積上。
+\item 另一個常見的寫法是不寫比較函式，把 \texttt{pair<long long, int>(剩餘
+題數, -座號)} 放進預設的最大堆積：座號取負號之後，座號小的反而比較大。 兩種
+都可以，函式物件的寫法比較容易看出意思。
+\end{itemize}
+
+\textbf{複雜度}
+
+每分鐘一次 \texttt{pop}、最多一次 \texttt{push}，加上一開始的 $n$ 次
+\texttt{push}，總共 $O((n + T) \log n)$。 最大的測試資料在本書測試的環境下
+不到 $0.05$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{同分時的方向寫反}：\texttt{return x.seat > y.seat;} 寫成
+\texttt{<}，同分時座號大的先出來。 範例的輸入會印出
+\texttt{4 2 4 2 1 4}。 用 \texttt{pair(剩餘題數, 座號)} 放進最大堆積，也會
+犯同樣的錯。
+\item \textbf{寫完的人又放回去}：不檢查 \texttt{s.left > 0} 就放回。 輸入
+\texttt{2 5 5} 和 \texttt{3 4}，正確的第一行是 \texttt{2 1}，兩分鐘後兩人都
+離開；這樣寫會印出 \texttt{2 1 1 1 1}，題數 $0$ 的人還在被幫。
+\end{itemize}
+
+\subsection{刪掉堆積裡任意一個}
+\label{sec:lazy}
+
+有些題目要從堆積裡刪掉某個特定的元素，例如排行榜上的選手退賽、或是成績改了，
+舊的成績要作廢。 \texttt{priority\_queue} 不能刪中間的元素，常用的做法是
+\textbf{先不刪}：另外用陣列記下每位選手目前真正的狀態，堆積裡過期的紀錄就留
+著；要看頂端時，如果頂端那筆和目前的狀態對不上，才把它丟掉，再看下一筆，直到頂端是有效的紀錄為止。 成績改變時不必找出舊的那
+筆，直接放入一筆新的。
+
+每一筆紀錄只會被 \texttt{push} 一次、最多被丟掉一次，所以雖然某一次查詢可能
+丟掉很多筆，總共的工作量仍然是 $O(q \log q)$，$q$ 是操作次數。 這和單調堆疊
+一樣是攤銷的數法。 實作練習裡可退賽的排行榜就要用這個寫法。
+
+\section{用優先佇列做貪心}
+\label{sec:pq-greedy}
+
+第~7~章的貪心大多是「先排序，再依序做選擇」。 有一類貪心每一步也是挑當下最
+好的，但候選的東西會一直變：拿走一個，可能冒出新的候選。 這時排序一次不夠，
+要用優先佇列。 規則對不對，仍然要照第~7~章的方法確認：先找反例、對拍，再用交
+換論證或一路領先說明；這一節的重點是怎麼用優先佇列把規則寫得夠快。
+
+\subsection{例題：班服訂購的最低總價}
+\label{sec:ex-shirts}
+
+\textbf{題意}（\akiref{cheapest-class-t-shirt-order}{班服訂購的最低總價}）
+
+\begin{itemize}
+\item 要買恰好 $m$ 件班服，有 $n$ 家廠商，每一件都可以任選一家做。
+\item 第 $i$ 家的第 $1$ 件是 $a_i$ 元，之後每多做一件就貴 $b_i$ 元（第 $j$ 件
+是 $a_i + (j - 1) b_i$ 元，$b_i \ge 0$），最多做 $c_i$ 件。 保證所有廠商加起
+來做得出 $m$ 件。
+\item 求最低總價。 $n, m \le 2 \times 10^5$，$a_i \le 10^9$，$b_i \le 10^6$，
+$c_i \le 10^9$。
+\end{itemize}
+
+例如三家廠商 $(a, b, c)$ 是 $(20, 0, 1)$、$(15, 4, 5)$、$(18, 2, 3)$，要買
+$6$ 件。 把每家的每一件列出來：
+
+\begin{center}
+\begin{tabular}{llllll}
+\toprule
+廠商 & 第 1 件 & 第 2 件 & 第 3 件 & 第 4 件 & 第 5 件 \\
+\midrule
+第 1 家 & \textbf{20} & & & & \\
+第 2 家 & \textbf{15} & \textbf{19} & 23 & 27 & 31 \\
+第 3 家 & \textbf{18} & \textbf{20} & \textbf{22} & & \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+粗體是最便宜的 $6$ 件，總價 $15 + 18 + 19 + 20 + 20 + 22 = 114$。
+
+\textbf{想法}
+
+最直接的想法是把整張價目表列出來排序，取最便宜的 $m$ 件。 可是一家最多做
+$10^9$ 件，表列不出來。 換個方式：一共只要 $m$ 件，一件一件買，每次買「目前最
+便宜的那一件」。
+
+為什麼每次買最便宜的就對？ 這題的理由比交換論證更直接。 每家的價格只會越來越
+貴（$b_i \ge 0$），所以任何一家還沒買的件數裡，最便宜的一定是「下一件」；整張
+價目表裡還沒買的最便宜的那件，也一定是某家的下一件。 所以每次從各家的下一件
+裡挑最便宜的，就是在整張表裡挑最便宜的，$m$ 次之後買到的正是全表最便宜的
+$m$ 件。 反過來，任何一種買法都是從這張表裡買 $m$ 件，總價不可能比最便宜的
+$m$ 件加起來還少。 這個論證用到了「價格只會越來越貴」，少了這個條件，規則就
+會錯（本章練習第~7~題）。
+
+候選的是「每家的下一件」，買了一件，那家的下一件就換成更貴的一件。 用最小堆
+積放 (下一件的價格, 廠商)：拿出最便宜的，總價加上它；如果那家還能做，把它的
+下一件（價格加 $b_i$）放回去。
+
+用上面的例子跑一次，堆積的內容依先出來的順序寫，格式是「價格（第幾家）」：
+
+\begin{center}
+\begin{tabular}{clll}
+\toprule
+第幾件 & 拿出前的堆積 & 買了 & 放回 \\
+\midrule
+1 & 15(2)\ \ 18(3)\ \ 20(1) & 15(2) & 19(2) \\
+2 & 18(3)\ \ 19(2)\ \ 20(1) & 18(3) & 20(3) \\
+3 & 19(2)\ \ 20(1)\ \ 20(3) & 19(2) & 23(2) \\
+4 & 20(1)\ \ 20(3)\ \ 23(2) & 20(1) & 第 1 家做滿了 \\
+5 & 20(3)\ \ 23(2) & 20(3) & 22(3) \\
+6 & 22(3)\ \ 23(2) & 22(3) & 第 3 家做滿了 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+同樣的模型也出現在別的地方：把一批工作分給幾台雲端主機，每台主機接得越多、
+每件的成本越高；把 $m$ 份外送單分給幾位外送員，每位接越多、多跑一單的距離越
+遠。 只要「每多一份的成本只會增加」，都可以每次拿目前最便宜的那一份。
+
+\textbf{程式}
+
+\begin{example}[label=ex:shirts]{cpp}{(shirts.cpp) 班服訂購的最低總價}
+#include <functional>
+#include <iostream>
+#include <queue>
+#include <utility>
+#include <vector>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n, m;
+    cin >> n >> m;
+    vector<long long> step(n), cap(n), sold(n, 0);
+    // (這家下一件的價格, 廠商)，價格低的在上面
+    priority_queue<pair<long long, int>, vector<pair<long long, int>>,
+                   greater<pair<long long, int>>> pq;
+    for (int i = 0; i < n; i++) {
+        long long first;
+        cin >> first >> step[i] >> cap[i];
+        pq.push({first, i});
+    }
+    long long total = 0;
+    for (int k = 0; k < m; k++) {
+        auto [price, i] = pq.top();      // 目前最便宜的一件
+        pq.pop();
+        total += price;
+        sold[i]++;
+        if (sold[i] < cap[i]) {
+            pq.push({price + step[i], i}); // 這家的下一件
+        }
+    }
+    cout << total << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+3 6 \\
+20 0 1 \\
+15 4 5 \\
+18 2 3 \\
+}{
+114 \\
+}
+
+\begin{itemize}
+\item 程式裡廠商從 $0$ 編號，表格裡從 $1$ 編號。
+\item 題目保證做得出 $m$ 件，所以迴圈裡 \texttt{pq} 不會變空。 沒有這個保證的
+題目，\texttt{top()} 之前要先檢查。
+\item 價格最高大約 $10^9 + 2 \times 10^5 \times 10^6 = 2.01 \times 10^{11}$，
+總價更大，都用 \texttt{long long}。
+\end{itemize}
+
+\textbf{複雜度}
+
+$n$ 次 \texttt{push} 加上 $m$ 次 \texttt{pop}、最多 $m$ 次 \texttt{push}，總
+共 $O((n + m) \log n)$。 最大的測試資料在本書測試的環境下不到 $0.05$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{忘了件數上限}：不檢查 \texttt{sold[i] < cap[i]} 就放回。 範例
+的輸入會讓第 $1$ 家一直以 $20$ 元接單，印出 \texttt{112}。
+\item \textbf{堆積的方向反了}：少寫了 \texttt{greater}，變成每次拿最貴的。 範
+例剛好買到幾乎所有便宜的件數，仍然印出 \texttt{114}；把 $m$ 改成 $3$，正確答
+案是 $15 + 18 + 19 = 52$，這樣寫會印出 \texttt{58}。 只拿範例測試看不出來。
+\item \textbf{$m$ 很大時一件一件買}：如果 $m$ 到 $10^{12}$，一件一件買要
+$O(m \log n)$，來不及。 這時要改問「價格不超過 $x$ 的件數有沒有 $m$ 件」，
+對 $x$ 二分搜尋（第~3~章），每家不超過 $x$ 的件數可以直接算出來。 實作練習
+裡分批買餐券的題目就是這種情況。
+\end{itemize}
+
+\subsection{另外兩種常見的形狀}
+
+\textbf{依時間處理，堆積裡放目前可以用的。} 例如有幾台機器、一群依序到達的工
+作，每個工作交給最早空出來的機器：用最小堆積放每台機器空出來的時刻，每來一個
+工作就拿出最早的那台，算出這個工作的結束時刻，再放回去。 實作練習裡洗衣機、
+保健室的題目都是這個形狀。 先把工作依開始時間排序，堆積裡只放「目前還在用、
+或剛空出來」的機器。
+
+\textbf{先接下來，超過了再退掉最差的。} 例如接案時，每件委託要在第 $d_i$ 天
+結束前完成、酬勞 $p_i$ 元，一天只能做一件，問最多能賺多少。 依截止日由早到晚
+看每一件：先把它接下來，放進「已接的酬勞」的最小堆積；如果已接的件數超過了
+截止日 $d_i$（前 $d_i$ 天排不下），就退掉酬勞最少的那一件。
+
+例如六件委託（截止日，酬勞）是 $(2, 50)$、$(1, 40)$、$(2, 30)$、$(3, 60)$、
+$(3, 20)$、$(1, 70)$。 排序後依序是 $(1, 40)$、$(1, 70)$、$(2, 30)$、$(2, 50)$、$(3, 20)$、
+$(3, 60)$。 看到 $(1, 70)$ 時接了兩件，第 $1$ 天只排得下一件，退掉 $40$；看
+到 $(2, 50)$ 時退掉 $30$；看到 $(3, 60)$ 時退掉 $20$。 最後接的是
+$70$、$50$、$60$，共 $180$ 元。
+
+直覺是：截止日在 $d$ 以前的委託，不管怎麼排最多只能做 $d$ 件；在這些件數的
+限制下，留著酬勞高的不會吃虧，因為任何一件被留下的委託都可以換成酬勞更高、
+截止日不更早的另一件。 完整的證明是交換論證，照第~7~章「交換論證」那一小節的
+格式可以寫出來，這裡不重複。 照這條規則寫的程式（排序
+一次、一個最小堆積，$O(n \log n)$），在 $n \le 9$ 的隨機資料上和「枚舉所有接法」的暴力解對拍過，兩邊的輸出都相同。
+
+這種「先選、之後發現不划算再反悔」的寫法，實作練習裡逐週累計名額的題目也會
+用到。
+
+優先佇列只是讓「每次拿最好的」變快，規則本身對不對是另一回事。 下面兩種情
+況，規則會錯：
+
+\begin{itemize}
+\item \textbf{選了一個會讓別的變便宜。} 班服如果多做有折扣（後面的件數比較
+便宜），「先買最便宜的下一件」就錯了，因為它看不到後面的折扣（本章練習第~7~
+題）。
+\item \textbf{選擇之間會互相排擠。} 例如背包裡的東西不能切開，挑了一件重的，
+可能就放不下兩件輕的。 這是第~7~章「貪心不能用的時候」那一節說的情況，要用
+第~9~章的動態規劃。
+\end{itemize}
+
+\section{什麼時候用哪一個}
+\label{sec:which-container}
+
+讀題時看到下面這些訊號，先想對應的工具：
+
+\begin{center}
+\begin{tabular}{p{0.42\linewidth}p{0.2\linewidth}p{0.26\linewidth}}
+\toprule
+訊號 & 工具 & 本章的例子 \\
+\midrule
+有開始、有結束，結束的是最近開始的那一個；一層包一層 & 堆疊 & 括號、算式
+（第~\ref{sec:stack}~節） \\
+往左（或往右）找第一個比自己大或小的；被擋住的就沒用了 & 單調堆疊 & 收盤
+價、水位（第~\ref{sec:mono-stack}~節） \\
+要等前置條件都完成才能處理 & 佇列加「還差幾個」 & 彙整報告（第
+~\ref{sec:queue}~節） \\
+一段兩端都往右移的範圍裡的最大或最小值 & 單調佇列（\texttt{deque}） & 視窗
+最大值（第~\ref{sec:mono-queue}~小節） \\
+一邊加入、一邊反覆拿出最大或最小的 & 優先佇列 & 小老師、班服（第
+~\ref{sec:pq}、\ref{sec:pq-greedy}~節） \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+看起來像、但不是這些工具的情況：
+
+\begin{itemize}
+\item 資料一開始就全部給定、之後不會變，只是要依大小處理一遍：排序一次就好
+（第~2~章），用不到優先佇列。
+\item 要找「值剛好大於 $x$ 的那一個」、或要刪掉任意一個值再查詢：優先佇列只
+看得到頂端，這時用銜接書第~8~章的 \texttt{set}、\texttt{multiset}。
+\item 很多次查詢「任意一段區間的最大值」，區間沒有一路往右移：單調佇列不適
+用，要用資料結構課的線段樹等工具。
+\end{itemize}
+
+\section{本章常見錯誤}
+\label{sec:ch6-pitfalls}
+
+前面各節的錯誤，歸納起來是五類。 寫這一章的題目時，交出去之前逐項檢查一次。
+
+\begin{center}
+\begin{tabular}{p{0.2\linewidth}p{0.48\linewidth}p{0.2\linewidth}}
+\toprule
+錯誤 & 例子 & 見 \\
+\midrule
+相等時的處理 & 算式的彈出條件把 \texttt{>=} 寫成 \texttt{>}；單調堆疊該
+刪相等的沒刪；優先佇列同分時座號的方向反了 &
+第~\ref{sec:ex-expr}、\ref{sec:mono-stack}、\ref{sec:ex-water}、
+\ref{sec:ex-tutor}~節 \\
+比較方向 & \texttt{priority\_queue} 的比較函式和 \texttt{sort} 相反；少了
+\texttt{greater} 變成拿最大的 & 第~\ref{sec:ex-tutor}、\ref{sec:ex-shirts}~
+節 \\
+空容器 & 對空的堆疊、佇列、堆積呼叫 \texttt{top()}、\texttt{front()}；寫完的
+人放回堆積又被拿出來 & 第~\ref{sec:three-orders}、\ref{sec:ex-tutor}~節 \\
+順序的假設 & 以為主管的編號比部屬小；以為 \texttt{stack} 能二分搜尋 &
+第~\ref{sec:ex-reports}、\ref{sec:ex-water}~節 \\
+存什麼 & 單調佇列只存值，不知道誰滑出視窗；查詢時從堆疊頂端一個一個數 &
+第~\ref{sec:mono-queue}、\ref{sec:ex-water}~節 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+另外兩個每一題都可能出現的錯誤：答案或時刻超過 \texttt{int}，以及只用範例測
+試。 這一章好幾個錯誤（同分方向、少了 \texttt{greater}）在範例上剛好看不出
+來，一定要自己造小輸入，或寫暴力解對拍。
+
+\section{本章練習}
+\label{sec:ch6-exercises}
+
+\begin{drills}[label=drills:ch6]
+\item 下面的程式結束時，\texttt{s} 由底到頂、\texttt{q} 由前到後各是什麼？
+過程中兩者各拿出了哪些值？
+\begin{code}{cpp}{練習 1}
+stack<int> s;
+queue<int> q;
+for (int i = 1; i <= 6; i++) {
+    if (i % 3 == 0) {
+        s.pop();
+        q.pop();
+    } else {
+        s.push(i * 2);
+        q.push(i * 2);
+    }
+}
+\end{code}
+
+\item 把運算子寫在兩個數的後面，叫後序式，例如 \texttt{9 4 -} 表示
+$9 - 4$。 後序式不需要括號和等級，用一個堆疊由左往右算：讀到數字就放入，讀
+到運算子就拿出兩個數算完放回。
+\begin{enumerate}
+\item 用表格列出計算 \texttt{8 3 2 * - 5 +} 時每一步的堆疊內容，最後的答案
+是多少？
+\item 把範例~\ref{ex:expr} 改成：讀到數字就印出數字，\texttt{reduceTop} 不計
+算、只印出它拿掉的運算子。 用平常的等級（\texttt{1 1 2}），輸入
+\texttt{9-4+2*3} 會印出什麼？
+\end{enumerate}
+
+\item 關於範例~\ref{ex:prev-higher}：
+\begin{enumerate}
+\item 要改成找「往左第一個比自己低的日子」，要改哪裡？
+\item 輸入 \texttt{5} 和 \texttt{2 2 2 2 2}，程式印出什麼？ 把
+\texttt{<=} 改成 \texttt{<} 之後呢？ 改過的程式找的是什麼？
+\end{enumerate}
+
+\item 下面的程式和範例~\ref{ex:prev-higher} 算的是同一件事（\texttt{a} 從
+$0$ 編號，找不到時答案是 $-1$）。
+\begin{code}{cpp}{練習 4}
+for (int i = 0; i < n; i++) {
+    int j = i - 1;
+    while (j >= 0 && a[j] <= a[i]) {
+        j--;
+    }
+    ans[i] = j;
+}
+\end{code}
+\begin{enumerate}
+\item 最壞情況下 \texttt{j--} 執行幾次？ 什麼樣的輸入會達到？
+\item 把 \texttt{j--} 改成 \texttt{j = ans[j]}，答案還對嗎？ 執行次數會變成
+多少？
+\end{enumerate}
+
+\item 關於 \texttt{priority\_queue} 的比較函式物件：
+\begin{enumerate}
+\item 改寫範例~\ref{ex:tutor} 的 \texttt{LaterOut}，讓剩餘題數\textbf{少}的
+先被幫，同樣少時座號\textbf{大}的先被幫。
+\item 如果 \texttt{LaterOut} 只寫 \texttt{return x.left < y.left;}，堆積裡有
+（座號 2，3 題）、（座號 3，3 題），誰會先出來？
+\end{enumerate}
+
+\item 第~\ref{sec:pq-greedy}~節的委託問題，有人提出另一條規則：依截止日由早到
+晚看，已接的件數還沒超過截止日就接，超過了就不接新的這一件。 給一組會讓它出
+錯的輸入。
+
+\item 第~\ref{sec:ex-shirts}~小節說，班服的規則需要「每家的價格只會越來越貴」。
+假設廠商可以打折，後面的件數比較便宜。 給一組輸入，讓「每次買各家下一件裡最
+便宜的」得不到最低總價。
+\end{drills}
+
+\section{實作練習}
+\label{sec:ch6-practice}
+
+下面是 Aki-Judge 上和本章相關的題目，依小節分組。 難度分四階：暖身是直接套用
+本章的寫法；基本要自己想出堆疊裡放什麼、堆積怎麼比；實戰的題敘比較長，要先把
+題目轉換成本章的形狀；挑戰會和其他章的技巧合在一起。
+
+\begin{center}
+\begin{tabular}{llc}
+\toprule
+小節 & 題目 & 難度 \\
+\midrule
+堆疊 & \akiref{auto-closing-brackets-while-typing}{寫作業時的自動補括號} & 暖身 \\
+ & \akiref{level-tunnels-on-a-hiking-trail}{步道上的水平隧道} & 暖身 \\
+ & \akiref{will-the-boxes-fit}{收納盒裝不裝得下} & 基本 \\
+ & \akiref{club-page-tag-check}{社團網頁的標記檢查} & 基本 \\
+ & \akiref{typing-brackets-with-a-backspace-key}{有刪除鍵的括號輸入} & 實戰 \\
+ & \akiref{bracket-errors-from-the-compiler}{編譯器的括號錯誤回報} & 實戰 \\
+ & \akiref{merge-tower-with-undo}{可以悔棋的合成高塔} & 實戰 \\
+\midrule
+單調堆疊與 & \akiref{how-many-people-the-back-camera-sees}{後排攝影機看得到幾個人} & 暖身 \\
+單調佇列 & \akiref{hand-your-paper-to-the-nearer-higher-scorer}{把考卷交給較近的高分同學} & 暖身 \\
+ & \akiref{auto-threading-message-board}{自動歸串的留言板} & 基本 \\
+ & \akiref{largest-square-poster-on-the-display-boards}{展示板上的最大正方形海報} & 基本 \\
+ & \akiref{aged-cheese-with-a-storage-fee}{付保管費的熟成起司買賣} & 基本 \\
+ & \akiref{the-last-day-someone-ran-far-enough}{上一次跑得夠多是哪一天} & 實戰 \\
+ & \akiref{best-recipe-at-each-temperature}{每個溫度的最佳配方} & 挑戰 \\
+ & \akiref{cheapest-in-order-box-packing}{依序裝箱的最低運費} & 挑戰 \\
+\midrule
+優先佇列 & \akiref{cleaning-out-the-club-fridge}{社辦冰箱的過期清理} & 暖身 \\
+ & \akiref{live-leaderboard-with-withdrawals}{可退賽的即時排行榜} & 基本 \\
+ & \akiref{field-trip-van-cost}{校外教學的小巴士費用} & 挑戰 \\
+\midrule
+用優先佇列 & \akiref{water-the-shortest-seedling}{每天澆最矮的幼苗} & 暖身 \\
+做貪心 & \akiref{queue-at-the-dorm-washers}{宿舍洗衣機前的排隊} & 基本 \\
+ & \akiref{scheduling-the-school-nurse}{保健室的時段安排} & 實戰 \\
+ & \akiref{cumulative-admission-quotas}{逐週累計名額的錄取} & 實戰 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+本章的五題例題也在 Aki-Judge 上，讀完各節之後可以先自己寫一次再對照。
+
+\section{讀完你應該會}
+\label{sec:ch6-checklist}
+
+\begin{itemize}
+\item 看到「最近一個還沒結束的」「往回找第一個比自己大（小）的」，能想到堆
+疊，並且用「和自己一樣的那個，以後可能是答案嗎」決定相等的值要不要刪。
+\item 能用兩個堆疊算出有優先等級的算式，說得出等級相同時為什麼要先算左邊的。
+\item 能寫出單調堆疊和單調佇列，並用「每個元素進出各一次」說明它們是
+$O(n)$。
+\item 能用「還差幾個」加上佇列，依照前置條件完成的順序處理一棵樹。
+\item 能替 \texttt{priority\_queue} 寫比較函式物件，用兩三筆資料確認方向；
+知道堆積不能刪中間的元素，需要時用延遲刪除。
+\end{itemize}
+
+\textbf{延伸閱讀}（書末會整理完整的參考資料）
+
+\begin{itemize}
+\item Antti Laaksonen，\textit{Competitive Programmer's Handbook}，4.5、8.2、
+8.3 節：篇幅很短，單調堆疊和視窗最小值各用一個例子講完。
+\item Thomas H. Cormen 等，\textit{Introduction to Algorithms}，第 4 版，第 6
+章與 16.1 節：堆積的實作和證明，以及攤銷分析的正式寫法。
+\item 劉汝佳，《算法競賽入門經典》第 2 版，6.1 節：中文，有幾個用堆疊和佇列
+模擬的例題。
+\end{itemize}
+
+\addcontentsline{toc}{section}{練習解答}
+\section*{練習解答}
+
+\begin{enumerate}
+\item \texttt{s} 由底到頂是 \texttt{2 8}，\texttt{q} 由前到後是
+\texttt{8 10}。 $i = 3$ 時 \texttt{s} 拿出 $4$、\texttt{q} 拿出 $2$；
+$i = 6$ 時 \texttt{s} 拿出 $10$、\texttt{q} 拿出 $4$。
+
+\item
+\begin{enumerate}
+\item 堆疊（底 $\to$ 頂）依序是：\texttt{8}；\texttt{8 3}；\texttt{8 3 2}；
+讀到 \texttt{*}，拿出 $2$ 和 $3$，放回 $6$，變成 \texttt{8 6}；讀到
+\texttt{-}，拿出 $6$ 和 $8$，放回 $8 - 6 = 2$；\texttt{2 5}；讀到
+\texttt{+}，放回 $7$。 答案是 $7$。 注意先拿出來的是右邊的數。
+\item 印出 \texttt{9 4 - 2 3 * +}。 這正是 \texttt{9-4+2*3} 的後序式：兩個堆
+疊的做法算掉運算子的順序，就是後序式裡運算子出現的順序。
+\end{enumerate}
+
+\item
+\begin{enumerate}
+\item 把 \texttt{while} 的條件改成 \texttt{price[st.back()] >= price[i]}：
+不比今天低的都刪掉，留下的由底到頂嚴格遞增。
+\item 印出 \texttt{0 0 0 0 0}，因為沒有任何一天比別天高。 改成 \texttt{<} 之
+後，一樣高的不刪，印出 \texttt{0 1 2 3 4}；這找的是「往左第一個不低於自己的
+日子」。
+\end{enumerate}
+
+\item
+\begin{enumerate}
+\item 最多 $0 + 1 + \cdots + (n - 1) = n(n - 1)/2$ 次。 \texttt{a} 嚴格遞增
+時，每個 $i$ 都要一路退回 $-1$。
+\item 對。 \texttt{ans[j]} 和 \texttt{j} 之間的值都不超過 \texttt{a[j]}，既
+然 \texttt{a[j] <= a[i]}，它們也都不超過 \texttt{a[i]}，可以整段跳過。 從
+\texttt{i - 1} 開始沿著 \texttt{ans} 跳過的那些位置，正好就是範例
+~\ref{ex:prev-higher} 的堆疊裡由頂往底的內容；被跳過的位置以後也不會再被跳到，
+和堆疊的 \texttt{pop\_back} 一樣，總共不超過 $n$ 次，是 $O(n)$。
+\end{enumerate}
+
+\item
+\begin{enumerate}
+\item 回傳 \texttt{true} 表示 \texttt{x} 比較晚出來，所以題數多的要回傳
+\texttt{true}：
+\begin{code}{cpp}{練習 5(a)}
+if (x.left != y.left) {
+    return x.left > y.left;   // 題數多的晚出來
+}
+return x.seat < y.seat;       // 同樣少時，座號小的晚出來
+\end{code}
+\item 不一定。 兩筆的題數一樣，比較函式對兩個方向都回傳 \texttt{false}，堆
+積把它們當成一樣，誰先出來取決於放入的順序和堆積內部怎麼交換，標準沒有規定。
+題目對同分有要求時，一定要比到分得出先後為止。
+\end{enumerate}
+
+\item 輸入兩件委託：（截止日 $1$，酬勞 $10$）、（截止日 $1$，酬勞 $50$）。 排
+序後先看到 $10$ 的那件，接了；第二件時第 $1$ 天已經排滿，不接，總共 $10$
+元。 只接 $50$ 的那件比較好。 這條規則的問題是不能反悔：先接的不一定比後來
+的划算。
+
+\item 兩家廠商，要買 $2$ 件。 第一家第 $1$ 件 $6$ 元、第 $2$ 件 $1$ 元；第二家
+每件 $5$ 元。 每次買最便宜的下一件：先買第二家 $5$ 元，接著兩家的下一件是
+$6$ 和 $5$，再買第二家 $5$ 元，共 $10$ 元。 兩件都向第一家買只要 $7$ 元。 第
+一家的第 $1$ 件貴，擋住了後面便宜的那件，「每次看下一件」看不到它。
+\end{enumerate}

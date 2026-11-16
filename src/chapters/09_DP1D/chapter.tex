@@ -1,4 +1,1518 @@
-% 佔位：本章尚未開始。book.tex 裡先註解掉。
 \chapter{動態規劃（一）：一維}
+\label{ch:dp1d}
 
-本章尚未開始。
+郵局的櫃台只剩 $1$ 元、$5$ 元、$6$ 元三種郵票。 一封信要剛好貼滿 $n$ 元，
+最少要貼幾張？ 第~7~章 7.1 節試過「先貼面額最大的」，
+$10$ 元時貼出 $6 + 1 + 1 + 1 + 1$ 共五張，可是兩張 $5$ 元就夠了。 往下讀之
+前先想一個問題：如果有人已經替你找到 $n$ 元的最佳貼法，把他最後貼上去的那一
+張撕掉，剩下的郵票是什麼樣子？
+
+第~7~章 7.4 節還留下另外兩個貪心解不了的問題：每場講座有不同
+的價值時，要讓總價值最大；東西不能切開的背包。 三個問題有同一個難處：前面
+的選擇會影響後面還能拿什麼，而哪個選擇比較好，要看到後面才知道。 貪心只看
+眼前，所以會錯；把所有選法都試一遍又太慢。 這一章的\textbf{動態規劃}把兩邊
+的優點合在一起：像暴力解一樣考慮所有選法，但同樣的小問題只算一次。
+
+這一章是全書第一個動態規劃的章，從頭講起。 先用郵票走一遍完整的過程：暴力
+遞迴、把算過的答案記下來、改成由小到大填表，再整理出設計動態規劃時要回答的
+四件事。 接著換一個角度，把每個動態規劃都畫成一張圖，計算順序、複雜度、
+「為什麼不會無限遞迴」都可以從圖上讀出來。 三題例題分別練計數、一個位置
+兩種狀態、一個位置三種狀態；最後回到第~7~章的講座，說明貪心和動態規劃的
+分界。 背包要用兩維的表格，留到第~15~章。
+
+銜接書第~10~章 10.3 節用最長遞增子序列示範過一次動態規劃，這一章不假設讀者
+記得。 用到的語法只有遞迴函式（銜接書第~10~章 10.2 節）、\texttt{vector}、
+\texttt{long long}，以及第~\ref{sec:dp1-greedy}~節的 \texttt{upper\_bound}
+（銜接書第~9~章）。 沒讀過銜接書的讀者，只要會寫遞迴函式、會用
+\texttt{vector} 當陣列，就能讀這一章。
+
+\section{從郵票開始}
+\label{sec:dp1-stamps}
+
+\subsection{先寫暴力解}
+
+把章首的問題寫清楚：用 $1$、$5$、$6$ 元的郵票貼滿 $n$ 元，每種張數不限，
+最少要幾張？ 用 $\mathrm{best}(n)$ 表示答案。
+
+回答章首的問題。 $n$ 元的最佳貼法裡，最後貼上的那一張只有三種可能：$1$ 元、
+$5$ 元或 $6$ 元。 假設是 $5$ 元，撕掉它之後，剩下的郵票剛好貼滿 $n - 5$ 元，
+而且一定是 $n - 5$ 元的最佳貼法：如果 $n - 5$ 元有張數更少的貼法，換過去再補
+上這張 $5$ 元，$n$ 元就有更好的貼法，和「最佳」矛盾。 所以最後一張是 $5$ 元
+時，總張數是 $\mathrm{best}(n - 5) + 1$。
+
+不知道最後一張是哪一種，就三種都試，取最小的：
+\[
+\mathrm{best}(n) = 1 + \min\bigl(\mathrm{best}(n - 1),\ \mathrm{best}(n - 5),\
+\mathrm{best}(n - 6)\bigr),
+\]
+其中 $n - 5$、$n - 6$ 小於 $0$ 的那一項不算（貼不下那一張）。 $0$ 元不用貼，
+$\mathrm{best}(0) = 0$。
+
+這個式子把「$n$ 元的答案」寫成「比較小的金額的答案」，照著寫就是一支遞迴程
+式。 它試遍了所有可能的最後一張，再遞迴地試遍倒數第二張、倒數第三張……，等
+於枚舉了所有貼法，是一個暴力解。 下面的程式多用一個全域變數數出函式一共被
+呼叫幾次：
+
+\begin{example}[label=ex:stamps-rec]{cpp}{(stamps\_rec.cpp) 郵票問題的暴力遞迴}
+#include <iostream>
+using namespace std;
+
+long long calls = 0;   // best 一共被呼叫幾次
+
+// 貼滿 n 元最少要幾張郵票（面額 1、5、6 元）
+int best(int n) {
+    calls++;
+    if (n == 0) {
+        return 0;                     // 0 元不用貼
+    }
+    int res = best(n - 1) + 1;        // 最後一張是 1 元
+    if (n >= 5) {
+        res = min(res, best(n - 5) + 1);
+    }
+    if (n >= 6) {
+        res = min(res, best(n - 6) + 1);
+    }
+    return res;
+}
+
+int main() {
+    for (int n : {10, 20, 30, 40, 50}) {
+        calls = 0;
+        int b = best(n);
+        cout << n << ' ' << b << ' ' << calls << '\n';
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{}{
+10 2 48 \\
+20 4 1625 \\
+30 5 53936 \\
+40 7 1793825 \\
+50 9 59637888 \\
+}
+
+每一行是「金額、最少張數、呼叫次數」。 答案是對的，$10$ 元是兩張，和第~7~章
+的結論一樣。 問題在第三欄：金額每多 $10$，呼叫次數大約變成 $33$ 倍。 照這個
+速度，$n = 100$ 要呼叫大約 $2 \times 10^{15}$ 次，在本書測試的環境下要跑好幾
+天。
+
+\subsection{同樣的問題算了好幾次}
+
+慢的原因從呼叫的過程看得出來。 下圖是 $\mathrm{best}(7)$ 的呼叫樹（第~8~章）：
+每個方格是一次呼叫，方格裡的數字是參數 $n$，往右或往下連到的是它呼叫的函式。
+$\mathrm{best}(7)$ 呼叫 $6$、$2$、$1$；$\mathrm{best}(6)$ 呼叫 $5$、$1$、$0$；
+依此類推。
+
+\begin{center}
+\begin{tikzpicture}[x=1.05cm, y=0.72cm,
+    nd/.style={cell, minimum width=0.6cm, minimum height=0.55cm},
+    hd/.style={hlcell, minimum width=0.6cm, minimum height=0.55cm},
+    pd/.style={draw=optStroke, thick, fill=optFill, minimum width=0.6cm,
+               minimum height=0.55cm, font=\ttfamily},
+    ed/.style={draw=black!55}]
+% 第一列：7-6-5-4-3-2-1-0
+\node[nd] (a7) at (0,0) {7};
+\node[nd] (a6) at (1,0) {6};
+\node[nd] (a5) at (2,0) {5};
+\node[nd] (a4) at (3,0) {4};
+\node[nd] (a3) at (4,0) {3};
+\node[hd] (a2) at (5,0) {2};
+\node[pd] (a1) at (6,0) {1};
+\node[nd] (a0) at (7,0) {0};
+\foreach \p/\c in {a7/a6, a6/a5, a5/a4, a4/a3, a3/a2, a2/a1, a1/a0} {
+    \draw[ed] (\p) -- (\c);
+}
+% best(5) 直接呼叫的第二個
+\node[nd] (b0) at (3,-1) {0};
+% best(6) 直接呼叫的第二、三個
+\node[pd] (c1) at (2,-2) {1};
+\node[nd] (c0) at (3,-2) {0};
+\node[nd] (d0) at (2,-3) {0};
+% best(7) 直接呼叫的第二、三個
+\node[hd] (e2) at (1,-4) {2};
+\node[pd] (e1) at (2,-4) {1};
+\node[nd] (e0) at (3,-4) {0};
+\node[pd] (f1) at (1,-5) {1};
+\node[nd] (f0) at (2,-5) {0};
+\draw[ed] (a5.south) |- (b0.west);
+\draw[ed] (a6.south) |- (c1.west);
+\draw[ed] (a6.south) |- (d0.west);
+\draw[ed] (c1) -- (c0);
+\draw[ed] (a7.south) |- (e2.west);
+\draw[ed] (a7.south) |- (f1.west);
+\draw[ed] (e2) -- (e1);
+\draw[ed] (e1) -- (e0);
+\draw[ed] (f1) -- (f0);
+\end{tikzpicture}
+\diagcaption{$\mathrm{best}(7)$ 的呼叫樹，一共 $17$ 次呼叫。 橘色的
+$\mathrm{best}(2)$ 被呼叫 $2$ 次，粉紅色的 $\mathrm{best}(1)$ 被呼叫 $4$
+次，$\mathrm{best}(0)$ 被呼叫 $6$ 次。}
+\label{fig:stamps-tree}
+\end{center}
+
+參數只有 $0$ 到 $7$ 八種，卻呼叫了 $17$ 次，因為同一個參數被算了好幾次，每次
+都從頭遞迴下去，得到一模一樣的答案。 $n$ 越大，重複越嚴重：$\mathrm{best}(n)$
+底下有 $\mathrm{best}(n - 1)$ 和 $\mathrm{best}(n - 5)$ 兩棵大樹，而
+$\mathrm{best}(n - 1)$ 底下又有一棵 $\mathrm{best}(n - 6)$，和
+$\mathrm{best}(n)$ 直接呼叫的那棵完全相同。 樹的大小因此隨 $n$ 指數成長，可
+是真正不同的問題只有 $n + 1$ 個。
+
+\subsection{記住算過的答案}
+
+第~8~章用過記憶化：開一個表格，每個參數第一次算完就把答案記下來，下
+次再被呼叫時直接查表回傳。 用在郵票上：
+
+\begin{example}[label=ex:stamps-memo]{cpp}{(stamps\_memo.cpp) 加上記憶化}
+#include <iostream>
+#include <vector>
+using namespace std;
+
+long long calls = 0;
+vector<int> memo;                     // memo[n] == -1 表示還沒算過
+
+int best(int n) {
+    calls++;
+    if (memo[n] != -1) {
+        return memo[n];               // 算過了，直接查
+    }
+    int res;
+    if (n == 0) {
+        res = 0;
+    } else {
+        res = best(n - 1) + 1;
+        if (n >= 5) {
+            res = min(res, best(n - 5) + 1);
+        }
+        if (n >= 6) {
+            res = min(res, best(n - 6) + 1);
+        }
+    }
+    memo[n] = res;                    // 記下來再回傳
+    return res;
+}
+
+int main() {
+    int n;
+    cin >> n;
+    memo.assign(n + 1, -1);
+    int b = best(n);
+    cout << b << ' ' << calls << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+50 \\
+}{
+9 142 \\
+}
+
+同樣是 $n = 50$，呼叫次數從將近六千萬次降到 $142$ 次。 每個參數只會真正計算
+一次，每次計算最多再呼叫三次，所以總呼叫次數不超過 $1 + 3n$，是 $O(n)$。
+
+\begin{itemize}
+\item 答案一定不是負的，所以用 $-1$ 表示「還沒算過」。 如果答案可能是任何整
+數，就要另外開一個 \texttt{bool} 陣列記錄算過了沒有。
+\item 先查表、再計算、算完立刻存進 \texttt{memo}，三個步驟的位置都不能換。
+例如把 \texttt{memo[n] = res;} 漏掉，程式仍然對，只是又變回暴力解的速度。
+\item 遞迴有深度的限制。 \texttt{best(n)} 會一路呼叫 \texttt{best(n - 1)}、
+\texttt{best(n - 2)}……，深度大約是 $n$。 在本書測試的環境下（堆疊
+$8$~MB），這支程式的 $n$ 到大約 $17$ 萬就會因為堆疊用完而當掉。
+\end{itemize}
+
+\subsection{由小到大填表}
+
+記憶化的程式是從 $\mathrm{best}(n)$ 開始往下問，問到底才開始填表。 換個方向
+想：算 $\mathrm{best}(x)$ 只需要 $\mathrm{best}(x - 1)$、$\mathrm{best}(x - 5)$、
+$\mathrm{best}(x - 6)$，都比 $x$ 小。 所以從 $x = 0$ 開始，由小到大一格一格
+填，填到 $x$ 的時候，需要的三格一定已經填好了，根本不用遞迴：
+
+\begin{example}[label=ex:stamps-table]{cpp}{(stamps\_table.cpp) 由小到大填表，並印出一種貼法}
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    int n;
+    cin >> n;
+    const int stamps[3] = {1, 5, 6};
+    vector<int> best(n + 1), last(n + 1);   // last[x]：x 元的最佳貼法最後貼哪一張
+    best[0] = 0;
+    for (int x = 1; x <= n; x++) {
+        best[x] = x + 1;                    // 比任何可能的答案都大
+        for (int c : stamps) {
+            if (c <= x && best[x - c] + 1 < best[x]) {
+                best[x] = best[x - c] + 1;
+                last[x] = c;
+            }
+        }
+    }
+    cout << best[n] << '\n';
+    for (int x = n; x > 0; x -= last[x]) {  // 沿著 last 往回走，印出一種貼法
+        cout << last[x] << (x - last[x] > 0 ? ' ' : '\n');
+    }
+    return 0;
+}
+\end{example}
+
+\iosample{
+23 \\
+}{
+4 \\
+5 6 6 6 \\
+}
+
+下表是 $x = 0$ 到 $12$ 的計算過程。 「看三格」那三欄是三種最後一張各自得到的
+張數，取最小的填進 \texttt{best}；最小值有好幾個時，程式記下先看到的那一個。
+
+\begin{center}
+\begin{tabular}{c|ccc|cc}
+\toprule
+$x$ & 最後 $1$ 元 & 最後 $5$ 元 & 最後 $6$ 元 & \texttt{best[x]} & \texttt{last[x]} \\
+\midrule
+0 & -- & -- & -- & 0 & -- \\
+1 & 1 & -- & -- & 1 & 1 \\
+2 & 2 & -- & -- & 2 & 1 \\
+3 & 3 & -- & -- & 3 & 1 \\
+4 & 4 & -- & -- & 4 & 1 \\
+5 & 5 & 1 & -- & 1 & 5 \\
+6 & 2 & 2 & 1 & 1 & 6 \\
+7 & 2 & 3 & 2 & 2 & 1 \\
+8 & 3 & 4 & 3 & 3 & 1 \\
+9 & 4 & 5 & 4 & 4 & 1 \\
+10 & 5 & 2 & 5 & 2 & 5 \\
+11 & 3 & 2 & 2 & 2 & 5 \\
+12 & 3 & 3 & 2 & 2 & 6 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+例如 $x = 10$：最後一張是 $1$ 元時要 $\mathrm{best}(9) + 1 = 5$ 張，是 $5$ 元
+時要 $\mathrm{best}(5) + 1 = 2$ 張，是 $6$ 元時要 $\mathrm{best}(4) + 1 = 5$
+張，最少是 $2$。 貪心在這裡錯，是因為它只試了「最後一張是 $6$ 元」這一種。
+
+\begin{itemize}
+\item \texttt{best[x] = x + 1} 是「目前還不知道，先放一個一定會被比下去的
+數」。 有 $1$ 元郵票，$x$ 元最多 $x$ 張，所以 $x + 1$ 夠大。 面額裡沒有 $1$
+元時，有些金額根本貼不出來，這個寫法就不對了，本章練習第~2~題會看到它錯在
+哪裡。
+\item \texttt{last[x]} 記下最佳貼法的最後一張。 從 $n$ 開始，每次減掉
+\texttt{last[x]}，就沿著當初的選擇一路走回 $0$，印出的是從最後一張往前的
+順序。 範例的 $23$ 元是 $5 + 6 + 6 + 6$。 表格裡只存數字，要知道「怎麼
+做到」，就得另外記下每一格是從哪裡來的。
+\item 雙層迴圈，外層 $n$ 次，內層 $3$ 次，時間 $O(n)$。 沒有遞迴，也就沒有
+深度的限制，$n = 10^6$ 一樣瞬間算完。
+\end{itemize}
+
+\subsection{動態規劃的四件事}
+\label{sec:dp1-four}
+
+回頭看郵票走過的路：先找一個「大問題用小問題的答案算出來」的式子，照著寫成
+遞迴是暴力解，加上記憶化或改成填表就快了。 這種做法叫動態規劃。 設計一個動
+態規劃，要回答四件事：
+
+\begin{enumerate}
+\item \textbf{狀態}（state）：表格的一格代表什麼。 一定要用一句完整的中文寫
+出來，例如「\texttt{best[x]}：剛好貼滿 $x$ 元最少要幾張」。 說不清楚的狀態，
+後面三件事都會跟著錯。
+\item \textbf{轉移}（transition）：一格怎麼由其他格算出來。 常用的想法是看
+「最後一步」有哪幾種可能，每一種可能對應到一個比較小的狀態，再取最小、最大
+或加總。
+\item \textbf{初始值}：最小的那幾格，沒辦法再往下拆，直接寫出答案。 郵票是
+$\mathrm{best}(0) = 0$。
+\item \textbf{計算順序}：填到某一格時，轉移用到的格子必須已經填好。 郵票是
+$x$ 由小到大。
+\end{enumerate}
+
+答案在表格的哪一格，也要確認：郵票是 \texttt{best[n]}，有的題目要取整張表的
+最大值，有的要把幾格加起來。
+
+記憶化和由小到大填表，算的是同一個式子、同一張表，只是填的順序不同：記憶化
+從要的答案往回問，碰到哪格填哪格；填表事先排好順序，從頭填到尾。 兩者是同
+一個動態規劃的兩種寫法。 解題時建議先用中文把四件事寫下來，再寫成填表的迴
+圈；計算順序不好安排時（例如第~8~章那種參數會跳來跳去的遞迴），才用記憶化。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{只記答案，沒記算過了沒}：用 $0$ 表示「還沒算過」，但某些參數的
+答案本來就是 $0$。 郵票的 \texttt{memo[0]} 就是 $0$，每次查到它都會以為沒算
+過，重新計算。 這個例子剛好只是多算幾次，碰到答案常常是 $0$ 的題目，速度會
+退回暴力解。 選一個不可能是答案的值，例如 $-1$。
+\item \textbf{遞迴太深}：記憶化的程式在 $n$ 大的時候會當掉，而且範例和小的
+測試資料都看不出來。 上面的 \texttt{stamps\_memo.cpp} 輸入 $200000$，在本書
+測試的環境下程式當掉，什麼都沒印（堆疊用完）。 $n$ 到 $10^5$ 以上又能排出
+計算順序時，寫成填表的迴圈。
+\item \textbf{還沒填就先用}：計算順序排錯，用到的格子還是初始的 $0$。 例如把
+郵票的迴圈改成 \texttt{x} 由大到小，\texttt{best[x - 1]} 這些格子都還沒算，
+$n = 10$ 會印出 \texttt{1}，貼法印成十張 $1$ 元。
+\end{itemize}
+
+\section{把動態規劃畫成圖}
+\label{sec:dp1-dag}
+
+這一節換一個角度看同一件事。 把每個狀態畫成一個點，如果算 B 的時候要用到 A，
+就從 A 畫一個箭頭到 B。 郵票的點是金額 $0, 1, 2, \ldots$，從 $x$ 有三個箭頭
+分別指向 $x + 1$、$x + 5$、$x + 6$，意思是「在 $x$ 元的貼法後面再貼一張」。
+下圖畫出 $0$ 到 $8$：
+
+\begin{center}
+\begin{tikzpicture}[x=1.25cm, y=1cm,
+    st/.style={circle, draw=black!60, thick, minimum size=0.7cm, inner sep=0pt,
+               font=\ttfamily\small},
+    ar/.style={-{Stealth[length=1.8mm]}, draw=black!45},
+    hl/.style={-{Stealth[length=2mm]}, very thick, draw=memStroke}]
+\foreach \x in {0,...,8} {
+    \node[st] (s\x) at (\x,0) {\x};
+}
+\foreach \x/\v in {0/0,1/1,2/2,3/3,4/4,5/1,6/1,7/2,8/3} {
+    \node[idxlbl] at (\x,-1.15) {\v};
+}
+\node[idxlbl, left] at (-0.4,-1.15) {best};
+\foreach \x in {0,1,2,3,4,5,7} {
+    \pgfmathtruncatemacro{\y}{\x+1}
+    \draw[ar] (s\x) -- (s\y);
+}
+\foreach \x in {0,...,3} {
+    \pgfmathtruncatemacro{\y}{\x+5}
+    \draw[ar] (s\x) to[bend left=32] (s\y);
+}
+\foreach \x in {1,2} {
+    \pgfmathtruncatemacro{\y}{\x+6}
+    \draw[ar] (s\x) to[bend right=32] (s\y);
+}
+\draw[hl] (s0) to[bend right=32] (s6);
+\draw[hl] (s6) -- (s7);
+\end{tikzpicture}
+\diagcaption{郵票問題的狀態圖（金額 $0$ 到 $8$）。 直的箭頭是貼 $1$ 元，上面
+的弧是 $5$ 元，下面的弧是 $6$ 元。 點下方的小字是 $\mathrm{best}$。 橘色是
+$7$ 元的一種最佳貼法：$6 + 1$。}
+\label{fig:stamps-dag}
+\end{center}
+
+從 $0$ 走到 $x$ 的每一條路，都對應一種貼法：走過的箭頭依序就是貼上的郵票。
+所以「貼滿 $x$ 元最少幾張」就是「從 $0$ 走到 $x$ 最少要走幾個箭頭」，轉移
+式裡的 $\min$ 是在比較「最後一個箭頭從哪一點進來」。 很多看起來不一樣的動態
+規劃問題，放到圖上都是同一類問題：
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+題目問的 & 在圖上是 \\
+\midrule
+最少（成本、次數） & 起點到終點最短的路 \\
+最多（價值、分數） & 起點到終點最長的路 \\
+有幾種方法 & 起點到終點有幾條不同的路 \\
+做不做得到 & 起點走不走得到終點 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+例如問「貼滿 $6$ 元有幾種貼法（先後順序不同算不同）」，就是數從 $0$ 到 $6$
+有幾條路：$1 \times 6$、$1 + 5$、$5 + 1$、$6$，共 $4$ 條。 轉移只要把
+$\min$ 換成加法：$\mathrm{ways}(x) = \mathrm{ways}(x - 1) + \mathrm{ways}(x - 5)
++ \mathrm{ways}(x - 6)$，$\mathrm{ways}(0) = 1$。
+
+這張圖有一個重要的性質：箭頭一定從小的金額指向大的金額，沿著箭頭走永遠不會
+回到走過的點。 這種有方向、沒有\textbf{環}（從一點出發沿著箭頭走，又回到
+原點）的圖，叫\textbf{有向無環圖}（directed acyclic graph，DAG）。 前面的幾
+件事，從圖上都看得出來：
+
+\begin{itemize}
+\item \textbf{遞迴為什麼會停}：遞迴是沿著箭頭倒著走，圖上沒有環，倒著走也不
+會繞回原地，最後一定走到沒有箭頭進來的點，也就是初始值。
+\item \textbf{計算順序}：每個點都要排在「所有指向它的點」後面。 只要找得到這
+樣的順序，就能由小到大填表。 郵票的箭頭都往右，從左到右就是一種順序；第~10
+~章的格子圖，箭頭往右和往下，一列一列填也可以。
+\item \textbf{記憶化和填表的差別}：記憶化從終點倒著走，只會碰到「走得到終點」
+的那些點；填表把所有點都算一次。 大部分的題目兩者算的點差不多，少數題目的
+狀態很多、真正用到的很少，記憶化會快很多。
+\item \textbf{複雜度}：每個點算一次，每次看所有進來的箭頭，所以時間是「點數
+加箭頭數」。 實際估計時用「狀態數乘上每個狀態要看幾個前一狀態」：郵票是
+$n \times 3$。 這個估法對整章的題目都適用。
+\end{itemize}
+
+反過來，如果某個問題畫出來的圖有環，例如「計數器上有 $+5$ 和 $-3$ 兩個按鈕，
+從 $0$ 按到 $n$ 最少幾下」，$x$ 可以走到 $x + 5$ 再走回 $x + 2$、再走回
+$x - 1$……，沒有一個點能保證排在另一個點前面，轉移式照寫成遞迴會無限呼叫下
+去。 這類問題要用第~11、12~章的廣度優先搜尋，本章練習第~4~題會再談。
+
+動態規劃的程式裡從來不用真的把圖建出來，圖只是幫你想的工具。 設計狀態和轉
+移時，在紙上畫幾個點和箭頭，檢查三件事：箭頭的意思是什麼、有沒有環、終點是
+哪一點。 第~18~章會在真正的圖上做同樣的事。
+
+第~8~章追蹤遞迴時，從最小的參數開始往上列表，算回傳值或呼叫次數；現在看得出
+來，那就是在這張圖上由小到大填表。 圖~\ref{fig:stamps-tree} 的 $17$ 次也可以
+這樣算：$\mathrm{calls}(n) = 1 +$（它直接呼叫的那幾個參數的
+$\mathrm{calls}$ 加起來），從 $n = 0$ 填到 $7$。
+
+\section{計數：一格一格推過去}
+\label{sec:dp1-count}
+
+郵票問的是最少，這一節的例題問「有幾種」，同時練習兩件計數題一定會碰到的事：
+答案太大要取餘數，以及轉移可以「往回拉」也可以「往前推」。
+
+\subsection{例題：跳格子遊戲的走法數}
+\label{sec:ex-hopscotch}
+
+\textbf{題意}（\akiref{hopscotch-route-count}{跳格子遊戲的走法數}）
+
+\begin{itemize}
+\item 地上有位置 $0, 1, \ldots, n$，從位置 $0$ 出發，要剛好跳到位置 $n$。
+\item 位置 $i$（$0 \le i < n$）寫著數字 $a_i$，$1 \le a_i \le 3$。 站在位置
+$i$ 時，可以往前跳 $1$ 到 $a_i$ 格；跳過 $n$ 的跳法不能用。
+\item 經過的落點不同就算不同的走法。 求走法數除以 $10^9 + 7$ 的餘數。
+$n \le 2 \times 10^5$。
+\end{itemize}
+
+例如 $n = 4$，$a = (2, 1, 3, 1)$。 從 $0$ 可以到 $1$、$2$；從 $1$ 只能到
+$2$；從 $2$ 可以到 $3$、$4$（到 $5$ 會跳過終點）；從 $3$ 只能到 $4$。 走法
+有 $0 \to 1 \to 2 \to 3 \to 4$、$0 \to 1 \to 2 \to 4$、$0 \to 2 \to 3 \to 4$、
+$0 \to 2 \to 4$，共 $4$ 種。
+
+\textbf{想法}
+
+先畫圖。 點是位置 $0$ 到 $n$，從 $i$ 畫箭頭到 $i + 1, \ldots, i + a_i$（不超
+過 $n$）。 一種走法就是一條從 $0$ 到 $n$ 的路，題目問的是路的條數。
+
+\begin{center}
+\begin{tikzpicture}[x=1.6cm, y=1cm,
+    st/.style={circle, draw=black!60, thick, minimum size=0.7cm, inner sep=0pt,
+               font=\ttfamily\small},
+    ar/.style={-{Stealth[length=1.8mm]}, draw=black!55}]
+\foreach \x in {0,...,4} {
+    \node[st] (p\x) at (\x,0) {\x};
+}
+\foreach \x/\v in {0/1,1/1,2/2,3/2,4/4} {
+    \node[idxlbl] at (\x,-1.0) {\v};
+}
+\node[idxlbl, left] at (-0.4,-1.0) {ways};
+\foreach \x/\a in {0/2,1/1,2/3,3/1} {
+    \node[font=\scriptsize, text=black!60] at (\x,0.62) {$a=\a$};
+}
+\draw[ar] (p0) -- (p1);
+\draw[ar] (p1) -- (p2);
+\draw[ar] (p2) -- (p3);
+\draw[ar] (p3) -- (p4);
+\draw[ar] (p0) to[bend right=35] (p2);
+\draw[ar] (p2) to[bend right=35] (p4);
+\end{tikzpicture}
+\diagcaption{範例的狀態圖。 點下方是抵達該位置的走法數。}
+\label{fig:hop-dag}
+\end{center}
+
+最直接的做法是暴力遞迴：抵達位置 $i$ 的走法數，等於所有「一步能跳到 $i$」的
+位置 $j$ 的走法數加起來。 每個位置最多跳 $3$ 格，所以 $j$ 只可能是 $i - 1$、
+$i - 2$、$i - 3$，條件是 $j + a_j \ge i$。 這和郵票一樣有大量重複：每格都寫
+$3$ 時，$n = 30$ 在本書測試的環境下要 $1.1$ 秒，$n = 35$ 要 $15$ 秒，每多
+$5$ 格大約慢 $14$ 倍。
+
+照四件事寫：
+
+\begin{itemize}
+\item 狀態：\texttt{ways[i]} 是「從位置 $0$ 跳到位置 $i$ 的走法數」。
+\item 轉移：看最後一跳從哪裡起跳。 \texttt{ways[i]} 是所有滿足
+$j + a_j \ge i$ 的 \texttt{ways[j]} 的和，$j$ 是 $i - 3$ 到 $i - 1$。
+\item 初始值：\texttt{ways[0] = 1}。 站在起點、還沒跳，算一種走法。 這一格如
+果是 $0$，後面每一格加來加去都是 $0$。
+\item 計算順序：箭頭都往右，$i$ 由小到大。 答案是 \texttt{ways[n]}。
+\end{itemize}
+
+上面的轉移是站在 $i$ 往回看：「誰能跳到我？」 這種寫法叫\textbf{往回拉}。
+這題往回看要檢查 $j + a_j \ge i$，有點麻煩；反過來站在 $j$ 往前看比較直接：
+「我能跳到誰？」 \texttt{ways[j]} 算好之後，把它加到 \texttt{ways[j + 1]} 到
+\texttt{ways[j + a\_j]} 上，這種寫法叫\textbf{往前推}。 兩種寫法加的是同一批
+箭頭，只是一個在箭頭的終點加、一個在起點加。 往前推要注意一件事：處理到 $j$
+時，所有指向 $j$ 的箭頭都必須已經推過了，\texttt{ways[j]} 才是完整的。 箭頭
+都往右，$j$ 由小到大就滿足這個條件。
+
+範例用往前推的過程：
+
+\begin{center}
+\begin{tabular}{cc|ccccc}
+\toprule
+處理位置 & $a_j$ & \texttt{ways[0]} & \texttt{[1]} & \texttt{[2]} & \texttt{[3]} & \texttt{[4]} \\
+\midrule
+開始 & & 1 & 0 & 0 & 0 & 0 \\
+0 & 2 & 1 & 1 & 1 & 0 & 0 \\
+1 & 1 & 1 & 1 & 2 & 0 & 0 \\
+2 & 3 & 1 & 1 & 2 & 2 & 2 \\
+3 & 1 & 1 & 1 & 2 & 2 & 4 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+處理位置 $2$ 時，$a_2 = 3$ 本來可以推到 $5$，超過終點的那一格不推。
+
+\textbf{取餘數}
+
+每格都寫 $3$ 時，走法數每多一格大約變成 $1.84$ 倍，$n = 74$ 就超過
+\texttt{unsigned long long} 能存的範圍，所以題目只要餘數。 餘數的好處是可以
+邊算邊取：$(x + y) \bmod M$ 等於 $\bigl((x \bmod M) + (y \bmod M)\bigr) \bmod M$，
+乘法也一樣。 所以每做一次加法就取一次餘數，表格裡的數永遠小於
+$M = 10^9 + 7$，兩個相加小於 $2.1 \times 10^9$，剛好還在 \texttt{int} 的
+上限 $2^{31} - 1 \approx 2.147 \times 10^9$ 以內。 只要多加一項或做一次乘法
+就會超過，所以表格一律存成 \texttt{long long}。 減法不能這樣直接做，第~15~章會碰到。
+
+同樣的模型也出現在別的地方：一份工作流程，每個步驟做完之後可以跳過後面幾個
+步驟，問從頭到尾有幾種不同的執行順序；一條公車路線，每一站能轉搭的區間車可
+以坐到後面幾站，問從起點到終點有幾種坐法。
+
+\textbf{程式}
+
+\begin{example}[label=ex:hopscotch]{cpp}{(hopscotch.cpp) 跳格子遊戲的走法數}
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    const long long MOD = 1000000007;
+    int n;
+    cin >> n;
+    vector<int> a(n);
+    for (int &x : a) {
+        cin >> x;
+    }
+    vector<long long> ways(n + 1, 0);   // ways[i]：抵達位置 i 的走法數
+    ways[0] = 1;                        // 站在起點：一種（什麼都還沒跳）
+    for (int i = 0; i < n; i++) {
+        for (int d = 1; d <= a[i] && i + d <= n; d++) {
+            ways[i + d] = (ways[i + d] + ways[i]) % MOD;   // 從 i 推給 i + d
+        }
+    }
+    cout << ways[n] << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+4 \\
+2 1 3 1 \\
+}{
+4 \\
+}
+
+\begin{itemize}
+\item 內層迴圈的條件 \texttt{i + d <= n} 同時做了兩件事：不把跳過終點的走法算
+進來，也不寫到 \texttt{ways} 的範圍外面。
+\item 外層迴圈只跑到 $n - 1$。 位置 $n$ 是終點，不用再往外推。
+\end{itemize}
+
+\textbf{複雜度}
+
+每個位置往前推最多 $3$ 次，時間 $O(n)$，表格 $O(n)$。 最大的測試資料在本書
+測試的環境下約 $0.04$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{跳過終點也算抵達}：以為「跳到 $n$ 或更遠都算到了」，把
+\texttt{ways} 開大兩格、拿掉 \texttt{i + d <= n}，最後把
+\texttt{ways[n]}、\texttt{ways[n + 1]}、\texttt{ways[n + 2]} 加起來。 範例會
+印出 \texttt{6}，多算了從位置 $2$ 直接跳到 $5$ 的兩種。 題目說「剛好跳到」，
+就只能算 \texttt{ways[n]}。
+\item \textbf{最後才取餘數}：表格用 \texttt{unsigned long long}，只在輸出時
+\texttt{\% MOD}。 $n = 73$ 以內還看不出問題；輸入 $n = 80$、每格都是 $3$，
+正確答案是 \texttt{997451737}，這樣寫會印出 \texttt{462595541}，中間早就溢
+位了，也沒有任何警告。
+\item \textbf{起點設成 $0$}：\texttt{ways[0] = 0}，整張表都是 $0$，範例印出
+\texttt{0}。 計數題的起點幾乎都是 $1$：「什麼都還沒做」也是一種做法。
+\item \textbf{沒有記憶化的遞迴}：照「往回拉」的式子寫成遞迴，範例和小的測試
+資料都會過，$n$ 大一點就超過時間限制。
+\end{itemize}
+
+\section{選或不選：一個位置兩種狀態}
+\label{sec:dp1-two}
+
+前面兩個問題，狀態都只要一個數字（金額、位置）。 很多題目光知道「做到第
+$i$ 個」不夠，還得知道第 $i$ 個是怎麼處理的，下一步才知道能做什麼。 這一節
+的例題是最常見的形狀：每個東西選或不選，相鄰的不能都選。
+
+\subsection{例題：招牌燈展示模式的總亮度}
+\label{sec:ex-sign}
+
+\textbf{題意}（\akiref{total-brightness-of-the-sign-demo}{招牌燈展示模式的總亮度}）
+
+\begin{itemize}
+\item 招牌上有一排 $n$ 盞燈，第 $i$ 盞亮起時亮度是 $a_i$。 相鄰的兩盞不能同
+時亮；第 $1$ 盞和第 $n$ 盞不相鄰。
+\item 替每盞燈決定亮或不亮，沒有相鄰兩盞同時亮，就是一種合法的亮法，全部不亮
+也算。 一種亮法的亮度是亮著的燈的亮度總和。
+\item 展示模式會把每一種合法的亮法各顯示一次。 求所有合法亮法的亮度加起來，
+除以 $10^9 + 7$ 的餘數。 $n \le 2 \times 10^5$，$0 \le a_i \le 10^9$。
+\end{itemize}
+
+例如三盞燈的亮度是 $2, 5, 3$。 合法的亮法有全不亮、只亮第 $1$ 盞、只亮第
+$2$ 盞、只亮第 $3$ 盞、亮第 $1$ 和第 $3$ 盞，共 $5$ 種，亮度是 $0 + 2 + 5 +
+3 + 5 = 15$。
+
+\textbf{想法}
+
+暴力解是枚舉 $2^n$ 種亮或不亮的組合，挑出合法的加起來。 $n = 30$ 就有十億種，
+$n$ 到 $2 \times 10^5$ 不可能。 這題一次要處理兩件事：合法亮法的條件，以及
+「所有亮法的總和」。 分成三步，一次加一件事。
+
+\textbf{第一步：只數有幾種亮法。} 試著用一個數字當狀態：$c_i$ 是「前 $i$ 盞燈
+有幾種合法亮法」。 想從 $c_{i-1}$ 算 $c_i$ 時會卡住：第 $i$ 盞能不能亮，要看第
+$i - 1$ 盞有沒有亮，而 $c_{i-1}$ 把兩種情況混在一起了。 缺的資訊放進狀態裡：
+
+\begin{itemize}
+\item \texttt{cOff[i]}：前 $i$ 盞的合法亮法中，第 $i$ 盞\textbf{不亮}的有幾種。
+\item \texttt{cOn[i]}：前 $i$ 盞的合法亮法中，第 $i$ 盞\textbf{亮著}的有幾種。
+\end{itemize}
+
+轉移看第 $i$ 盞：不亮的話，第 $i - 1$ 盞亮不亮都可以；亮的話，第 $i - 1$ 盞
+一定不亮。
+\[
+\texttt{cOff[i]} = \texttt{cOff[i-1]} + \texttt{cOn[i-1]},\qquad
+\texttt{cOn[i]} = \texttt{cOff[i-1]}.
+\]
+初始值是「還沒有燈」：\texttt{cOff[0] = 1}（一種亮法，什麼都沒有，也可以看成
+最後一盞不亮），\texttt{cOn[0] = 0}。 算下去：
+
+\begin{center}
+\begin{tabular}{c|cccccc}
+\toprule
+$i$ & 0 & 1 & 2 & 3 & 4 & 5 \\
+\midrule
+\texttt{cOff[i]} & 1 & 1 & 2 & 3 & 5 & 8 \\
+\texttt{cOn[i]} & 0 & 1 & 1 & 2 & 3 & 5 \\
+合計 & 1 & 2 & 3 & 5 & 8 & 13 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+三盞燈有 $5$ 種，和上面列舉的一樣。 畫成圖的話，每個 $i$ 有兩個點（第 $i$ 盞
+亮、不亮），箭頭只從第 $i - 1$ 層指到第 $i$ 層，「亮」指向「亮」的箭頭不存在。
+
+\textbf{第二步：最亮的一種亮法。} 同樣的兩個狀態，問的換成最大值，就是另一
+個常見的題目：\texttt{mOff[i]}、\texttt{mOn[i]} 是第 $i$ 盞不亮、亮著時，前
+$i$ 盞最大的亮度。 轉移把加法換成 $\max$，亮的那一邊加上 $a_i$：
+\[
+\texttt{mOff[i]} = \max(\texttt{mOff[i-1]}, \texttt{mOn[i-1]}),\qquad
+\texttt{mOn[i]} = \texttt{mOff[i-1]} + a_i.
+\]
+$2, 5, 3$ 依序算出 $(0, 2)$、$(2, 5)$、$(5, 5)$，最亮是 $5$（只亮中間，或亮
+兩邊）。 狀態一樣、轉移的形狀一樣，只是「怎麼合併」從加法換成 $\max$；這就
+是上一節表格裡「路的條數」和「最長的路」的差別。
+
+\textbf{第三步：所有亮法的亮度總和。} 題目要的是把每一種亮法的亮度都加起來。
+只記總和夠不夠？ 設 \texttt{sOn[i]} 是第 $i$ 盞亮著的那些亮法的亮度總和。
+第 $i$ 盞亮的亮法，都是「第 $i - 1$ 盞不亮的某一種亮法，再點亮第 $i$ 盞」。
+前面有 \texttt{cOff[i-1]} 種這樣的亮法，每一種都多了 $a_i$，所以總和要加上
+$a_i$ 乘以\textbf{種數}：
+\[
+\texttt{sOn[i]} = \texttt{sOff[i-1]} + a_i \times \texttt{cOff[i-1]},\qquad
+\texttt{sOff[i]} = \texttt{sOff[i-1]} + \texttt{sOn[i-1]}.
+\]
+只記總和不夠，因為新加的 $a_i$ 要加幾次取決於種數。 所以每個狀態同時帶兩個
+數字：有幾種、總和多少。 答案是 \texttt{sOff[n] + sOn[n]}。 範例的計算過程：
+
+\begin{center}
+\begin{tabular}{cc|cccc}
+\toprule
+$i$ & $a_i$ & \texttt{cOff} & \texttt{sOff} & \texttt{cOn} & \texttt{sOn} \\
+\midrule
+0 & -- & 1 & 0 & 0 & 0 \\
+1 & 2 & 1 & 0 & 1 & $0 + 2 \times 1 = 2$ \\
+2 & 5 & 2 & 2 & 1 & $0 + 5 \times 1 = 5$ \\
+3 & 3 & 3 & 7 & 2 & $2 + 3 \times 2 = 8$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+$7 + 8 = 15$。 $i = 3$ 那一列的 $3 \times 2$：第 $3$ 盞亮的亮法有兩種（只亮
+第 $3$ 盞、亮第 $1$ 和第 $3$ 盞），各自多了亮度 $3$。
+
+同樣的模型也出現在別的地方：一排攤位，相鄰的不能都開，求所有開法的營收總
+和；或在一條街上選擇哪些路口裝監視器，相鄰路口不重複裝。 要「對所有選法加
+總」時，記得同時帶著選法的數量。
+
+\textbf{程式}
+
+\begin{example}[label=ex:sign]{cpp}{(sign.cpp) 招牌燈展示模式的總亮度}
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    const long long MOD = 1000000007;
+    int n;
+    cin >> n;
+    // 前 i 盞、第 i 盞不亮（Off）或亮著（On）：c 是亮法數，s 是亮度總和
+    vector<long long> cOff(n + 1), sOff(n + 1), cOn(n + 1), sOn(n + 1);
+    cOff[0] = 1;                        // 還沒有燈：一種亮法，亮度 0
+    sOff[0] = cOn[0] = sOn[0] = 0;
+    for (int i = 1; i <= n; i++) {
+        long long a;
+        cin >> a;
+        a %= MOD;
+        cOff[i] = (cOff[i - 1] + cOn[i - 1]) % MOD;
+        sOff[i] = (sOff[i - 1] + sOn[i - 1]) % MOD;
+        cOn[i] = cOff[i - 1];                            // 前一盞必須不亮
+        sOn[i] = (sOff[i - 1] + cOff[i - 1] * a) % MOD;  // 每一種都多了 a
+    }
+    cout << (sOff[n] + sOn[n]) % MOD << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+3 \\
+2 5 3 \\
+}{
+15 \\
+}
+
+\begin{itemize}
+\item \texttt{a \%= MOD} 先把 $a_i$ 縮到 $M$ 以內。 $a_i$ 本來就小於 $M$，這
+行在這題不會改變任何值，但習慣上乘法的兩邊都先取餘數。
+\item \texttt{cOff[i - 1] * a} 的兩個數都小於 $M \approx 10^9$，乘積小於
+$1.1 \times 10^{18}$，在 \texttt{long long} 的上限 $9.2 \times 10^{18}$ 以內。
+兩個都是 \texttt{long long}，乘法就用 \texttt{long long} 做。
+\item 每一格只用到前一格。 四個 \texttt{vector} 可以換成八個變數，只記「上一
+格」和「這一格」，記憶體從 $O(n)$ 變成 $O(1)$。 這種寫法叫滾動陣列，第~10~章
+在二維的表格上會用到。 這一章為了讓表格看得清楚，都用整個陣列。
+\end{itemize}
+
+\textbf{複雜度}
+
+$O(n)$。 最大的測試資料在本書測試的環境下約 $0.05$ 秒。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{亮度只加一次}：寫成 \texttt{sOn[i] = sOff[i - 1] + a}，忘了前面
+有好幾種亮法都要加。 範例印出 \texttt{12}。
+\item \textbf{種數的初始值是 $0$}：\texttt{cOff[0] = 0}，所有的種數都是
+$0$，總和也一直是 $0$，範例印出 \texttt{0}。 和跳格子一樣，「什麼都沒有」也
+是一種。
+\item \textbf{用 \texttt{int} 存}：把所有變數都改成 \texttt{int}，乘法
+\texttt{cOff * a} 會溢位。 範例 2（四盞燈，亮度都是 $10^9$）的正確答案是
+\texttt{999999937}，這樣寫在本書測試的環境下印出 \texttt{705032669}。
+\item \textbf{最後才取餘數}：表格裡的加法、乘法都不取餘數，只在輸出時
+\texttt{\% MOD}。 $100$ 盞亮度都是 $10^9$ 的燈，正確答案是
+\texttt{726391504}，這樣寫印出 \texttt{-66304235}：中間的數早就超過
+\texttt{long long}，變成負的。
+\end{itemize}
+
+\section{狀態要記得夠多：大夜班}
+\label{sec:dp1-three}
+
+上一節的「亮或不亮」是兩種狀態。 這一節的例題每一天有三種選擇，而且限制同
+時牽涉到前一天和後一天，要想清楚「後一天」的限制要怎麼在由前往後的計算裡檢
+查。
+
+\subsection{例題：前後都要休息的大夜班}
+\label{sec:ex-night}
+
+\textbf{題意}（\akiref{rest-days-around-the-night-shift}{前後都要休息的大夜班}）
+
+\begin{itemize}
+\item 接下來 $n$ 天，每天從白班、大夜班、休息三種選一種。 第 $i$ 天上白班賺
+$a_i$，上大夜班賺 $b_i$，休息賺 $0$。
+\item 上大夜班的前一天和後一天都必須休息；第 $1$ 天沒有前一天、第 $n$ 天沒有
+後一天，那一邊就不用管。 一個休息日可以同時是兩個大夜班的「後一天」和「前一
+天」。 白班沒有限制。
+\item 求最高的總薪水。 $n \le 2 \times 10^5$，$a_i \le 10^9$，
+$b_i \le 3 \times 10^9$。
+\end{itemize}
+
+例如 $3$ 天，白班都是 $4$，大夜班是 $1, 10, 1$。 第 $2$ 天上大夜班可以賺
+$10$，但第 $1$、$3$ 天就得休息；三天都上白班是 $12$，比較多。
+
+\textbf{想法}
+
+先試貪心：挑大夜班薪水最高的那天先排。 上面的例子就錯了，$10$ 很大，卻擋掉
+兩天白班。 暴力解試遍每天的三種選擇，共 $3^n$ 種，$n = 20$ 就超過三十億。
+
+照上一節的經驗，先問：排第 $i$ 天時，要知道前面的什麼？
+
+\begin{itemize}
+\item 第 $i$ 天想上大夜班：第 $i - 1$ 天必須休息。
+\item 第 $i$ 天想上白班或大夜班：第 $i - 1$ 天不能是大夜班（大夜班的後一天要
+休息）。
+\end{itemize}
+
+兩條都只和「第 $i - 1$ 天做什麼」有關。 「後一天必須休息」這條限制看起來是往
+後看的，但它可以改成從後一天往前檢查：輪到第 $i + 1$ 天時，前一天是大夜班就
+只能休息。 所以狀態是「前 $i$ 天排好、第 $i$ 天做的是哪一種」時，前面的薪水
+最多是多少：
+
+\begin{itemize}
+\item \texttt{rest[i]}、\texttt{day[i]}、\texttt{night[i]}：排好前 $i$ 天，第
+$i$ 天休息、上白班、上大夜班時，最高的總薪水。
+\end{itemize}
+
+哪一種可以接在哪一種後面，畫成圖是：
+
+\begin{center}
+\begin{tikzpicture}[x=1cm, y=1cm,
+    sn/.style={circle, draw=black!60, thick, minimum size=1.1cm, font=\small},
+    ar/.style={-{Stealth[length=2mm]}, thick, draw=black!60}]
+\node[sn] (R) at (0,0) {休息};
+\node[sn] (D) at (-2.6,-1.6) {白班};
+\node[sn, draw=memStroke, fill=memFill] (G) at (2.6,-1.6) {大夜};
+\draw[ar] (R) to[out=120, in=60, looseness=5] (R);
+\draw[ar] (D) to[out=210, in=150, looseness=5] (D);
+\draw[ar] (R) to[bend right=15] (D);
+\draw[ar] (D) to[bend right=15] (R);
+\draw[ar] (R) to[bend left=15] (G);
+\draw[ar] (G) to[bend left=15] (R);
+\end{tikzpicture}
+\diagcaption{前一天（箭頭起點）做完之後，後一天（箭頭終點）可以做什麼。 大夜
+班只和休息相連。}
+\label{fig:night-states}
+\end{center}
+
+這張圖本身有環（休息可以接休息），但它描述的是「相鄰兩天」的關係。 真正的
+狀態是（第幾天, 做什麼），箭頭一律從第 $i - 1$ 天指到第 $i$ 天，所以仍然是
+有向無環圖，可以照天數由小到大算。 把圖上進入每個點的箭頭寫成式子，就是轉
+移：
+\[
+\begin{aligned}
+\texttt{rest[i]}  &= \max(\texttt{rest[i-1]}, \texttt{day[i-1]}, \texttt{night[i-1]}),\\
+\texttt{day[i]}   &= \max(\texttt{rest[i-1]}, \texttt{day[i-1]}) + a_i,\\
+\texttt{night[i]} &= \texttt{rest[i-1]} + b_i.
+\end{aligned}
+\]
+
+兩個大夜班共用中間的休息日，在這個寫法裡自動成立：大夜、休息、大夜就是沿著
+圖上的「大夜 $\to$ 休息 $\to$ 大夜」走。
+
+\textbf{初始值}：第 $1$ 天沒有前一天，把第 $0$ 天當成休息，\texttt{rest[0] = 0}；
+第 $0$ 天不可能上班，\texttt{day[0]} 和 \texttt{night[0]} 設成一個很小的數，
+表示「這種結尾不存在」，取 $\max$ 時一定會輸。 這個很小的數不能直接用
+\texttt{LLONG\_MIN}：它只要再加上一點薪水就會溢位。 用
+\texttt{LLONG\_MIN / 4}，加上幾個薪水也還是很小的負數。
+
+\textbf{答案}：第 $n$ 天三種都可以（第 $n$ 天的大夜班沒有後一天），取三者的
+最大值。
+
+範例 1 是 $7$ 天，白班 $3, 3, 2, 2, 6, 2, 1$，大夜班 $10, 5, 9, 8, 4, 12, 8$：
+
+\begin{center}
+\begin{tabular}{ccc|ccc}
+\toprule
+天 & $a_i$ & $b_i$ & \texttt{rest} & \texttt{day} & \texttt{night} \\
+\midrule
+0 & & & 0 & -- & -- \\
+1 & 3 & 10 & 0 & 3 & 10 \\
+2 & 3 & 5 & 10 & 6 & 5 \\
+3 & 2 & 9 & 10 & 12 & 19 \\
+4 & 2 & 8 & 19 & 14 & 18 \\
+5 & 6 & 4 & 19 & 25 & 23 \\
+6 & 2 & 12 & 25 & 27 & 31 \\
+7 & 1 & 8 & 31 & 28 & 33 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+答案是 $33$。 從最後一格往回追：第 $7$ 天大夜班 $33 = 25 + 8$，來自第 $6$ 天
+休息的 $25$；$25$ 來自第 $5$ 天白班的 $25 = 19 + 6$；依此類推，班表是「大夜、
+休息、大夜、休息、白班、休息、大夜」。 貪心先挑最高的第 $6$ 天大夜班
+（$12$），最多只能拿到 $31$。
+
+同樣的模型也出現在別的地方：工廠的機台做高負載的工作之前和之後都要停機保養；
+運動員的高強度訓練日前後要排恢復日。 只要「今天能做什麼只看昨天做了什麼」，
+就把「昨天做了什麼」放進狀態。
+
+\textbf{程式}
+
+\begin{example}[label=ex:night]{cpp}{(night.cpp) 前後都要休息的大夜班}
+#include <algorithm>
+#include <climits>
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n;
+    cin >> n;
+    vector<long long> a(n + 1), b(n + 1);
+    for (int i = 1; i <= n; i++) {
+        cin >> a[i];
+    }
+    for (int i = 1; i <= n; i++) {
+        cin >> b[i];
+    }
+    const long long NONE = LLONG_MIN / 4;   // 不可能的結尾
+    // 排好前 i 天、第 i 天是休息／白班／大夜班時的最高總薪水
+    vector<long long> rest(n + 1), day(n + 1), night(n + 1);
+    rest[0] = 0;                        // 第 0 天當作休息
+    day[0] = night[0] = NONE;
+    for (int i = 1; i <= n; i++) {
+        rest[i] = max({rest[i - 1], day[i - 1], night[i - 1]});
+        day[i] = max(rest[i - 1], day[i - 1]) + a[i];      // 前一天不能是大夜
+        night[i] = rest[i - 1] + b[i];                     // 前一天一定休息
+    }
+    cout << max({rest[n], day[n], night[n]}) << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+7 \\
+3 3 2 2 6 2 1 \\
+10 5 9 8 4 12 8 \\
+}{
+33 \\
+}
+
+\begin{itemize}
+\item \texttt{max(\{x, y, z\})} 用大括號一次比三個數，要
+\texttt{\#include <algorithm>}（銜接書第~8~章的 \texttt{initializer\_list}）。
+\item $b_i$ 最大 $3 \times 10^9$，本身就超過 \texttt{int}，讀進來就要用
+\texttt{long long}。 總和最多大約 $2 \times 10^5 \times 3 \times 10^9 =
+6 \times 10^{14}$。
+\item 這一題的薪水都不是負的，把 \texttt{NONE} 寫成 $0$ 其實也算得出正確答案
+（多出來的「第 $0$ 天上班」不會讓任何結果變大）。 但習慣上不可能的狀態就標
+成不可能，薪水可以是負數、或者題目問最小值時，才不會出錯。
+\end{itemize}
+
+\textbf{複雜度}
+
+$O(n)$。 最大的測試資料在本書測試的環境下約 $0.06$ 秒，大部分花在讀入。
+
+\subsection{常見錯誤}
+
+\begin{itemize}
+\item \textbf{把大夜班當成三天一塊}：把「休息、大夜、休息」當成一個固定佔三
+天的區塊，用一個狀態 $f(i)$ 表示前 $i$ 天的最高薪水。 這樣兩個大夜班沒辦法
+共用中間的休息日。 輸入
+\begin{code}{text}{三天一塊會錯的輸入}
+5
+0 0 0 0 0
+5 0 5 0 5
+\end{code}
+正確答案是 $15$（第 $1$、$3$、$5$ 天大夜班），這種寫法只得到 \texttt{10}。
+\item \textbf{只檢查後一天}：把 \texttt{night[i]} 寫成
+\texttt{max(rest[i - 1], day[i - 1]) + b[i]}，讓大夜班也能接在白班後面。 範例
+2（$4, 4, 4$／$1, 10, 1$）會印出 \texttt{14}：第 $1$ 天白班、第 $2$ 天大夜
+班、第 $3$ 天休息，違反了前一天要休息。 範例 1 印出 \texttt{37}。
+\item \textbf{答案只看休息}：輸出 \texttt{rest[n]}，以為最後一天休息一定最
+好。 範例 1 印出 \texttt{31}，最後一天的大夜班被漏掉了。
+\item \textbf{用 \texttt{int} 讀}：\texttt{a}、\texttt{b} 宣告成
+\texttt{vector<int>}。 輸入有 $3000000000$ 時讀取失敗，後面的數字都讀不進來。
+兩天、白班 $1, 1$、大夜班 $3000000000, 0$ 的輸入，正確答案是
+\texttt{3000000000}，這樣寫印出 \texttt{2147483647}。
+\end{itemize}
+
+\section{狀態的幾種常見寫法}
+\label{sec:dp1-shapes}
+
+三題例題的狀態都是「做到第 $i$ 個」再加上一點資訊。 一維的動態規劃，狀態大
+多是下面四種之一。 讀題時先想是哪一種，再補上缺的資訊。
+
+\begin{center}
+\begin{tabular}{p{0.25\linewidth}p{0.36\linewidth}p{0.29\linewidth}}
+\toprule
+狀態 & 轉移在看什麼 & 本章的例子 \\
+\midrule
+前 $i$ 個（或金額 $x$）的最佳值、方法數 & 最後一步是哪一種 & 郵票、跳格子 \\
+前 $i$ 個，而且第 $i$ 個是某種情況 & 第 $i$ 個和第 $i - 1$ 個能不能相鄰 & 招牌燈、大夜班 \\
+以第 $i$ 個結尾的連續一段 & 接在前一段後面，或從這裡重新開始 & 下面的最大區間和 \\
+前 $i$ 個切成好幾段 & 最後一段從哪裡開始 & 下面的分段 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{以第 $i$ 個結尾。} 一家店記下 $7$ 天的淨利 $3, -5, 4, -1, 2, -6, 1$，
+要找連續幾天、淨利總和最大的一段。 第~5~章用前綴和解過這個最大區間和：固定
+右端，減掉前面最小的前綴和。 這裡換成動態規劃的角度。 「前 $i$ 天裡最好的一
+段」不好轉移：第
+$i + 1$ 天能不能接上去，要看那一段是不是剛好結束在第 $i$ 天。 所以把狀態定成
+「\texttt{endAt[i]}：最後一天剛好是第 $i$ 天的各段裡，最大的總和」。 這樣的一
+段只有兩種：接在以第 $i - 1$ 天結尾的最好的那段後面，或從第 $i$ 天自己開始。
+\begin{code}{cpp}{以第 i 天結尾的最大總和}
+endAt[0] = a[0];
+for (int i = 1; i < n; i++) {
+    endAt[i] = a[i] + max(endAt[i - 1], 0LL);   // 前面是負的就不要接
+}
+// 答案是所有 endAt[i] 裡最大的
+\end{code}
+例子裡 \texttt{endAt} 依序是 $3, -2, 4, 3, 5, -1, 1$，最大是 $5$，就是第
+$3$ 到 $5$ 天的 $4 - 1 + 2$。 這種狀態的答案不在最後一格，要取全部的最大值。
+
+\textbf{切成好幾段。} 題目要把一列東西依序切成幾段，每段有個成本，例如每段
+最多 $C$ 個、每段的成本和它的長度或內容有關。 狀態是「前 $i$ 個已經切好的最
+小成本」，轉移看最後一段是第 $j + 1$ 到第 $i$ 個：
+$\mathrm{dp}(i) = \min_j \bigl(\mathrm{dp}(j) + \mathrm{cost}(j + 1, i)\bigr)$。
+$j$ 有好幾個可以選，每個狀態要看的前一狀態變多了，複雜度是狀態數乘上 $j$ 的
+個數。 有些題目會限制最後一段的長度，可以選的 $j$ 就少了。
+
+\section{回到第 7 章：貪心和動態規劃}
+\label{sec:dp1-greedy}
+
+第~7~章 7.4 節的三個問題，郵票已經解決了。 這一節解決第一個：
+每場講座有價值時，要讓聽到的總價值最大。 背包留到第~15~章。
+
+\subsection{有價值的講座}
+
+第 7 章的反例是 $[0, 3)$ 價值 $1$、$[2, 6)$ 價值 $10$：照結束時間先選
+$[0, 3)$，總價值只有 $1$。 換一組大一點的例子，六場講座：
+
+\begin{center}
+\begin{tikzpicture}[x=0.9cm, y=0.55cm]
+\ivbar{6}{1}{3}{A（3）}
+\ivbar[ivpick]{5}{2}{5}{B（6）}
+\ivbar{4}{4}{7}{C（5）}
+\ivbar[ivpick]{3}{6}{9}{D（4）}
+\ivbar{2}{5}{10}{E（7）}
+\ivbar[ivpick]{1}{9}{12}{F（4）}
+\ivaxis{0}{12}{0.2}
+\end{tikzpicture}
+\diagcaption{六場講座，括號裡是價值。 橘色的 B、D、F 是總價值最大的選法，共
+$14$。}
+\label{fig:valued-talks}
+\end{center}
+
+第~7~章的規則 3（結束早的先選）選到 A、C、F，總價值 $12$。 換成「價值高的
+先選」，會先選 E（$7$），接著 B（$6$），F 和 E 重疊，總價值 $13$。 兩條規則
+都不是最好的。
+
+\textbf{狀態}。 先把講座依結束時刻排好：A、B、C、D、E、F。 狀態是
+「\texttt{best[i]}：只看最早結束的前 $i$ 場，能拿到的最大總價值」。
+
+\textbf{轉移}。 看第 $i$ 場聽不聽：
+
+\begin{itemize}
+\item 不聽：答案和只看前 $i - 1$ 場一樣，\texttt{best[i - 1]}。
+\item 聽：前面只能再選和它不重疊的講座，也就是結束時刻不晚於它開始時刻的那
+些。 講座已經依結束時刻排好，這些講座剛好是最前面的某 $p$ 場（$p$ 隨 $i$ 而
+定）。 價值是 \texttt{best[p]} 加上這一場的價值。
+\end{itemize}
+
+兩者取大的。 初始值 \texttt{best[0] = 0}，$i$ 由小到大算，答案是
+\texttt{best[n]}。 每個 $i$ 都只有兩個箭頭進來：從 $i - 1$ 和從 $p$。
+
+找 $p$ 就是在排好的結束時刻裡，數有幾個 $\le$ 這一場的開始時刻，正好是
+\texttt{upper\_bound} 做的事（第~3~章、銜接書第~9~章）。
+講座是半開區間，結束在 $s$ 的講座和從 $s$ 開始的講座不重疊，所以用
+\texttt{upper\_bound}（找第一個 $> s$ 的），相接的那一場要算進來。
+
+\begin{center}
+\begin{tabular}{cccc|cc|c}
+\toprule
+$i$ & 講座 & 時段 & 價值 & $p$ & 聽：\texttt{best[p]} $+$ 價值 & \texttt{best[i]} \\
+\midrule
+1 & A & $[1, 3)$ & 3 & 0 & $0 + 3 = 3$ & 3 \\
+2 & B & $[2, 5)$ & 6 & 0 & $0 + 6 = 6$ & 6 \\
+3 & C & $[4, 7)$ & 5 & 1 & $3 + 5 = 8$ & 8 \\
+4 & D & $[6, 9)$ & 4 & 2 & $6 + 4 = 10$ & 10 \\
+5 & E & $[5, 10)$ & 7 & 2 & $6 + 7 = 13$ & 13 \\
+6 & F & $[9, 12)$ & 4 & 4 & $10 + 4 = 14$ & 14 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+例如 F 從 $9$ 開始，結束時刻 $\le 9$ 的是 A、B、C、D 四場，$p = 4$；聽 F 的話
+前面最多拿 \texttt{best[4] = 10}（B 和 D），加上 F 是 $14$，比不聽的 $13$ 多。
+
+\begin{example}[label=ex:lectures]{cpp}{(lectures.cpp) 有價值的講座}
+#include <algorithm>
+#include <iostream>
+#include <vector>
+using namespace std;
+
+struct Talk {
+    long long s, e, v;   // 時段 [s, e)，價值 v
+};
+
+int main() {
+    int n;
+    cin >> n;
+    vector<Talk> t(n);
+    for (Talk &x : t) {
+        cin >> x.s >> x.e >> x.v;
+    }
+    sort(t.begin(), t.end(), [](const Talk &x, const Talk &y) {
+        return x.e < y.e;
+    });
+    vector<long long> ends(n);
+    for (int i = 0; i < n; i++) {
+        ends[i] = t[i].e;
+    }
+    // best[i]：只看結束最早的前 i 場，能拿到的最大總價值
+    vector<long long> best(n + 1, 0);
+    for (int i = 1; i <= n; i++) {
+        const Talk &cur = t[i - 1];
+        // 前 i - 1 場裡，結束時刻 <= cur.s 的有 p 場，它們剛好是最前面的 p 場
+        int p = upper_bound(ends.begin(), ends.begin() + (i - 1), cur.s)
+                - ends.begin();
+        best[i] = max(best[i - 1], best[p] + cur.v);   // 不聽／聽這一場
+    }
+    cout << best[n] << '\n';
+    return 0;
+}
+\end{example}
+
+\iosample{
+6 \\
+1 3 3 \\
+2 5 6 \\
+4 7 5 \\
+6 9 4 \\
+5 10 7 \\
+9 12 4 \\
+}{
+14 \\
+}
+
+\begin{itemize}
+\item 表格的第 $i$ 格對應排序後的 \texttt{t[i - 1]}，多一格 \texttt{best[0]}
+當「一場都不看」，轉移裡就不用特別處理 $p = 0$。
+\item 只在前 $i - 1$ 場裡找：第 $i$ 場自己的結束時刻一定大於開始時刻，本來
+就不會被算進去，限制範圍只是讓意思更清楚。
+\item 排序 $O(n \log n)$，每場一次二分搜 $O(\log n)$，總共 $O(n \log n)$。
+\item 把 \texttt{upper\_bound} 換成 \texttt{lower\_bound}，相接的講座會被當成
+重疊：E 接不上 B、F 接不上 D，範例印出 \texttt{12}。
+\end{itemize}
+
+為什麼這次排序沒有讓貪心變對？ 排序只是替狀態排出計算順序：「前 $i$ 場」要
+有意義，聽第 $i$ 場時能接的講座就得剛好是前面一整段。 真正做決定的是轉移裡
+的 $\max$：聽和不聽兩種都算過，取好的那一個。 貪心則是排好之後直接決定，不
+回頭比較。
+
+\subsection{不能切開的背包}
+
+背包的問題是：最多裝重量 $W$，每件物品有重量和價值，求最大總價值。 試著照
+這一章的方法定狀態：「只看前 $i$ 件物品的最大總價值」。 決定第 $i$ 件要不要
+放時，要知道背包還剩多少空間，而這取決於前面放了哪些東西，前 $i - 1$ 件的最
+大價值沒有告訴我們這件事。 缺的資訊要放進狀態：「前 $i$ 件物品、用掉的重量
+是 $w$ 時的最大價值」，狀態變成兩個維度。 這是第~15~章的主題。
+
+\subsection{什麼時候用動態規劃}
+
+\begin{itemize}
+\item 題目問「最少」「最多」「有幾種」「做不做得到」，而所有選法一個一個試會
+太多（$2^n$、$3^n$、$n!$）。
+\item 選擇可以排成一個順序依序做（由左到右、由小到大），而且做到一半時，「之
+後還能怎麼做」只取決於少量的資訊：目前的位置、金額、最後一個的情況。 這些
+資訊就是狀態。
+\item 試過的貪心找得到反例，或者對拍時和暴力解不一樣。
+\item 估計「狀態數 $\times$ 每個狀態看幾個前一狀態」，在時間限制內。 照銜接
+書 10.1 節的表，$n = 2 \times 10^5$ 時，每個狀態只能看常數個或
+$O(\log n)$ 個前一狀態。
+\end{itemize}
+
+看起來像、但不能直接用的情況：
+
+\begin{itemize}
+\item 狀態之間的箭頭有環，例如可以往回走的移動、可以加也可以減的按鈕。 找
+不到計算順序，要用第~11、12~章的廣度優先搜尋。
+\item 「之後怎麼做」取決於整個過去，例如要記得前面選過哪些東西（不是幾個，是
+哪些）。 狀態數是指數，在 $n$ 很小時可以用第~4~章的回溯。
+\item 資料範圍大到連「狀態數 $\times$ 轉移數」都超過，而且找得到正確的貪心規
+則，例如沒有價值的區間排程。 能證明的貪心比動態規劃快，程式也短。
+\end{itemize}
+
+第~7~章 7.4 節的實用判斷可以再補一句：範圍允許時，先寫動態規
+劃。 動態規劃考慮了所有選法，對了就是對了，不需要交換論證；貪心快，但要證明
+或至少對拍過。
+
+\begin{apcsnote}
+動態規劃的題目，正式的程式和暴力解常常只差在「同樣的狀態有沒有重算」，所以
+暴力遞迴很容易寫出來，可以用來和填表的程式對拍。 時間不夠寫填表時，暴力遞
+迴加上記憶化通常已經夠快；但遞迴深度到十幾萬層時可能會當掉，交出去之前用最
+大的 $n$ 自己跑一次。
+\end{apcsnote}
+
+\section{本章常見錯誤}
+\label{sec:dp1-pitfalls}
+
+各節的錯誤，歸納起來是五類。 寫完動態規劃，交出去之前逐項檢查。
+
+\begin{center}
+\begin{tabular}{p{0.2\linewidth}p{0.46\linewidth}p{0.22\linewidth}}
+\toprule
+錯誤 & 例子 & 見 \\
+\midrule
+狀態少了資訊 & 招牌燈只記「前 $i$ 盞有幾種」；大夜班只記「前 $i$ 天最多多少」，
+或把大夜班當成三天一塊 & 第~\ref{sec:ex-sign}、\ref{sec:ex-night}~節 \\
+轉移漏了條件 & 大夜班只檢查後一天；跳格子跳過終點也算；亮度只加一次 &
+第~\ref{sec:ex-hopscotch}、\ref{sec:ex-sign}、\ref{sec:ex-night}~節 \\
+初始值錯 & 計數題的起點設成 $0$；不可能的狀態設成 $0$ 或「不夠大」的數；用
+\texttt{LLONG\_MIN} 再加數字 & 第~\ref{sec:dp1-stamps}、\ref{sec:ex-night}~節、練習第~2~題 \\
+計算順序錯 & 由大到小填，用到還沒算的格子；記憶化遞迴太深 &
+第~\ref{sec:dp1-stamps}~節 \\
+答案取錯格 & 只看 \texttt{rest[n]}；以第 $i$ 個結尾的狀態只看最後一格 &
+第~\ref{sec:ex-night}、\ref{sec:dp1-shapes}~節 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+另外兩個和動態規劃本身無關、但幾乎每一題都會碰到的錯誤：取餘數只在最後做，
+以及總和、乘積超過 \texttt{int}。 前者每做一次加法或乘法就取一次；後者在動
+手前先估表格裡最大的數。
+
+\section{本章練習}
+\label{sec:dp1-exercises}
+
+\begin{drills}[label=drills:dp1]
+\item 下面的函式：
+\begin{code}{cpp}{練習 1}
+int g(int n) {
+    if (n <= 2) {
+        return n;
+    }
+    return g(n - 1) + 2 * g(n - 3);
+}
+\end{code}
+\begin{enumerate}
+\item 列出 $g(0)$ 到 $g(7)$ 的值。
+\item 呼叫 \texttt{g(7)}，\texttt{g} 一共被呼叫幾次（包括 \texttt{g(7)} 自
+己）？
+\item 照範例~\ref{ex:stamps-memo} 的方式加上記憶化（查表的呼叫也算一次），
+\texttt{g(7)} 一共被呼叫幾次？
+\end{enumerate}
+
+\item 郵局的 $1$ 元郵票也賣完了，只剩 $5$ 元和 $6$ 元。
+\begin{enumerate}
+\item $1$ 到 $30$ 元裡，哪些金額貼不出來？
+\item 把範例~\ref{ex:stamps-table} 的 \texttt{stamps} 改成 $\{5, 6\}$，其他不
+變，\texttt{best[7]} 會算出多少？ 為什麼 \texttt{x + 1} 在這裡不能當「一定
+會被比下去的數」？
+\item 怎麼改才對？ 貼不出來時輸出 $-1$。
+\end{enumerate}
+
+\item 回到 $1$、$5$、$6$ 元三種郵票。
+\begin{enumerate}
+\item 貼的先後順序不同算不同的貼法（$1 + 5$ 和 $5 + 1$ 不同），貼滿 $12$ 元
+有幾種貼法？ 寫出狀態、轉移和初始值。
+\item 如果只看每種用了幾張，不管先後（$1 + 5$ 和 $5 + 1$ 算同一種），(a) 的
+轉移會多算。 為什麼？
+\end{enumerate}
+
+\item 計數器顯示 $0$，有兩個按鈕：$+5$ 和 $-3$。 要讓計數器顯示 $n$，最少按
+幾下？ 有人照郵票的想法寫出
+$f(x) = 1 + \min\bigl(f(x - 5), f(x + 3)\bigr)$，$f(0) = 0$，照著寫成遞迴。
+這支程式會怎樣？ 用狀態圖說明原因。
+
+\item 大夜班的規定改成：前一天要休息，\textbf{後兩天}都要休息。 寫出狀態和
+轉移。（提示：休息有兩種，一種是大夜班後的第一天，隔天還得休息。）
+
+\item 招牌燈的規定改成：可以有相鄰的燈同時亮，但不能有連續三盞都亮。
+\begin{enumerate}
+\item 寫出計算「合法亮法有幾種」的狀態和轉移。
+\item $n = 5$ 時有幾種？
+\end{enumerate}
+
+\item 圖~\ref{fig:valued-talks} 的講座，如果 E 的價值從 $7$ 改成 $9$，寫出新
+的 \texttt{best} 表和答案。
+
+\item 有人想直接用「\texttt{pre[i]}：前 $i$ 天裡，總和最大的連續一段」當狀態
+來求最大區間和。 給一個例子說明，只知道 \texttt{pre[i - 1]} 和 $a_i$，算不
+出 \texttt{pre[i]}。
+\end{drills}
+
+\section{實作練習}
+\label{sec:dp1-practice}
+
+下面是 Aki-Judge 上和本章相關的題目，依第~\ref{sec:dp1-shapes}~節的四種狀態
+分組。 難度分四階：暖身是直接套用本章的寫法；基本要自己定出狀態；實戰的題敘
+比較長，要先把題目轉換成本章的形狀；挑戰會和其他章的技巧合在一起。
+
+\begin{center}
+\begin{tabular}{llc}
+\toprule
+狀態 & 題目 & 難度 \\
+\midrule
+前 $i$ 個／金額 $x$ & \akiref{springboard-track}{跳板賽道} & 暖身 \\
+ & \akiref{doubling-portal-levels}{翻倍傳送門的闖關花費} & 暖身 \\
+ & \akiref{fewest-presses-on-the-counter}{計數器按鈕的最少按法} & 暖身 \\
+ & \akiref{value-and-call-count-of-a-recursive-function}{遞迴函式的值與呼叫次數} & 暖身 \\
+ & \akiref{stickers-along-the-puddled-trail}{避開水窪收集貼紙} & 暖身 \\
+ & \akiref{day-passes-and-two-day-passes}{游泳池的單日票與雙日票} & 基本 \\
+ & \akiref{fewest-hops-down-a-cracked-corridor}{避開破地板的最少跳躍次數} & 基本 \\
+ & \akiref{countdown-card-game-counting-plays}{倒數桌遊的走法數} & 基本 \\
+ & \akiref{hopscotch-product-score}{跳格子的乘積分數} & 基本 \\
+ & \akiref{when-the-clerks-snack-rule-fails}{零食包裝的貪心反例} & 基本 \\
+ & \akiref{stepping-stones-the-smallest-jump-code}{踏石過溪的跳法代號} & 基本 \\
+ & \akiref{catering-and-cleanup-days}{外燴後的整備日} & 基本 \\
+ & \akiref{splitting-the-exam-stack}{考卷分疊批改的最低成本} & 基本 \\
+ & \akiref{hiking-with-mandatory-water-stops}{不能錯過補水站的健行} & 挑戰 \\
+\midrule
+第 $i$ 個的情況 & \akiref{seating-plans-in-the-study-room}{自習室座位的安排數} & 暖身 \\
+ & \akiref{total-cost-of-the-bead-sample-book}{串珠樣品冊的總成本} & 暖身 \\
+ & \akiref{least-effort-with-bike-gears}{單車變速的最小總體力} & 暖身 \\
+ & \akiref{poster-rows-without-equal-neighbors}{相鄰不同寬的海報排法} & 基本 \\
+ & \akiref{corridor-tiles-around-floor-drains}{避開排水孔的走廊地磚} & 基本 \\
+ & \akiref{reading-the-shelf-robots-log}{貨架機器人的移動紀錄} & 基本 \\
+ & \akiref{back-to-back-review-bonus}{三科複習的連讀加分} & 基本 \\
+ & \akiref{adjacent-channel-interference}{相鄰頻道的干擾} & 基本 \\
+ & \akiref{best-seam-score-of-a-tile-row}{磁磚接縫的最大總分} & 基本 \\
+ & \akiref{walk-or-ride-a-shared-bike}{走路還是騎公共自行車} & 基本 \\
+ & \akiref{training-plans-with-a-cool-down}{以慢跑收操的訓練排法} & 基本 \\
+ & \akiref{sprinklers-along-the-garden-beds}{菜園灑水頭的最大淨收成} & 基本 \\
+ & \akiref{water-fountains-on-a-loop-trail}{環狀步道的飲水機} & 基本 \\
+ & \akiref{to-redeem-or-not-to-redeem}{會員點數該不該折抵} & 實戰 \\
+ & \akiref{best-part-time-earnings-with-a-day-off}{請假日的打工最佳收入} & 挑戰 \\
+ & \akiref{band-frequencies-without-exact-multiples}{不能剛好差 m 倍的樂器頻率} & 挑戰 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\begin{tabular}{llc}
+\toprule
+狀態 & 題目 & 難度 \\
+\midrule
+以第 $i$ 個結尾 & \akiref{best-run-for-the-pop-up-shop}{快閃店的最佳檔期} & 暖身 \\
+ & \akiref{quiz-score-lead}{小考領先幅度} & 暖身 \\
+ & \akiref{exhibition-run-covering-a-guest-day}{涵蓋來賓日的最佳展期} & 基本 \\
+ & \akiref{best-stretch-past-a-lookout}{經過觀景台的最佳路段} & 基本 \\
+ & \akiref{best-stretch-in-a-compressed-ledger}{壓縮帳本的最佳時段} & 基本 \\
+ & \akiref{bike-ride-between-rental-stations}{借還車站之間的河濱騎行} & 基本 \\
+ & \akiref{add-cards-and-flip-cards}{加分卡與反轉卡} & 基本 \\
+ & \akiref{flip-a-stretch-around-the-table}{圓桌翻牌} & 基本 \\
+ & \akiref{a-training-camp-of-at-least-l-days}{至少連續 L 天的訓練營} & 基本 \\
+ & \akiref{stalls-between-the-trees}{隔著奇數棵樹的攤位} & 實戰 \\
+ & \akiref{food-truck-run-with-limited-moves}{最多換場 k 次的餐車檔期} & 實戰 \\
+ & \akiref{on-warm-or-off}{開、保溫還是關} & 實戰 \\
+ & \akiref{two-training-camps-not-too-far-apart}{休息不能太久的兩次集訓} & 挑戰 \\
+\midrule
+切成好幾段 & \akiref{height-gaps-in-graduation-group-photos}{畢業照分組的身高落差} & 基本 \\
+ & \akiref{dishwashing-rounds}{洗碗輪次的放洗順序} & 基本 \\
+ & \akiref{dispatching-shuttles-in-batches}{接駁車的分批發車} & 實戰 \\
+ & \akiref{practice-blocks-for-band-camp}{社團集訓的連續練習區塊} & 實戰 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+本章的三題例題也在 Aki-Judge 上，讀完各節之後可以先自己寫一次再對照。
+
+\section{讀完你應該會}
+\label{sec:dp1-checklist}
+
+\begin{itemize}
+\item 拿到一個「最少」「最多」「有幾種」的問題，能用一句中文寫出狀態，並用
+「最後一步有哪幾種」寫出轉移、初始值和計算順序。
+\item 能把一個暴力遞迴加上記憶化，或改寫成由小到大填表的迴圈，並說得出兩者
+算的是同一張表。
+\item 能把一個動態規劃畫成狀態圖，從圖上判斷計算順序、估計複雜度，並看出圖
+有環時不能直接用。
+\item 轉移時發現「只知道前 $i$ 個的答案不夠」，能把缺的資訊（最後一個亮不
+亮、昨天做什麼、是否以第 $i$ 個結尾）加進狀態。
+\item 計數題能在每次運算後取餘數、正確設定起點為 $1$；最佳化題能用「不可能」
+的值標記到不了的狀態。
+\end{itemize}
+
+\textbf{延伸閱讀}（書末會整理完整的參考資料）
+
+\begin{itemize}
+\item Antti Laaksonen，\textit{Competitive Programmer's Handbook}，第 7 章：
+從找零錢開始，短短幾頁走過記憶化、填表與計數，可以很快複習一遍。
+\item 劉汝佳，《算法競賽入門經典》第 2 版，9.1、9.2 節：用有向無環圖的角度看
+動態規劃，例題很多。
+\item Thomas H. Cormen 等，\textit{Introduction to Algorithms}，第 4 版，14.1、
+14.3 節：動態規劃的嚴謹說明，包括什麼樣的問題可以拆成子問題。
+\end{itemize}
+
+\addcontentsline{toc}{section}{練習解答}
+\section*{練習解答}
+
+\begin{enumerate}
+\item
+\begin{enumerate}
+\item 由小到大填：$g(0) = 0$、$g(1) = 1$、$g(2) = 2$、$g(3) = 2 + 0 = 2$、
+$g(4) = 2 + 2 = 4$、$g(5) = 4 + 4 = 8$、$g(6) = 8 + 4 = 12$、
+$g(7) = 12 + 8 = 20$。
+\item 設 $c(n)$ 是呼叫 \texttt{g(n)} 一共引發的呼叫次數，$c(n) = 1$
+（$n \le 2$），否則 $c(n) = 1 + c(n - 1) + c(n - 3)$。 依序是
+$1, 1, 1, 3, 5, 7, 11, 17$，答案 $17$。 這也是一個動態規劃。
+\item $11$ 次。 $g(7)$ 到 $g(3)$ 各真正計算一次，每次再呼叫兩次，共
+$5 \times 2 = 10$ 次，加上最外面的 \texttt{g(7)}。
+\end{enumerate}
+
+\item
+\begin{enumerate}
+\item $1, 2, 3, 4, 7, 8, 9, 13, 14, 19$。 $20$ 以上都貼得出來：$20$ 到 $24$
+分別是四張郵票的各種組合（$5 \times 4$、$5 \times 3 + 6$、\ldots、
+$6 \times 4$），之後每多 $5$ 元再加一張 $5$ 元。
+\item 算出 $3$。 \texttt{best[1]} 到 \texttt{best[4]} 貼不出來，留在
+\texttt{x + 1}，也就是 $2, 3, 4, 5$；接著 \texttt{best[7]} 從
+\texttt{best[1] + 1 = 3} 得到 $3$，看起來像一個正常的答案。 「還沒找到」的
+值被當成真的張數往後傳了。 有 $1$ 元郵票時，每個金額都貼得出來，這個值一定
+會被蓋掉，所以範例~\ref{ex:stamps-table} 沒事。
+\item 用一個明確的「不可能」值，轉移時跳過它：
+\begin{code}{cpp}{練習 2(c)}
+const int INF = 1e9;
+best[0] = 0;
+for (int x = 1; x <= n; x++) {
+    best[x] = INF;
+    for (int c : {5, 6}) {
+        if (c <= x && best[x - c] != INF) {
+            best[x] = min(best[x], best[x - c] + 1);
+        }
+    }
+}
+cout << (best[n] == INF ? -1 : best[n]) << '\n';
+\end{code}
+\texttt{INF} 不要用 \texttt{INT\_MAX}：只要有一個地方忘了檢查就加 $1$，會溢
+位成負數，變成「最小」。
+\end{enumerate}
+
+\item
+\begin{enumerate}
+\item $29$ 種。 狀態 $w(x)$：剛好貼滿 $x$ 元、依序貼上的貼法數；轉移看最後
+一張，$w(x) = w(x - 1) + w(x - 5) + w(x - 6)$（小於 $0$ 的項不算）；初始值
+$w(0) = 1$。 依序是 $1, 1, 1, 1, 1, 2, 4, 6, 8, 10, 13, 19, 29$。 在狀態圖
+上，這是從 $0$ 到 $12$ 的路的條數。
+\item 這個轉移把每一種「最後一張」都當成不同的貼法，所以 $1 + 5$ 和 $5 + 1$
+分別從 $w(5)$ 和 $w(1)$ 各算一次。 不管先後時，要規定郵票的使用順序（例如先
+決定 $1$ 元用幾張，再決定 $5$ 元、$6$ 元），狀態裡要多記「目前考慮到第幾種面
+額」，這是第~15~章的寫法。
+\end{enumerate}
+
+\item 會無限遞迴，直到堆疊用完而當掉。 $f(1)$ 要用到 $f(4)$，$f(4)$ 要用到
+$f(7)$，$f(7)$ 又要用到 $f(2)$ 和 $f(10)$……參數一直變大，遞迴永遠不會碰到
+$f(0)$ 之外的終點。 狀態圖上有 $x \to x + 5$、$x \to x - 3$ 兩種箭頭，會繞
+成環，例如 $0 \to 5 \to 2 \to 7 \to 4 \to 1 \to 6 \to 3 \to 0$，找不到一個
+「每個點都排在指向它的點後面」的順序。 這種每按一下成本都是 $1$、狀態會繞回
+來的問題，用第~11、12~章的廣度優先搜尋，從 $0$ 開始一層一層往外找。
+
+\item 四種狀態：\texttt{rest}（休息，隔天可以做任何事）、\texttt{day}、
+\texttt{night}、\texttt{after}（大夜班後的第一個休息日，隔天還得休息）。
+\[
+\begin{aligned}
+\texttt{rest[i]}  &= \max(\texttt{rest[i-1]}, \texttt{day[i-1]}, \texttt{after[i-1]}),\\
+\texttt{day[i]}   &= \max(\texttt{rest[i-1]}, \texttt{day[i-1]}) + a_i,\\
+\texttt{night[i]} &= \texttt{rest[i-1]} + b_i,\\
+\texttt{after[i]} &= \texttt{night[i-1]}.
+\end{aligned}
+\]
+大夜班的隔天只能是 \texttt{after}，\texttt{after} 的隔天只能是 \texttt{rest}，
+兩天休息就保證了。 \texttt{night} 只能接在 \texttt{rest} 後面：\texttt{after}
+也是休息日，但它的隔天必須休息，不能上大夜班。 初始值、答案都和原題一樣，答
+案取四者的最大值。
+
+\item
+\begin{enumerate}
+\item 狀態是「前 $i$ 盞、最後連續亮了 $k$ 盞」的種數，$k = 0, 1, 2$：
+$c_0(i) = c_0(i-1) + c_1(i-1) + c_2(i-1)$，$c_1(i) = c_0(i-1)$，
+$c_2(i) = c_1(i-1)$。 初始值 $c_0(0) = 1$，其他是 $0$。
+\item $24$ 種。 每個 $i$ 的合計依序是 $2, 4, 7, 13, 24$。
+\end{enumerate}
+
+\item 只有 E 那一列變了：聽 E 是 \texttt{best[2]} $+ 9 = 15$，比 $10$ 大，
+\texttt{best[5] = 15}。 F 那一列：聽 F 仍然是 $10 + 4 = 14$，不聽是 $15$，
+\texttt{best[6] = 15}。 \texttt{best} 依序是 $3, 6, 8, 10, 15, 15$，答案
+$15$，選 B 和 E。
+
+\item 看兩組輸入：$(5, -10, 6)$ 和 $(2, 3, 6)$。 兩組的 \texttt{pre[2]}
+都是 $5$（第一組只取第 $1$ 天，第二組取第 $1$、$2$ 天），第三天也都是 $6$。
+可是第一組的 \texttt{pre[3]} 是 $6$（只取第 $3$ 天，接不上前面的 $5$，因為
+中間隔著 $-10$），第二組是 $2 + 3 + 6 = 11$。 同樣的 \texttt{pre[2]} 和
+$a_3$ 算出不同的答案，所以光靠它們算不出來：\texttt{pre[i - 1]} 沒有告訴我們
+那一段是不是剛好結束在第 $i - 1$ 天。 改用「以第 $i$ 天結尾」的狀態就沒有這
+個問題。
+\end{enumerate}
