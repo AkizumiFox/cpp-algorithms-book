@@ -1,8 +1,10 @@
-# C++ 演算法解題：從 APCS 實作題開始
+# C++ 演算法解題 1：APCS 實作題核心
 
 作者：林子祐
 
-一本寫給已經會 C++ 的學生的解題書，接在《C++ 程式設計：給學過 C 的人》之後讀。 `vector`、`string`、`pair`、`set`／`map`、`stack`／`queue`／`priority_queue`、`sort` 加比較函式、`lower_bound`、lambda 都假設已經會用，書裡不再重教，用到時用「銜接書回顧」框簡短複習，並寫出在那本書的第幾章。
+「註解 Annotated 演算法系列」的第 1 本。
+
+寫給已經會 C++ 的學生的解題書，接在《C++ 程式設計：給學過 C 的人》之後讀。 `vector`、`string`、`pair`、`set`／`map`、`stack`／`queue`／`priority_queue`、`sort` 加比較函式、`lower_bound`、lambda 都假設已經會用，書裡不再重教，用到時用「銜接書回顧」框簡短複習，並寫出在那本書的第幾章。
 
 讀完之後應該做得到：
 
@@ -12,14 +14,12 @@
 
 每一章的例題照「題意、想法、程式、複雜度、常見錯誤」的順序寫，貪心要說明為什麼對，動態規劃要說明狀態的意義。 章末有觀念題（附解答）和 Aki-Judge 上的實作題單（只列題名，不附解答）。
 
-- 全書 PDF（草稿，20 章）：[`output/book.pdf`](output/book.pdf)
+- 全書 PDF（草稿，14 章）：[`output/book.pdf`](output/book.pdf)
 - 網頁版：[annotated.codes/learn/algorithms](https://annotated.codes/learn/algorithms)（一節一頁，手機也好讀）
-- 各章 PDF：[1](output/chapters/01_Preparation.pdf)、[2](output/chapters/02_Sorting.pdf)、[3](output/chapters/03_BinarySearchAnswer.pdf)、[4](output/chapters/04_EnumerationSimulation.pdf)、[5](output/chapters/05_PrefixSumsTwoPointers.pdf)、[6](output/chapters/06_StacksQueuesHeaps.pdf)、[7](output/chapters/07_Greedy.pdf)、[8](output/chapters/08_RecursionDivideConquer.pdf)、[9](output/chapters/09_DP1D.pdf)、[10](output/chapters/10_DPGrids.pdf)、[11](output/chapters/11_Graphs.pdf)、[12](output/chapters/12_GridStateBFS.pdf)、[13](output/chapters/13_Trees.pdf)、[14](output/chapters/14_Capstone.pdf)、[15](output/chapters/15_Knapsack.pdf)、[16](output/chapters/16_SubsequenceDP.pdf)、[17](output/chapters/17_IntervalDP.pdf)、[18](output/chapters/18_DAGTopo.pdf)、[19](output/chapters/19_DSUCyclesBipartite.pdf)、[20](output/chapters/20_TreeDP.pdf)
+- 各章 PDF：[1](output/chapters/01_Preparation.pdf)、[2](output/chapters/02_Sorting.pdf)、[3](output/chapters/03_BinarySearchAnswer.pdf)、[4](output/chapters/04_EnumerationSimulation.pdf)、[5](output/chapters/05_PrefixSumsTwoPointers.pdf)、[6](output/chapters/06_StacksQueuesHeaps.pdf)、[7](output/chapters/07_Greedy.pdf)、[8](output/chapters/08_RecursionDivideConquer.pdf)、[9](output/chapters/09_DP1D.pdf)、[10](output/chapters/10_DPGrids.pdf)、[11](output/chapters/11_Graphs.pdf)、[12](output/chapters/12_GridStateBFS.pdf)、[13](output/chapters/13_Trees.pdf)、[14](output/chapters/14_Capstone.pdf)
 - 原始碼：`src/`（XeLaTeX）
 
 ## 章節
-
-### 第一部：實作題核心
 
 | # | 章 | 狀態 |
 |---|---|---|
@@ -38,16 +38,18 @@
 | 13 | 樹 | 草稿 |
 | 14 | 綜合練習 | 草稿 |
 
-### 第二部：進階主題
+背包 DP、子序列 DP、區間 DP、DAG 與拓樸排序、並查集、樹形 DP 原本是這本書的第 15–20 章，現在移到第 2 本《C++ 演算法解題 2：動態規劃與圖論》。
 
-| # | 章 | 狀態 |
+## 註解 Annotated 演算法系列
+
+| # | 書名 | 狀態 |
 |---|---|---|
-| 15 | 背包 DP | 草稿 |
-| 16 | 子序列 DP | 草稿 |
-| 17 | 區間 DP | 草稿 |
-| 18 | DAG 與拓樸排序 | 草稿 |
-| 19 | 並查集、環與二分圖 | 草稿 |
-| 20 | 樹形 DP | 草稿 |
+| 1 | 《C++ 演算法解題 1：APCS 實作題核心》 | 本書，草稿 |
+| 2 | 《C++ 演算法解題 2：動態規劃與圖論》 | 撰寫中，[cpp-algorithms-book-2](https://github.com/AkizumiFox/cpp-algorithms-book-2) |
+| 3 | 《C++ 演算法解題 3：進階資料結構、數學與競賽》 | 規劃中 |
+| 4 | 《資料結構與演算法：C 語言、虛擬碼與研究所考試》 | 規劃中 |
+
+前三本用 C++17，一本接一本讀。 第 4 本用 C 和虛擬碼，寫給修大學資料結構、演算法必修和準備資工所考試的讀者，先備是《C 程式設計基礎》。
 
 ## 編譯
 

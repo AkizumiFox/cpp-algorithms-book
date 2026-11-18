@@ -29,11 +29,13 @@
 % 本書排版套件（packages/ 目錄）
 % ---------------------------------------------------------------
 \usepackage{sleek}
-\usepackage{sleek-theorems}
 \usepackage{sleek-code}
 \usepackage{sleek-diagrams}
 \usepackage{sleek-recap}
 \usepackage{sleek-aki}
+% 注意：sleek-theorems.sty 不載入——本書沒有用到定理類環境，而它依賴的 thmtools
+% 和 2026-11 以後的 LaTeX 核心衝突（\newtheorem{lem}[thm] 會報「\c@lem already
+% defined」），載入的話整本書編不過。
 % 注意：sleek-listings.sty 不載入——它是舊版 lstlistings/inconsolata 排版套件，
 % 本書實際用的是 sleek-code.sty 的 minted 版 code/example 環境，兩者同時載入會讓
 % minted 抓不到 \setmonofont 設定的等寬字（回退成 Latin Modern Roman），
@@ -48,7 +50,14 @@
 % 允許 TeX 多拉開一點字距來排版。
 \setlength{\emergencystretch}{3em}
 
-\title{C++ 演算法解題：從 APCS 實作題開始}
+% PDF 的書名資訊另外寫，不從 \title 抓（\title 裡有換行和系列名稱）。
+\hypersetup{
+    pdftitle={C++ 演算法解題 1：APCS 實作題核心},
+    pdfauthor={林子祐},
+    pdfsubject={註解 Annotated 演算法系列 第 1 本},
+}
+
+\title{C++ 演算法解題 1\\[0.3em]{\LARGE APCS 實作題核心}\\[1.2em]{\large 註解 Annotated 演算法系列}}
 \author{林子祐}
 \date{\today}
 
@@ -62,7 +71,6 @@
 % 尚未動筆的章先註解掉，整本書才編得過。
 % ---------------------------------------------------------------
 
-% 第一部：APCS 實作題核心
 \input{chapters/01_Preparation/chapter}
 \input{chapters/02_Sorting/chapter}
 \input{chapters/03_BinarySearchAnswer/chapter}
@@ -78,12 +86,7 @@
 \input{chapters/13_Trees/chapter}
 \input{chapters/14_Capstone/chapter}
 
-% 第二部：APCS 高級主題
-\input{chapters/15_Knapsack/chapter}
-\input{chapters/16_SubsequenceDP/chapter}
-\input{chapters/17_IntervalDP/chapter}
-\input{chapters/18_DAGTopo/chapter}
-\input{chapters/19_DSUCyclesBipartite/chapter}
-\input{chapters/20_TreeDP/chapter}
+% 原本的第 15–20 章（背包 DP、子序列 DP、區間 DP、DAG 與拓樸排序、並查集、樹形 DP）
+% 移到《C++ 演算法解題 2：動態規劃與圖論》（repo cpp-algorithms-book-2）。
 
 \end{document}

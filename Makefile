@@ -7,7 +7,7 @@ OUTDIR := output
 CHAPTERS_OUTDIR := $(OUTDIR)/chapters
 
 # 已經動筆的章（目錄名稱）。新的一章開始寫時加進來，book.tex 也要取消註解。
-WRITTEN := 01_Preparation 02_Sorting 03_BinarySearchAnswer 04_EnumerationSimulation 05_PrefixSumsTwoPointers 06_StacksQueuesHeaps 07_Greedy 08_RecursionDivideConquer 09_DP1D 10_DPGrids 11_Graphs 12_GridStateBFS 13_Trees 14_Capstone 15_Knapsack 16_SubsequenceDP 17_IntervalDP 18_DAGTopo 19_DSUCyclesBipartite 20_TreeDP
+WRITTEN := 01_Preparation 02_Sorting 03_BinarySearchAnswer 04_EnumerationSimulation 05_PrefixSumsTwoPointers 06_StacksQueuesHeaps 07_Greedy 08_RecursionDivideConquer 09_DP1D 10_DPGrids 11_Graphs 12_GridStateBFS 13_Trees 14_Capstone
 
 # Compile from BUILDDIR so aux/log/minted/pdf intermediates never land in src/.
 # Trailing colon on TEXINPUTS keeps TeX Live's default search path.
@@ -50,8 +50,7 @@ $(OUTDIR)/book.pdf: FORCE
 	@mkdir -p $(BUILDDIR) $(OUTDIR)
 	@echo "Building: Full book..."
 	@cp $(SRCDIR)/book.tex $(BUILDDIR)/book.tex
-	@cd $(BUILDDIR) && TEXINPUTS="$(BUILD_TEXINPUTS)" $(LATEXMK) book.tex > /dev/null 2>&1 || \
-		(echo "Build failed. Error snippet from book.log:"; grep -n -A 5 '^!' book.log || tail -20 book.log; exit 1)
+	@TEXINPUTS="$(BUILD_TEXINPUTS)" scripts/build_tex.sh $(BUILDDIR) book.tex $(LATEXMK)
 	@cp $(BUILDDIR)/book.pdf $(OUTDIR)/book.pdf
 	@echo "✓ $(OUTDIR)/book.pdf"
 
@@ -67,17 +66,18 @@ $(CHAPTERS_OUTDIR)/%.pdf: FORCE
 	echo "\\setcounter{chapter}{$$(( 10#$$chap_num - 1 ))}" >> "$$wrapper" && \
 	echo "\\input{../$(SRCDIR)/chapters/$*/chapter}" >> "$$wrapper" && \
 	echo "\\end{document}" >> "$$wrapper" && \
-	cd $(BUILDDIR) && TEXINPUTS="$(BUILD_TEXINPUTS)" $(LATEXMK) chapter-$*.tex > /dev/null 2>&1 || \
-	(echo "Build failed for $*. Error snippet from chapter-$*.log:"; grep -n -A 5 '^!' chapter-$*.log || tail -20 chapter-$*.log; exit 1) && \
-	cp chapter-$*.pdf ../$(CHAPTERS_OUTDIR)/$*.pdf && echo "✓ $(CHAPTERS_OUTDIR)/$*.pdf"
+	TEXINPUTS="$(BUILD_TEXINPUTS)" scripts/build_tex.sh $(BUILDDIR) chapter-$*.tex $(LATEXMK) && \
+	cp $(BUILDDIR)/chapter-$*.pdf $(CHAPTERS_OUTDIR)/$*.pdf && echo "✓ $(CHAPTERS_OUTDIR)/$*.pdf"
 
 # 從 .tex 抽出範例程式，編譯後拿 iosample 的輸入跑，和預期輸出比對。
 test:
+	@rm -rf $(BUILDDIR)/code
 	@python3 scripts/extract_code.py --out $(BUILDDIR)/code $(foreach d,$(WRITTEN),$(SRCDIR)/chapters/$(d)/chapter.tex)
 	@scripts/run_tests.sh $(BUILDDIR)/code
 
 # 例題對完整測資：需要另外的題目資料，見 README。
 test-judge:
+	@rm -rf $(BUILDDIR)/code
 	@python3 scripts/extract_code.py --out $(BUILDDIR)/code $(foreach d,$(WRITTEN),$(SRCDIR)/chapters/$(d)/chapter.tex)
 	@scripts/test_judge.sh $(BUILDDIR)/code
 
